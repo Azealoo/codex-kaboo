@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local
+.vercel/
+web/public/cli/
+web/convex/_generated/
+.DS_Store
+*.log
+*.tgz
+.tmp/
