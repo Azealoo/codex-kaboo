@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as http from "../http.js";
 import type * as ingest from "../ingest.js";
 import type * as lib_aggregate from "../lib/aggregate.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -28,6 +29,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  http: typeof http;
   ingest: typeof ingest;
   "lib/aggregate": typeof lib_aggregate;
   "lib/auth": typeof lib_auth;

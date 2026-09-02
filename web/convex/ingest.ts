@@ -1,12 +1,27 @@
 import { v, type Infer } from "convex/values";
 import {
+  MAX_BODY_BYTES,
   MAX_DAYS_PER_EVENT_CHUNK,
   MAX_EVENTS_PER_MUTATION,
+  MAX_EVENTS_PER_REQUEST,
   MAX_SESSIONS_PER_MUTATION,
+  MAX_SESSIONS_PER_REQUEST,
 } from "../../shared/src/constants";
-import type { SessionSummary, TokenEvent, UpsertCounts } from "../../shared/src/sync";
+import {
+  SyncBatch,
+  type ErrorCode,
+  type ErrorResponse,
+  type SessionSummary,
+  type SyncResponse,
+  type TokenEvent,
+  type UpsertCounts,
+  type WhoamiResponse,
+} from "../../shared/src/sync";
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { internalMutation } from "./_generated/server";
+import { httpAction, internalMutation, type ActionCtx } from "./_generated/server";
+import { LIMITS, latestCliVersion } from "./lib/constants";
+import { parseBearer, sha256Hex } from "./lib/hash";
 import {
   machineInfoValidator,
   rateLimitSnapshotValidator,
@@ -14,7 +29,7 @@ import {
   tokenEventFields,
 } from "./lib/validators";
 import { recomputeDays } from "./rollups";
-import { touchToken } from "./syncTokens";
+import { touchToken, type TokenLookup } from "./syncTokens";
 
 // ---------- pure helpers ----------
 
@@ -240,3 +255,182 @@ export const finishSync = internalMutation({
     return { rateLimitStored, tokenTouched };
   },
 });
+
+// ---------- HTTP handlers ----------
+
+const JSON_HEADERS = { "content-type": "application/json" };
+
+export function jsonResponse(
+  status: number,
+  body: unknown,
+  extraHeaders: Record<string, string> = {},
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...JSON_HEADERS, ...extraHeaders },
+  });
+}
+
+export function errorResponse(
+  status: number,
+  error: ErrorCode,
+  message: string,
+  extra: Partial<Pick<ErrorResponse, "issues" | "limits">> = {},
+  extraHeaders: Record<string, string> = {},
+): Response {
+  const body: ErrorResponse = { ok: false, error, message, ...extra };
+  return jsonResponse(status, body, extraHeaders);
+}
+
+type AuthResult = { ok: true; auth: TokenLookup } | { ok: false; response: Response };
+
+async function authenticate(ctx: ActionCtx, request: Request): Promise<AuthResult> {
+  const raw = parseBearer(request.headers.get("authorization"));
+  if (!raw) return { ok: false, response: errorResponse(401, "unauthorized", "missing bearer token") };
+  const auth = await ctx.runQuery(internal.syncTokens.lookupByHash, {
+    tokenHash: await sha256Hex(raw),
+  });
+  if (!auth) return { ok: false, response: errorResponse(401, "unauthorized", "unknown token") };
+  if (auth.revokedAt !== null) {
+    return { ok: false, response: errorResponse(401, "token_revoked", "token has been revoked") };
+  }
+  return { ok: true, auth };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function internalError(error: unknown): Response {
+  console.error("codex-kaboo ingest failed", error);
+  return errorResponse(503, "internal", "unexpected error, retry later", {}, { "retry-after": "5" });
+}
+
+export const syncHandler = httpAction(async (ctx, request) => {
+  try {
+    const authed = await authenticate(ctx, request);
+    if (!authed.ok) return authed.response;
+    const { auth } = authed;
+
+    const declared = Number(request.headers.get("content-length") ?? "0");
+    if (declared > MAX_BODY_BYTES) {
+      return errorResponse(413, "payload_too_large", `body exceeds ${MAX_BODY_BYTES} bytes`, {
+        limits: LIMITS,
+      });
+    }
+    const text = await request.text();
+    if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) {
+      return errorResponse(413, "payload_too_large", `body exceeds ${MAX_BODY_BYTES} bytes`, {
+        limits: LIMITS,
+      });
+    }
+
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      return errorResponse(400, "invalid_json", "body is not valid JSON");
+    }
+
+    if (isRecord(json)) {
+      const sessions = Array.isArray(json.sessions) ? json.sessions.length : 0;
+      const events = Array.isArray(json.tokenEvents) ? json.tokenEvents.length : 0;
+      if (sessions > MAX_SESSIONS_PER_REQUEST || events > MAX_EVENTS_PER_REQUEST) {
+        return errorResponse(
+          413,
+          "too_many_items",
+          `at most ${MAX_SESSIONS_PER_REQUEST} sessions and ${MAX_EVENTS_PER_REQUEST} events per request`,
+          { limits: LIMITS },
+        );
+      }
+    }
+
+    const parsed = SyncBatch.safeParse(json);
+    if (!parsed.success) {
+      return errorResponse(400, "invalid_batch", "batch failed validation", {
+        issues: parsed.error.issues.slice(0, 50).map((issue) => ({
+          path: issue.path.map(String).join("."),
+          message: issue.message,
+        })),
+      });
+    }
+    const batch = parsed.data;
+    const now = Date.now();
+
+    const machine = await ctx.runMutation(internal.ingest.upsertMachine, {
+      userId: auth.userId,
+      machine: batch.machine,
+      cliVersion: batch.cliVersion,
+      now,
+    });
+    if (machine.conflict) {
+      return errorResponse(409, "machine_conflict", "this machineId is registered to another user");
+    }
+
+    const accepted = { sessions: zeroCounts(), events: zeroCounts() };
+    const conflicts: { sessions: string[]; events: number } = { sessions: [], events: 0 };
+    for (const chunk of chunkSessions(batch.sessions)) {
+      const result = await ctx.runMutation(internal.ingest.upsertSessions, {
+        userId: auth.userId,
+        machineId: batch.machine.machineId,
+        sessions: chunk,
+        now,
+      });
+      addCounts(accepted.sessions, result.counts);
+      conflicts.sessions.push(...result.conflicts);
+    }
+    for (const chunk of chunkEvents(batch.tokenEvents)) {
+      const result = await ctx.runMutation(internal.ingest.upsertEvents, {
+        userId: auth.userId,
+        events: chunk,
+        now,
+      });
+      addCounts(accepted.events, result.counts);
+      conflicts.events += result.conflicts;
+    }
+    await ctx.runMutation(internal.ingest.finishSync, {
+      userId: auth.userId,
+      machineId: batch.machine.machineId,
+      tokenId: auth.tokenId,
+      rateLimit: batch.rateLimit,
+      now,
+    });
+
+    const body: SyncResponse = {
+      ok: true,
+      accepted,
+      conflicts,
+      serverTime: now,
+      latestCliVersion: latestCliVersion(),
+      limits: LIMITS,
+    };
+    return jsonResponse(200, body);
+  } catch (error) {
+    return internalError(error);
+  }
+});
+
+export const whoamiHandler = httpAction(async (ctx, request) => {
+  try {
+    const authed = await authenticate(ctx, request);
+    if (!authed.ok) return authed.response;
+    const { auth } = authed;
+    const now = Date.now();
+    await ctx.runMutation(internal.syncTokens.touchLastUsed, { tokenId: auth.tokenId, now });
+    const body: WhoamiResponse = {
+      ok: true,
+      userId: auth.userId,
+      name: auth.user.name,
+      email: auth.user.email,
+      token: { name: auth.name, prefix: auth.prefix },
+      serverTime: now,
+    };
+    return jsonResponse(200, body);
+  } catch (error) {
+    return internalError(error);
+  }
+});
+
+export const healthHandler = httpAction(async () =>
+  jsonResponse(200, { ok: true, serverTime: Date.now() }),
+);
