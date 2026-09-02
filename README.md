@@ -116,8 +116,9 @@ exactly that and the schedule is repinned to the current Node.
   user and by model.
 - **My Page** (`/users/<id>`): rank, 13 stat cards, a 12-month activity heatmap, token trend
   (tokens / cost / hours), Data Sync (your machines and the install commands), Breakdown
-  (time analysis + weekday × hour heatmap + tables), Efficiency (cost structure, cache savings,
-  cost per line, per-model pricing), Sessions (newest first).
+  (time analysis + weekday × hour heatmap, then model / tool / project / skill / machine and
+  source tables), Efficiency (cost structure, cache savings, cost per line, per-model pricing),
+  Sessions (newest first).
 - **Settings**: sync tokens, install instructions, machines (rename), model prices (USD per
   million tokens; edits re-price everything instantly).
 
