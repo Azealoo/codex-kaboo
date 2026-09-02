@@ -15,7 +15,7 @@ async function files(): Promise<Map<string, DiscoveredFile>> {
 async function parse(sessionId: string) {
   const file = (await files()).get(sessionId);
   if (!file) throw new Error(`fixture ${sessionId} not found`);
-  return parseRolloutFile(file, { machineZone: "UTC", now: NOW, generation: 0 });
+  return parseRolloutFile(file, { machineId: "machine-1", machineZone: "UTC", now: NOW, generation: 0 });
 }
 
 describe("fixtures", () => {

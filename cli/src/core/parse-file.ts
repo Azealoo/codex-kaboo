@@ -4,6 +4,7 @@ import type { DiscoveredFile } from "./discover";
 import { readJsonlLines, type ReadResult } from "./jsonl-reader";
 
 export interface ParseFileOptions {
+  machineId: string;
   machineZone?: string;
   now: number;
   generation: number;
@@ -28,6 +29,7 @@ export async function parseRolloutFile(file: DiscoveredFile, opts: ParseFileOpti
     threadId: file.threadId,
     rolloutId: file.rolloutId,
     fileTimestampMs: file.fileTimestampMs,
+    machineId: opts.machineId,
     machineZone: opts.machineZone,
   });
   const read = await readJsonlLines(file.path, (record) => reduceLine(state, record.seq, record.text), {

@@ -155,6 +155,8 @@ export function makeEvent(
     model: "gpt-5.6-sol",
     effort: "medium",
     project: "project-a",
+    machineId: "machine-1",
+    source: "cli",
     isSubagent: false,
     origin: "record",
     input: 500,

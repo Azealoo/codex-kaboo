@@ -14,7 +14,7 @@ import type { SyncState } from "../../src/types";
 import { FIXTURE_HOME, FX } from "../fixture-ids";
 
 const NOW = Date.UTC(2026, 8, 1, 12);
-const deps = { env: {}, now: () => NOW, log: silentLogger, machineZone: "UTC" };
+const deps = { env: {}, now: () => NOW, log: silentLogger, machineId: "machine-1", machineZone: "UTC" };
 
 // Every mkdtempSync directory created by a test (directly, or via copyFixtures) is tracked here and
 // removed in afterEach, so failed or repeated runs don't litter os.tmpdir().

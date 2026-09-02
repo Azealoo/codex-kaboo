@@ -18,6 +18,7 @@ export interface ReducerContext {
   threadId: string;
   rolloutId: string | null;
   fileTimestampMs: number | null;
+  machineId: string; // constant for the run; stamped on every event (see TokenEvent.machineId)
   machineZone?: string;
 }
 
@@ -462,6 +463,8 @@ export function finalize(state: ReducerState, opts: FinalizeOptions): ParsedSess
         hour,
         model: ev.model ?? turn?.model ?? state.lastModel ?? state.fallbackModel ?? "(unknown)",
         project: state.project,
+        machineId: state.ctx.machineId,
+        source: state.source,
         isSubagent: state.isSubagent,
         origin: ev.origin,
         input: ev.input,

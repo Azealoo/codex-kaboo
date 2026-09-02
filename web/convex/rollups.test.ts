@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ROLLUP_VERSION } from "../../shared/src/constants";
 import { addDays } from "../../shared/src/days";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -71,7 +72,11 @@ describe("recomputeDay", () => {
     expect(day2?.byProject).toEqual([
       { key: "project-a", tokens: 600, responses: 1, sessions: 0, userMessages: 0, linesAdded: 0, linesRemoved: 0 },
     ]);
-    expect(day2?.byMachine).toEqual([]);
+    // byMachine/bySource follow byProject exactly: the post-midnight tokens land here, the
+    // session count stays on the start day. The table can no longer contradict the card above it.
+    expect(day2?.byMachine).toEqual([{ key: "machine-1", tokens: 600, sessions: 0 }]);
+    expect(day2?.bySource).toEqual([{ key: "cli", tokens: 600, sessions: 0 }]);
+    expect(day1?.byMachine).toEqual([{ key: "machine-1", tokens: 600, sessions: 1 }]);
   });
 });
 
@@ -101,7 +106,7 @@ describe("rebuildAll", () => {
 
     const rollups = await t.run(async (ctx) => ctx.db.query("dailyRollups").collect());
     expect(rollups).toHaveLength(5);
-    expect(rollups.every((r) => r.version === 1 && r.responses === 1)).toBe(true);
+    expect(rollups.every((r) => r.version === ROLLUP_VERSION && r.responses === 1)).toBe(true);
     expect(await t.mutation(internal.rollups.rebuildAll, {})).toEqual({ done: true, recomputed: 5 });
   });
 });

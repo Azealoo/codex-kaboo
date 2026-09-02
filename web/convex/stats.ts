@@ -328,21 +328,12 @@ export const breakdowns = authedQuery({
     const agg = mergeRollups(await loadRollups(ctx, range, args.userId));
     const totalTokens = agg.tokens.total;
     const share = (n: number) => ratio(n, totalTokens) ?? 0;
-    /**
-     * `byMachine` and `bySource` are the only two breakdowns on the SESSION basis: `tokenEvents`
-     * carries neither `machineId` nor `source`, so those tokens can only come from the session
-     * summary, which is attributed to the session's START day. Every other breakdown is
-     * event-derived and attributed to the event's own day. Dividing the session basis by the event
-     * basis is not a share at all — one midnight-spanning session made a machine render 250 % next
-     * to a project table summing to 100 % — so each of these two groups is normalised within
-     * itself. Both then sum to 1 and can never exceed it.
-     */
-    const groupShare = (rows: { tokens: number }[]) => {
-      const groupTotal = rows.reduce((sum, row) => sum + row.tokens, 0);
-      return (n: number) => ratio(n, groupTotal) ?? 0;
-    };
-    const machineShare = groupShare(agg.byMachine);
-    const sourceShare = groupShare(agg.bySource);
+    // `byMachine` and `bySource` used to be normalised within their own group, because their
+    // tokens came from the session summary (the session's START day) while `totalTokens` is
+    // event-derived — a mismatch that made one midnight-spanning session render a machine at
+    // 250 % beside a project table summing to 100 %. Their tokens are now event-derived too
+    // (ROLLUP_VERSION 2), so every group already sums to `totalTokens` and the plain `share`
+    // below is both correct and comparable across tables.
     const tokensDesc = <T extends { key: string; tokens: number }>(a: T, b: T) =>
       b.tokens - a.tokens || cmpKey(a.key, b.key);
     const countDesc = <T extends { key: string; count: number }>(a: T, b: T) =>
@@ -407,13 +398,11 @@ export const breakdowns = authedQuery({
         label: machine?.label ?? m.key,
         tokens: m.tokens,
         sessions: m.sessions,
-        share: machineShare(m.tokens), // session basis — see groupShare above
+        share: share(m.tokens),
       });
     }
     byMachine.sort(tokensDesc);
-    const bySource = agg.bySource
-      .map((s) => ({ ...s, share: sourceShare(s.tokens) })) // session basis — see groupShare above
-      .sort(tokensDesc);
+    const bySource = agg.bySource.map((s) => ({ ...s, share: share(s.tokens) })).sort(tokensDesc);
 
     return {
       totalTokens,

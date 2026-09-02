@@ -163,6 +163,10 @@ export const TokenEvent = z.object({
   effort: shortString.optional(),
   turnId: shortString.optional(),
   project: nonEmptyString,
+  // Denormalised from the run and the session so the day's machine and source token totals can be
+  // computed from EVENTS, on the event's own day, like every other token metric on the page.
+  machineId: nonEmptyString,
+  source: nonEmptyString, // the parent session's source
   isSubagent: z.boolean(),
   origin: TokenEventOrigin, // the line type this row was derived from
   input: count,

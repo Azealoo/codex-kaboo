@@ -8,7 +8,7 @@ const line = (type: string, payload: unknown, ts: string): string => JSON.string
 const item = (it: Record<string, unknown>, s: number): string => line("event_msg", { type: "item_completed", item: it }, T(s));
 const meta = line("session_meta", { id: TID, timestamp: T(0), cwd: "/redacted/project-b", originator: "codex-tui", source: "cli", cli_version: "0.150.1" }, T(0));
 
-const ctx: ReducerContext = { sessionId: TID, threadId: TID, rolloutId: null, fileTimestampMs: null, machineZone: "UTC" };
+const ctx: ReducerContext = { sessionId: TID, threadId: TID, rolloutId: null, fileTimestampMs: null, machineId: "machine-1", machineZone: "UTC" };
 function run(lines: string[]) {
   const state = createReducerState(ctx);
   lines.forEach((text, seq) => reduceLine(state, seq, text));

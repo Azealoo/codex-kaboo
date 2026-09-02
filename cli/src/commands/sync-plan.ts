@@ -46,10 +46,14 @@ export interface PlanOptions {
   codexHome?: string;
 }
 
+/** `machineId`/`label` stand-in when there is no config, i.e. `sync --dry-run` before `login`. */
+export const DRY_RUN_MACHINE_ID = "dry-run";
+
 export interface PlanDeps {
   env: NodeJS.ProcessEnv;
   now: () => number;
   log: Logger;
+  machineId: string; // stamped on every parsed event; DRY_RUN_MACHINE_ID when not logged in
   machineZone: string | undefined;
   budgetMs?: number;
   startedAt?: number;
@@ -170,7 +174,9 @@ export async function planSync(state: SyncState, homes: string[], opts: PlanOpti
     }
     let result;
     try {
-      result = await parseRolloutFile(file, { machineZone: deps.machineZone, now: deps.now(), generation: prev?.generation ?? 0 });
+      result = await parseRolloutFile(file, {
+        machineId: deps.machineId, machineZone: deps.machineZone, now: deps.now(), generation: prev?.generation ?? 0,
+      });
     } catch (error) {
       const message = errorMessage(error);
       planned.action = "error";
@@ -243,8 +249,8 @@ export interface MachineInput {
 
 export function buildMachineInfo(input: MachineInput): MachineInfo {
   const machine: MachineInfo = {
-    machineId: input.config?.machineId ?? "dry-run",
-    label: input.config?.label ?? "dry-run",
+    machineId: input.config?.machineId ?? DRY_RUN_MACHINE_ID,
+    label: input.config?.label ?? DRY_RUN_MACHINE_ID,
     platform: input.platform,
     arch: input.arch,
     nodeVersion: input.nodeVersion,

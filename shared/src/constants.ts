@@ -1,6 +1,11 @@
 export const SCHEMA_VERSION = 1 as const;
 export const PARSER_VERSION = 1;
-export const ROLLUP_VERSION = 1;
+/**
+ * Bumped to 2: `byMachine`/`bySource` tokens moved from the session basis (the session's start
+ * day) to the event basis (the event's own day), and commit 3eccabf had already changed persisted
+ * rollup output without a bump. Run `npx convex run rollups:rebuildAll '{}'` after deploying.
+ */
+export const ROLLUP_VERSION = 2;
 
 // Server-side request limits (also advertised in every sync response as `limits`).
 export const MAX_BODY_BYTES = 8 * 1024 * 1024;

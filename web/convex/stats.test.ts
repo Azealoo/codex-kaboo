@@ -6,7 +6,7 @@ import { loadRollups } from "./stats";
 import { withUser, registerUser, seedRollup, setup, ZERO_TOOLS, type Harness } from "./test.helpers";
 
 const ev = (o: Partial<EventInput> = {}): EventInput => ({
-  hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", isSubagent: false,
+  hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", machineId: "machine-1", source: "cli", isSubagent: false,
   input: 1000, cachedInput: 400, cacheWrite: 0, output: 200, reasoning: 50, total: 1200,
   ...o,
 });
@@ -39,7 +39,7 @@ async function seedTeam(t: Harness): Promise<{ alice: Id<"users">; bob: Id<"user
   await seedRollup(t, alice, "2026-08-31", [ev(), ev({ hour: 10 })], [ses({ project: "beta" })]);
   await seedRollup(
     t, bob, "2026-08-31",
-    [ev({ model: "codex-auto-review", effort: undefined, isSubagent: true })],
+    [ev({ model: "codex-auto-review", effort: undefined, isSubagent: true, machineId: "machine-2", source: "subagent:review" })],
     [ses({ isSubagent: true, source: "subagent:review", machineId: "machine-2" })],
   );
   return { alice, bob };
@@ -272,27 +272,28 @@ describe("stats.breakdowns", () => {
       { key: "alpha", tokens: 4800, responses: 4, sessions: 1, userMessages: 2, linesAdded: 10, linesRemoved: 2, share: 1 },
       { key: "beta", tokens: 0, responses: 0, sessions: 1, userMessages: 2, linesAdded: 10, linesRemoved: 2, share: 0 },
     ]);
-    // byMachine/bySource tokens are on the session (start-day) basis, so their shares are
-    // normalised within their own group and sum to 1 — not against the event-basis totalTokens.
+    // byMachine/bySource tokens are event-derived like every other breakdown, so their shares are
+    // taken against the same `totalTokens` and are comparable with byProject's on the same page.
     // Sub-agent threads contribute tokens but no session count, as everywhere else.
     expect(b.byMachine).toEqual([
-      { key: "machine-1", label: "brisk-otter", tokens: 2400, sessions: 2, share: 2400 / 3600 },
-      { key: "machine-2", label: "machine-2", tokens: 1200, sessions: 0, share: 1200 / 3600 },
+      { key: "machine-1", label: "brisk-otter", tokens: 3600, sessions: 2, share: 0.75 },
+      { key: "machine-2", label: "machine-2", tokens: 1200, sessions: 0, share: 0.25 },
     ]);
     expect(b.bySource).toEqual([
-      { key: "cli", tokens: 2400, sessions: 2, share: 2400 / 3600 },
-      { key: "subagent:review", tokens: 1200, sessions: 0, share: 1200 / 3600 },
+      { key: "cli", tokens: 3600, sessions: 2, share: 0.75 },
+      { key: "subagent:review", tokens: 1200, sessions: 0, share: 0.25 },
     ]);
     expect(b.byHour[9]).toBe(3600);
     expect(b.byHour[10]).toBe(1200);
     expect(b.byHour).toHaveLength(24);
   });
 
-  it("keeps machine and source shares within [0, 1] for a midnight-spanning session", async () => {
+  it("agrees with the headline on both days of a midnight-spanning session", async () => {
     const t = setup();
     const alice = await registerUser(t, "alice");
-    // A session starting 2026-08-30 23:50 and ending 00:30: its whole 1,000 tokens are attributed
-    // to the START day, while its two token events straddle midnight (400 before, 600 after).
+    // A session starting 2026-08-30 23:50 and ending 00:30, whose two token events straddle
+    // midnight (400 before, 600 after). Its SESSION metrics belong to the start day; its TOKENS
+    // belong to each event's own day, so neither table can disagree with the card above it.
     await seedRollup(
       t, alice, "2026-08-30",
       [ev({ hour: 23, input: 300, cachedInput: 100, output: 100, reasoning: 20, total: 400 })],
@@ -304,16 +305,26 @@ describe("stats.breakdowns", () => {
       [],
     );
 
-    const b = await withUser(t, "alice").query(api.stats.breakdowns, { from: "2026-08-30", to: "2026-08-30" });
-    expect(b.totalTokens).toBe(400); // event basis: only the pre-midnight event lands on this day
-    expect(b.byMachine[0]?.tokens).toBe(1000); // session basis: the whole session, start day
-    for (const row of [...b.byMachine, ...b.bySource]) {
-      expect(row.share).toBeGreaterThanOrEqual(0);
-      expect(row.share).toBeLessThanOrEqual(1);
+    const first = await withUser(t, "alice").query(api.stats.breakdowns, { from: "2026-08-30", to: "2026-08-30" });
+    expect(first.totalTokens).toBe(400);
+    expect(first.byMachine[0]).toMatchObject({ key: "machine-1", tokens: 400, sessions: 1, share: 1 });
+    expect(first.bySource[0]).toMatchObject({ key: "cli", tokens: 400, sessions: 1, share: 1 });
+
+    // The next day carries the rest of the tokens and none of the session — as byProject does.
+    const second = await withUser(t, "alice").query(api.stats.breakdowns, { from: "2026-08-31", to: "2026-08-31" });
+    expect(second.totalTokens).toBe(600);
+    expect(second.byMachine[0]).toMatchObject({ key: "machine-1", tokens: 600, sessions: 0, share: 1 });
+    expect(second.byProject[0]).toMatchObject({ key: "alpha", tokens: 600, sessions: 0, share: 1 });
+
+    for (const b of [first, second]) {
+      for (const row of [...b.byMachine, ...b.bySource]) {
+        expect(row.share).toBeGreaterThanOrEqual(0);
+        expect(row.share).toBeLessThanOrEqual(1);
+      }
+      expect(b.byMachine.reduce((sum, m) => sum + m.share, 0)).toBeCloseTo(1, 10);
+      expect(b.bySource.reduce((sum, s) => sum + s.share, 0)).toBeCloseTo(1, 10);
+      expect(b.byProject.reduce((sum, p) => sum + p.share, 0)).toBeCloseTo(1, 10);
     }
-    expect(b.byMachine.reduce((sum, m) => sum + m.share, 0)).toBeCloseTo(1, 10);
-    expect(b.bySource.reduce((sum, s) => sum + s.share, 0)).toBeCloseTo(1, 10);
-    expect(b.byProject.reduce((sum, p) => sum + p.share, 0)).toBeCloseTo(1, 10);
   });
 
   it("is empty but well-formed without data", async () => {

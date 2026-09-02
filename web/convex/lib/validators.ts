@@ -116,6 +116,8 @@ export const tokenEventFields = {
   effort: v.optional(v.string()),
   turnId: v.optional(v.string()),
   project: v.string(),
+  machineId: v.string(), // denormalised so byMachine tokens are event-derived (contracts §3)
+  source: v.string(), // denormalised from the parent session, same reason
   isSubagent: v.boolean(),
   origin: v.string(), // TokenEventOrigin: "count" | "record"
   input: v.number(),

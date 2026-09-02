@@ -32,10 +32,10 @@ const zeroTools = {
 };
 
 const events: EventInput[] = [
-  { hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", isSubagent: false, input: 1000, cachedInput: 400, cacheWrite: 0, output: 200, reasoning: 50, total: 1200 },
-  { hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", isSubagent: false, input: 500, cachedInput: 100, cacheWrite: 10, output: 100, reasoning: 0, total: 600 },
-  { hour: 23, model: "gpt-5.6-luna", effort: "low", project: "beta", isSubagent: false, input: 300, cachedInput: 0, cacheWrite: 0, output: 30, reasoning: 0, total: 330 },
-  { hour: 10, model: "codex-auto-review", project: "alpha", isSubagent: true, input: 700, cachedInput: 700, cacheWrite: 0, output: 70, reasoning: 70, total: 770 },
+  { hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", machineId: "m1", source: "cli", isSubagent: false, input: 1000, cachedInput: 400, cacheWrite: 0, output: 200, reasoning: 50, total: 1200 },
+  { hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", machineId: "m1", source: "cli", isSubagent: false, input: 500, cachedInput: 100, cacheWrite: 10, output: 100, reasoning: 0, total: 600 },
+  { hour: 23, model: "gpt-5.6-luna", effort: "low", project: "beta", machineId: "m2", source: "exec", isSubagent: false, input: 300, cachedInput: 0, cacheWrite: 0, output: 30, reasoning: 0, total: 330 },
+  { hour: 10, model: "codex-auto-review", project: "alpha", machineId: "m1", source: "subagent:review", isSubagent: true, input: 700, cachedInput: 700, cacheWrite: 0, output: 70, reasoning: 70, total: 770 },
 ];
 
 const sessions: SessionInput[] = [
@@ -73,7 +73,7 @@ describe("computeDayRollup", () => {
     const r = computeDayRollup(userId, DAY, events, sessions, AT);
     expect(r.userId).toBe(userId);
     expect(r.day).toBe(DAY);
-    expect(r.version).toBe(1);
+    expect(r.version).toBe(2);
     expect(r.computedAt).toBe(AT);
     expect(r.tokens).toEqual({ input: 2500, cachedInput: 1200, cacheWrite: 10, output: 400, reasoning: 120, total: 2900 });
     expect(r.subagentTokens).toEqual({ input: 700, cachedInput: 700, cacheWrite: 0, output: 70, reasoning: 70, total: 770 });
@@ -120,8 +120,9 @@ describe("computeDayRollup", () => {
       { key: "alpha", tokens: 2570, responses: 3, sessions: 1, userMessages: 2, linesAdded: 10, linesRemoved: 2 },
       { key: "beta", tokens: 330, responses: 1, sessions: 1, userMessages: 1, linesAdded: 0, linesRemoved: 0 },
     ]);
-    // Sessions exclude sub-agent threads everywhere (spec); tokens include them everywhere. m1
-    // carries one main and one sub-agent session, so its tokens cover both but it counts one.
+    // Tokens come from the day's EVENTS, session counts from its sessions. Sessions exclude
+    // sub-agent threads everywhere (spec); tokens include them everywhere. m1 carries one main and
+    // one sub-agent session, so its tokens cover both events but it counts one session.
     expect(r.byMachine).toEqual([
       { key: "m1", tokens: 2570, sessions: 1 },
       { key: "m2", tokens: 330, sessions: 1 },
@@ -146,7 +147,7 @@ describe("computeDayRollup", () => {
 
   it("produces the empty rollup for no data", () => {
     const r = computeDayRollup(userId, DAY, [], [], AT);
-    expect(r).toEqual({ userId, day: DAY, version: 1, computedAt: AT, ...emptyRollupBody() });
+    expect(r).toEqual({ userId, day: DAY, version: 2, computedAt: AT, ...emptyRollupBody() });
     expect(r.byTool).toHaveLength(9);
     expect(r.byHour).toEqual(new Array(24).fill(0));
   });
@@ -164,6 +165,39 @@ describe("computeDayRollup", () => {
     expect(r.tokens.total).toBe(770);
     expect(r.byMachine).toEqual([{ key: "m1", tokens: 770, sessions: 0 }]);
     expect(r.bySource).toEqual([{ key: "subagent:review", tokens: 770, sessions: 0 }]);
+  });
+
+  // A session running 23:50 -> 00:10 with 500 tokens before midnight and 1,000 after. Both tables
+  // render the absolute number next to a headline and a byProject table that are event-derived, so
+  // machine/source TOKENS have to be event-derived too or day D reads 500 against 1,500.
+  it("puts machine and source tokens on the event's day, not the session's start day", () => {
+    const spanning: SessionInput = {
+      ...sessions[0]!, machineId: "m9", source: "vscode", project: "gamma", mcpTools: [], skills: [],
+      tokens: { input: 1250, cachedInput: 0, cacheWrite: 0, output: 250, reasoning: 0, total: 1500 },
+    };
+    const before: EventInput = {
+      hour: 23, model: "gpt-5.6-sol", project: "gamma", isSubagent: false, machineId: "m9", source: "vscode",
+      input: 420, cachedInput: 0, cacheWrite: 0, output: 80, reasoning: 0, total: 500,
+    };
+    const after: EventInput = { ...before, hour: 0, input: 850, output: 150, total: 1000 };
+
+    const d = computeDayRollup(userId, "2026-08-31", [before], [spanning], AT);
+    expect(d.tokens.total).toBe(500);
+    expect(d.byProject).toEqual([
+      { key: "gamma", tokens: 500, responses: 1, sessions: 1, userMessages: 2, linesAdded: 10, linesRemoved: 2 },
+    ]);
+    expect(d.byMachine).toEqual([{ key: "m9", tokens: 500, sessions: 1 }]);
+    expect(d.bySource).toEqual([{ key: "vscode", tokens: 500, sessions: 1 }]);
+
+    // The session's own metrics stay on its start day, so D+1 carries tokens and no session —
+    // the spec's attribution rule, and exactly what byProject already does on the same page.
+    const next = computeDayRollup(userId, "2026-09-01", [after], [], AT);
+    expect(next.tokens.total).toBe(1000);
+    expect(next.byProject).toEqual([
+      { key: "gamma", tokens: 1000, responses: 1, sessions: 0, userMessages: 0, linesAdded: 0, linesRemoved: 0 },
+    ]);
+    expect(next.byMachine).toEqual([{ key: "m9", tokens: 1000, sessions: 0 }]);
+    expect(next.bySource).toEqual([{ key: "vscode", tokens: 1000, sessions: 0 }]);
   });
 
   it("caps keyed arrays at 100 entries and folds the rest into (other)", () => {

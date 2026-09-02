@@ -6,7 +6,7 @@ import { SEED_PRICES } from "./prices";
 import { withUser, registerUser, seedRollup, setup } from "./test.helpers";
 
 const event: EventInput = {
-  hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", isSubagent: false,
+  hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", machineId: "machine-1", source: "cli", isSubagent: false,
   input: 1000, cachedInput: 400, cacheWrite: 0, output: 200, reasoning: 50, total: 1200,
 };
 

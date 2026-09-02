@@ -62,6 +62,8 @@ export type EventInput = {
   model: string;
   effort?: string;
   project: string;
+  machineId: string;
+  source: string;
   isSubagent: boolean;
   input: number;
   cachedInput: number;
@@ -315,16 +317,23 @@ export function computeDayRollup(
     c.addHour(event.hour, tokens.total);
     c.addModel(event.model, event.effort, tokens, 1);
     c.addProject(event.project, { tokens: tokens.total, responses: 1 });
+    // Token metrics land on the EVENT's day, session metrics on the SESSION's start day (spec).
+    // `byMachine`/`bySource` therefore take their tokens here and their session counts below —
+    // the same two bases `byProject` already mixes, on the same page. Sourcing these tokens from
+    // `session.tokens` instead would put a midnight-spanning session's whole total on its start
+    // day, so day D would render a 1,500-token machine beside a 500-token headline.
+    c.addMachine(event.machineId, tokens.total, 0);
+    c.addSource(event.source, tokens.total, 0);
   }
 
   for (const session of sessions) {
-    // Both run BEFORE the sub-agent guard so a sub-agent's tokens still count — "sessions, turns
-    // and messages exclude sub-agent threads; token totals and cost include them" (spec) — but the
-    // session count passed is 0 for them, so these two rows use the same session convention as
-    // `byProject` and `body.sessions`, which sit beside them on the same page.
+    // Both run BEFORE the sub-agent guard so a sub-agent's session count is still explicitly 0
+    // rather than absent — "sessions, turns and messages exclude sub-agent threads; token totals
+    // and cost include them" (spec) — which is the same session convention as `byProject` and
+    // `body.sessions`, which sit beside them on the same page.
     const sessionCount = session.isSubagent ? 0 : 1;
-    c.addMachine(session.machineId, session.tokens.total, sessionCount);
-    c.addSource(session.source, session.tokens.total, sessionCount);
+    c.addMachine(session.machineId, 0, sessionCount);
+    c.addSource(session.source, 0, sessionCount);
     if (session.isSubagent) {
       body.subagentSessions += 1;
       continue;
