@@ -1,7 +1,6 @@
 name: ci
 on:
   push:
-    branches: [main]
   pull_request:
 jobs:
   test:
@@ -23,3 +22,13 @@ jobs:
       - run: npm test
       - run: npm run build -w cli
       - run: node cli/dist/codex-kaboo.js --version
+      # Only one cell of the matrix: this doesn't need to run 9 times, and next build is slow.
+      # This is the only thing that exercises pack-cli.mjs and `next build` at all — neither ran in
+      # CI before, so a Vercel deploy could go green while either was broken.
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: npm run build -w web
+        env:
+          NEXT_PUBLIC_CONVEX_URL: https://example.convex.cloud
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk
+          CLERK_SECRET_KEY: sk_test_ci
+          CODEX_KABOO_SERVER: https://example.convex.site
