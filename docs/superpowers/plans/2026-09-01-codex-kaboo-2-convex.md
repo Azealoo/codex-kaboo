@@ -3753,6 +3753,22 @@ function baseBatch() {
   });
 }
 
+describe("heartbeat", () => {
+  it("accepts an empty batch: machine upserted, lastSyncAt updated, zero counts, no rollups", async () => {
+    const t = setup();
+    const { raw } = await userWithToken(t, "alice");
+    const res = await postSync(t, raw, makeBatch({ sessions: [], tokenEvents: [] }));
+    expect(res.status).toBe(200);
+    expect(res.json.accepted).toEqual({
+      sessions: { inserted: 0, updated: 0, unchanged: 0 },
+      events: { inserted: 0, updated: 0, unchanged: 0 },
+    });
+    const machine = await t.run(async (ctx) => ctx.db.query("machines").unique());
+    expect(machine?.lastSyncAt).toBe(T0 + 7_200_000);
+    expect(await t.run(async (ctx) => ctx.db.query("dailyRollups").collect())).toHaveLength(0);
+  });
+});
+
 describe("sync idempotence", () => {
   it("re-sending an identical batch inserts nothing and leaves the rollup untouched", async () => {
     const t = setup();

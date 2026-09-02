@@ -424,6 +424,11 @@ written). Machine `hostname: null` is stored as absent.
   of the request that carried it; replaced only when the incoming `observedAt` is newer).
 - Every keyed array (`mcpTools`, `skills`, rollup `by*`) is an array of `{ key: string, … }`, sorted
   by `key` ascending, capped at 100 in rollups with the overflow folded into `key: "(other)"`.
+- `SessionSummary.inProgress` is purely structural: `true` while a turn has started without completing
+  (no wall-clock component), so it flips on the file change that closes the turn. The server patches
+  `inProgress` and `lineCount` on a re-sent summary whose hash is unchanged.
+- An empty batch (`sessions: []`, `tokenEvents: []`) is a heartbeat: the server upserts the machine,
+  applies `rateLimit` if present, updates `lastSyncAt` and answers 200 with zero counts.
 
 ## 9. Convex public API (Plan 2 implements, Plan 3 consumes) — `web/convex/lib/types.ts`
 

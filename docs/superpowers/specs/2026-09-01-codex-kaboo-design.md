@@ -365,7 +365,7 @@ by `--dry-run` and tests). Allow-list mapping:
 | any line | `endedAt = max(ts)`; `lineCount`; unknown types ignored and counted locally |
 
 `finalize()` also sets `wallMs = endedAt − startedAt`, `inProgress` (a turn started without
-completion, or mtime within 10 min), `summaryHash = sha1(canonical JSON)` and `parserVersion`.
+completion; purely structural, no wall-clock component), `summaryHash = sha1(canonical JSON)` and `parserVersion`.
 Day/hour use `Intl.DateTimeFormat('en-CA', {timeZone, hourCycle:'h23'}).formatToParts` with the
 session zone → machine zone → UTC fallback (verified on Node 24; ICU is built in).
 
