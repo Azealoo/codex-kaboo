@@ -428,7 +428,10 @@ advances it when patching an existing row (only when inserting a new one).
 - `sessions` gains `effort?: string` (from `SessionSummary.effort`). `machineId` is stamped by the
   server from `batch.machine.machineId`; `SessionSummary` does not carry it.
 - `machines.lastRateLimit` = `RateLimitSnapshot & { receivedAt: number }` (`receivedAt` = server time
-  of the request that carried it; replaced only when the incoming `observedAt` is newer).
+  of the request that carried it; replaced when the incoming `receivedAt` is newer — the server
+  clock, never the client's). The client's `observedAt` is stored for display only and never decides
+  a replacement: one machine with a fast RTC would otherwise store a future date and freeze the
+  shared quota gauge for good. `usedPercent` is clamped to [0, 100] on ingest.
 - Every keyed array (`mcpTools`, `skills`, rollup `by*`) is an array of `{ key: string, … }`, sorted
   by `key` ascending, capped at 100 in rollups with the overflow folded into `key: "(other)"`.
 - `SessionSummary.inProgress` is purely structural: `true` while a turn has started without completing

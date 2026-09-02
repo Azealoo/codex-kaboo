@@ -165,7 +165,7 @@ describe("upsertEvents", () => {
     expect(await t.run(async (ctx) => ctx.db.query("tokenEvents").collect())).toHaveLength(2);
 
     const r4 = await t.mutation(internal.ingest.upsertEvents, {
-      userId: bob, events: [{ ...e1, output: 5 }], now: T0 + 3,
+      userId: bob, events: [{ ...e1, output: 5, reasoning: 5, total: 505 }], now: T0 + 3,
     });
     expect(r4).toEqual({ counts: { inserted: 0, updated: 0, unchanged: 0 }, conflicts: 1 });
     expect(await getRollup(t, bob, "2026-08-31")).toBeNull();
@@ -173,7 +173,7 @@ describe("upsertEvents", () => {
 });
 
 describe("finishSync", () => {
-  it("updates lastSyncAt, keeps the newest snapshot by observedAt with the server receive time, touches the token", async () => {
+  it("updates lastSyncAt, keeps the newest snapshot by receivedAt (server clock), touches the token", async () => {
     const t = setup();
     const { userId, tokenId } = await userWithToken(t, "alice");
     await t.mutation(internal.ingest.upsertMachine, {
@@ -190,13 +190,16 @@ describe("finishSync", () => {
     const m1 = await t.run(async (ctx) => ctx.db.query("machines").first());
     expect(m1).toMatchObject({ lastSyncAt: T0 + 5, lastRateLimit: { ...snapshot, receivedAt: T0 + 5 } });
 
+    // The client's observedAt never decides: a snapshot that arrives later replaces the stored one
+    // even when its own clock says it is older, so one machine's forward skew cannot freeze the
+    // gauge (design spec: store when `receivedAt` is newer — server clock, never the client's).
     const older = { ...snapshot, observedAt: T0 - 120_000, usedPercent: 99 };
     const r2 = await t.mutation(internal.ingest.finishSync, {
       userId, machineId: "machine-1", tokenId, rateLimit: older, now: T0 + 10,
     });
-    expect(r2).toEqual({ rateLimitStored: false, tokenTouched: false });
+    expect(r2).toEqual({ rateLimitStored: true, tokenTouched: false });
     const m2 = await t.run(async (ctx) => ctx.db.query("machines").first());
-    expect(m2).toMatchObject({ lastSyncAt: T0 + 10, lastRateLimit: { ...snapshot, receivedAt: T0 + 5 } });
+    expect(m2).toMatchObject({ lastSyncAt: T0 + 10, lastRateLimit: { ...older, receivedAt: T0 + 10 } });
 
     const r3 = await t.mutation(internal.ingest.finishSync, {
       userId, machineId: "machine-1", tokenId, now: T0 + 70_000,

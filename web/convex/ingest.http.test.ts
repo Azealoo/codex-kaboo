@@ -118,6 +118,27 @@ describe("POST /api/v1/sync validation", () => {
     expect(await t.run(async (ctx) => ctx.db.query("machines").collect())).toHaveLength(0);
   });
 
+  it("rejects a batch whose token counts break the parser's invariants, naming each field", async () => {
+    const t = setup();
+    const { raw } = await userWithToken(t, "alice");
+    const res = await postSync(t, raw, makeBatch({
+      tokenEvents: [
+        makeEvent({ sessionId: "s1", seq: 0, input: 500, cachedInput: 900, output: 100, reasoning: 400, total: 6_000_000 }),
+      ],
+    }));
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe("invalid_batch");
+    const issues = res.json.issues as { path: string; message: string }[];
+    expect(issues.map((i) => i.path)).toEqual([
+      "tokenEvents.0.cachedInput",
+      "tokenEvents.0.reasoning",
+      "tokenEvents.0.total",
+    ]);
+    expect(issues[0]?.message).toContain("exceeds input");
+    expect(await t.run(async (ctx) => ctx.db.query("tokenEvents").collect())).toHaveLength(0);
+    expect(await t.run(async (ctx) => ctx.db.query("machines").collect())).toHaveLength(0);
+  });
+
   it("rejects a machine registered to another user with 409 and writes nothing", async () => {
     const t = setup();
     const alice = await userWithToken(t, "alice");

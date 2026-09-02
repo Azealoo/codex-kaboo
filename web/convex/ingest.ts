@@ -18,7 +18,7 @@ import {
   type WhoamiResponse,
 } from "../../shared/src/sync";
 import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { httpAction, internalMutation, internalQuery, type ActionCtx } from "./_generated/server";
 import { LIMITS, latestCliVersion } from "./lib/constants";
 import { parseBearer, sha256Hex } from "./lib/hash";
@@ -199,12 +199,37 @@ export const upsertEvents = internalMutation({
     const counts = zeroCounts();
     let conflicts = 0;
     const touched = new Set<string>();
+    // Owner of each parent session, resolved at most once per distinct sessionId: a 1,000-event
+    // chunk spans a handful of sessions and this mutation's document-read budget is already tight
+    // (see MAX_DAYS_PER_EVENT_CHUNK). `null` = no session document (yet).
+    const sessionOwners = new Map<string, Id<"users"> | null>();
+    const sessionOwner = async (sessionId: string): Promise<Id<"users"> | null> => {
+      const cached = sessionOwners.get(sessionId);
+      if (cached !== undefined) return cached;
+      const session = await ctx.db
+        .query("sessions")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .unique();
+      const owner = session?.userId ?? null;
+      sessionOwners.set(sessionId, owner);
+      return owner;
+    };
     for (const event of events) {
       const existing = await ctx.db
         .query("tokenEvents")
         .withIndex("by_session_seq", (q) => q.eq("sessionId", event.sessionId).eq("seq", event.seq))
         .unique();
       if (!existing) {
+        // A new (sessionId, seq) is only writable by the parent session's owner — without this,
+        // a second user could inject token events into someone else's session (they would land in
+        // the attacker's rollup and the owner could never recover them). A session with no document
+        // yet stays permissive: the protocol lets a file's events arrive before its summary, which
+        // rides in the file's LAST batch.
+        const owner = await sessionOwner(event.sessionId);
+        if (owner !== null && owner !== userId) {
+          conflicts += 1;
+          continue;
+        }
         await ctx.db.insert("tokenEvents", { ...event, userId });
         counts.inserted += 1;
         touched.add(event.day);
@@ -246,9 +271,13 @@ export const finishSync = internalMutation({
       const patch: { lastSyncAt: number; lastRateLimit?: Doc<"machines">["lastRateLimit"] } = {
         lastSyncAt: now,
       };
+      // Gated on the SERVER clock (design spec: "when `receivedAt` is newer — server clock, never
+      // the client's"). `observedAt` is the client's reading of a log line: one machine resuming
+      // with a fast RTC would store a future date and discard every corrected snapshot after it,
+      // freezing the shared gauge for good. It is still stored, for display only.
       if (
         rateLimit !== undefined &&
-        (machine.lastRateLimit === undefined || rateLimit.observedAt > machine.lastRateLimit.observedAt)
+        (machine.lastRateLimit === undefined || now >= machine.lastRateLimit.receivedAt)
       ) {
         patch.lastRateLimit = { ...rateLimit, receivedAt: now };
         rateLimitStored = true;

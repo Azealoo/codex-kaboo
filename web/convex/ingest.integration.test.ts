@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api } from "./_generated/api";
 import {
   getRollup,
   makeBatch,
@@ -9,6 +10,7 @@ import {
   setup,
   T0,
   userWithToken,
+  withUser,
 } from "./test.helpers";
 
 beforeEach(() => {
@@ -133,7 +135,9 @@ describe("cross-user isolation", () => {
         makeSession({ sessionId: "s9" }),
       ],
       tokenEvents: [
-        makeEvent({ sessionId: "s1", seq: 3, output: 1 }),
+        // A different event for the same key; the token fields stay internally consistent
+        // (reasoning ⊆ output, total = input + output) so only the ownership check can reject it.
+        makeEvent({ sessionId: "s1", seq: 3, output: 1, reasoning: 1, total: 501 }),
         makeEvent({ sessionId: "s9", seq: 1 }),
       ],
     });
@@ -151,6 +155,44 @@ describe("cross-user isolation", () => {
     );
     expect(s1).toMatchObject({ userId: alice.userId, turns: 2 });
     expect(await getRollup(t, bob.userId, "2026-08-31")).toMatchObject({ sessions: 1, responses: 1 });
+  });
+
+  it("refuses a brand-new event whose parent session belongs to another user", async () => {
+    const t = setup();
+    const alice = await userWithToken(t, "alice");
+    const bob = await userWithToken(t, "bob");
+    expect((await postSync(t, alice.raw, baseBatch())).status).toBe(200);
+
+    // seq 42 is a key Alice never sent, so the (sessionId, seq) row does not exist and the
+    // existing-row conflict branch cannot catch it: only the parent session's owner may write it.
+    const res = await postSync(
+      t,
+      bob.raw,
+      makeBatch({
+        machine: makeMachine({ machineId: "machine-2" }),
+        tokenEvents: [makeEvent({ sessionId: "s1", seq: 42 })],
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.json.accepted.events).toEqual({ inserted: 0, updated: 0, unchanged: 0 });
+    expect(res.json.conflicts).toEqual({ sessions: [], events: 1 });
+    expect(await t.run(async (ctx) => ctx.db.query("tokenEvents").collect())).toHaveLength(3);
+    expect((await getRollup(t, bob.userId, "2026-08-31"))?.tokens.total ?? 0).toBe(0);
+    expect((await getRollup(t, alice.userId, "2026-08-31"))?.tokens.total).toBe(1800);
+  });
+
+  it("still accepts events whose session summary has not arrived yet", async () => {
+    const t = setup();
+    const alice = await userWithToken(t, "alice");
+    // The summary rides in a file's LAST batch, so first-batch events precede their session doc.
+    const res = await postSync(
+      t,
+      alice.raw,
+      makeBatch({ tokenEvents: [makeEvent({ sessionId: "never-summarised", seq: 0 })] }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.json.accepted.events).toEqual({ inserted: 1, updated: 0, unchanged: 0 });
+    expect(res.json.conflicts.events).toBe(0);
   });
 });
 
@@ -188,17 +230,24 @@ describe("machine bookkeeping", () => {
     expect((await t.run(async (ctx) => ctx.db.get(tokenId)))?.lastUsedAt).toBe(third.json.serverTime);
   });
 
-  it("keeps the newest rate-limit observation regardless of arrival order", async () => {
+  it("keeps the last-received snapshot even when a fast clock dated the previous one in the future", async () => {
     const t = setup();
     const { raw } = await userWithToken(t, "alice");
-    const newer = { observedAt: T0 + 100_000, usedPercent: 40, windowMinutes: 10080 };
-    const older = { observedAt: T0 + 50_000, usedPercent: 35, windowMinutes: 10080 };
-    const first = await postSync(t, raw, makeBatch({ rateLimit: newer }));
+    // A laptop resumes from suspend with its RTC 500 days fast, then NTP corrects it a minute later.
+    const skewed = { observedAt: Date.UTC(2028, 0, 1), usedPercent: 5, windowMinutes: 10080 };
+    const corrected = { observedAt: T0 + 50_000, usedPercent: 92, windowMinutes: 10080 };
+    const first = await postSync(t, raw, makeBatch({ rateLimit: skewed }));
     vi.advanceTimersByTime(60_000);
-    await postSync(t, raw, makeBatch({ rateLimit: older }));
+    const second = await postSync(t, raw, makeBatch({ rateLimit: corrected }));
+
     const machine = await t.run(async (ctx) => ctx.db.query("machines").first());
-    expect(machine?.lastRateLimit).toEqual({ ...newer, receivedAt: first.json.serverTime });
+    expect(machine?.lastRateLimit).toEqual({ ...corrected, receivedAt: second.json.serverTime });
     expect(machine?.lastSyncAt).toBe(first.json.serverTime + 60_000);
+    expect(await withUser(t, "alice").query(api.stats.quota, {})).toMatchObject({
+      usedPercent: 92,
+      observedAt: corrected.observedAt,
+      receivedAt: second.json.serverTime,
+    });
   });
 
   it("stores the hostname only when sent and clears it on null", async () => {

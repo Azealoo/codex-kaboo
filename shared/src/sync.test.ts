@@ -51,6 +51,42 @@ describe("TokenEvent", () => {
   });
 });
 
+describe("token invariants", () => {
+  const paths = (schema: { safeParse: (v: unknown) => { success: boolean; error?: { issues: { path: PropertyKey[] }[] } } }, value: unknown) => {
+    const result = schema.safeParse(value);
+    expect(result.success).toBe(false);
+    return (result.error?.issues ?? []).map((i) => i.path.join("."));
+  };
+
+  it("rejects cachedInput larger than input", () => {
+    expect(paths(TokenEvent, makeEvent({ input: 500, cachedInput: 900, output: 100, reasoning: 40, total: 600 })))
+      .toEqual(["cachedInput"]);
+  });
+
+  it("rejects reasoning larger than output", () => {
+    expect(paths(TokenEvent, makeEvent({ input: 500, cachedInput: 200, output: 100, reasoning: 400, total: 600 })))
+      .toEqual(["reasoning"]);
+  });
+
+  it("rejects a total that is not input + output", () => {
+    expect(paths(TokenEvent, makeEvent({ input: 500, cachedInput: 200, output: 100, reasoning: 40, total: 6_000_000 })))
+      .toEqual(["total"]);
+  });
+
+  it("applies the same three invariants to SessionSummary.tokens", () => {
+    expect(
+      paths(SessionSummary, makeSummary({
+        tokens: { input: 500, cachedInput: 900, cacheWrite: 0, output: 100, reasoning: 400, total: 6_000_000 },
+      })),
+    ).toEqual(["tokens.cachedInput", "tokens.reasoning", "tokens.total"]);
+  });
+
+  it("accepts exact subsets and a cacheWrite outside the total", () => {
+    expect(TokenEvent.safeParse(makeEvent({ input: 500, cachedInput: 500, cacheWrite: 90, output: 100, reasoning: 100, total: 600 })).success).toBe(true);
+    expect(TokenEvent.safeParse(makeEvent({ input: 0, cachedInput: 0, cacheWrite: 0, output: 0, reasoning: 0, total: 0 })).success).toBe(true);
+  });
+});
+
 describe("responses", () => {
   it("parses success, error and whoami bodies", () => {
     expect(SyncResponse.safeParse({

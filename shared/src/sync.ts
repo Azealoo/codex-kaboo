@@ -20,14 +20,55 @@ export const dayString = z
   .refine(isValidDay, { message: "invalid calendar day" });
 export const hourOfDay = z.int().min(0).max(23);
 
-export const TokenCounts = z.object({
-  input: count,
-  cachedInput: count,
-  cacheWrite: count,
-  output: count,
-  reasoning: count,
-  total: count,
-});
+/** The subset of token fields the three invariants below constrain (`cacheWrite` is not one of them). */
+type TokenFields = { input: number; cachedInput: number; output: number; reasoning: number; total: number };
+
+/**
+ * The parser's three token invariants: `cachedInput ⊆ input`, `reasoning ⊆ output` and
+ * `total = input + output`. A row that breaks one is not unusual data, it is a parse bug, and it
+ * corrupts silently: an over-large `cachedInput` renders a >100 % cache-hit rate and an inflated
+ * `total` inflates every headline and leaderboard rank while cost — computed from `input`/`output`
+ * — stays plausible, so nothing on the dashboard looks wrong. Rejecting the batch with a 400 that
+ * names the field surfaces the bug instead; the CLI's documented 400 handling marks only that FILE
+ * broken and keeps syncing the rest, so one bad file cannot block a machine's sync.
+ */
+function addTokenInvariantIssues(t: TokenFields, ctx: z.core.$RefinementCtx<TokenFields>): void {
+  if (t.cachedInput > t.input) {
+    ctx.addIssue({
+      code: "custom",
+      input: t.cachedInput,
+      path: ["cachedInput"],
+      message: `cachedInput (${t.cachedInput}) exceeds input (${t.input})`,
+    });
+  }
+  if (t.reasoning > t.output) {
+    ctx.addIssue({
+      code: "custom",
+      input: t.reasoning,
+      path: ["reasoning"],
+      message: `reasoning (${t.reasoning}) exceeds output (${t.output})`,
+    });
+  }
+  if (t.total !== t.input + t.output) {
+    ctx.addIssue({
+      code: "custom",
+      input: t.total,
+      path: ["total"],
+      message: `total (${t.total}) is not input + output (${t.input + t.output})`,
+    });
+  }
+}
+
+export const TokenCounts = z
+  .object({
+    input: count,
+    cachedInput: count,
+    cacheWrite: count,
+    output: count,
+    reasoning: count,
+    total: count,
+  })
+  .superRefine(addTokenInvariantIssues);
 export type Tokens = z.infer<typeof TokenCounts>;
 
 export const ToolCounts = z.object({
@@ -113,7 +154,7 @@ export const TokenEvent = z.object({
   reasoning: count,
   total: count, // always input + output (recomputed by the parser)
   contextWindow: count.optional(),
-});
+}).superRefine(addTokenInvariantIssues); // same three invariants as TokenCounts, on flat fields
 export type TokenEvent = z.infer<typeof TokenEvent>;
 
 export const RateLimitSnapshot = z.object({
