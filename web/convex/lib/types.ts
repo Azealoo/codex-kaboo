@@ -46,6 +46,14 @@ export type SummaryResult = {
   costByKind: CostByKind;
   cacheSavingsUsd: number;
   unpricedModels: string[]; // models with tokens in range but no price row
+  /**
+   * Days in range whose stored rollup was computed under an older ROLLUP_VERSION. Rollups are only
+   * recomputed for days a sync touches, so after a version bump every quiet day keeps the previous
+   * version's numbers — and the read path served them as current, which is how the session-basis
+   * `byMachine`/`bySource` bug would have survived its own fix on any day nothing re-synced.
+   * `rollups:rebuildAll` is the repair; this is the only thing that says it is needed.
+   */
+  staleRollupDays: number;
 };
 
 export type UserRef = { userId: Id<"users">; name: string; imageUrl: string | null };

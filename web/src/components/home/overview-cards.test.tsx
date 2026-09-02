@@ -31,6 +31,7 @@ function summaryWith(overrides: Partial<Record<MetricKey, Metric>>): SummaryResu
     costByKind: { input: 0, cached: 0, output: 0, reasoning: 0 },
     cacheSavingsUsd: 0,
     unpricedModels: [],
+    staleRollupDays: 0,
   };
 }
 
@@ -61,5 +62,29 @@ describe("OverviewCards", () => {
     expect(card).not.toBeNull();
     expect(within(card!).getByText(EM_DASH)).toBeInTheDocument();
     expect(within(card!).queryByText("0.0%")).not.toBeInTheDocument();
+  });
+
+  // The backend counts stale rollups; this pins that the count is actually wired to a surface a
+  // human sees. Silent is the whole failure mode — a number computed and never shown is the bug.
+  it("says so when the range contains rollups an older version computed", () => {
+    // The efficiency view for the same reason as the test above: the volume view mounts QuotaCard,
+    // which issues its own query that this single mock cannot answer.
+    const metrics = {
+      cacheHitRate: zero,
+      tokensPerTurn: zero,
+      avgSessionActiveMs: zero,
+      ttftP50Ms: zero,
+      compactions: zero,
+      costUsd: zero,
+    } as Partial<Record<MetricKey, Metric>>;
+    useQueryMock.mockReturnValue({ ...summaryWith(metrics), staleRollupDays: 2 });
+    const { unmount } = render(<OverviewCards range={range} view="efficiency" />);
+    expect(screen.getByRole("status")).toHaveTextContent("rollups:rebuildAll");
+    expect(screen.getByRole("status")).toHaveTextContent("2 days");
+    unmount();
+
+    useQueryMock.mockReturnValue(summaryWith(metrics));
+    render(<OverviewCards range={range} view="efficiency" />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

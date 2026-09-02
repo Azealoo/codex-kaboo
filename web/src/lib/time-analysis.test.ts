@@ -15,6 +15,7 @@ function summaryWith(values: Partial<Record<MetricKey, number | null>>): Summary
     costByKind: { input: 0, cached: 0, output: 0, reasoning: 0 },
     cacheSavingsUsd: 0,
     unpricedModels: [],
+    staleRollupDays: 0,
   };
 }
 

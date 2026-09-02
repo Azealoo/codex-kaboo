@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ROLLUP_VERSION } from "../../shared/src/constants";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { EventInput, SessionInput } from "./lib/aggregate";
@@ -124,6 +125,35 @@ describe("stats.summary", () => {
     expect(s.costByKind.reasoning).toBeCloseTo(0.0015, 8);
     expect(s.cacheSavingsUsd).toBeCloseTo(0.00216, 8);
     expect(s.unpricedModels).toEqual(["codex-auto-review"]);
+    expect(s.staleRollupDays).toBe(0);
+  });
+
+  // Re-review NEW-2: `version` was written on every rollup and read by nothing. Rollups are only
+  // recomputed for days a sync touches, so after a ROLLUP_VERSION bump a quiet day keeps the old
+  // version's numbers and the read path served them as current — the session-basis byMachine bug
+  // would have survived its own fix on every day nothing re-synced. `rebuildAll` is the repair;
+  // this count is the only thing that says it is needed.
+  it("counts rollups in range that were computed under an older ROLLUP_VERSION", async () => {
+    const t = setup();
+    const { alice } = await seedTeam(t);
+    await t.run(async (ctx) => {
+      const stale = await ctx.db
+        .query("dailyRollups")
+        .withIndex("by_user_day", (q) => q.eq("userId", alice).eq("day", "2026-08-30"))
+        .unique();
+      await ctx.db.patch(stale!._id, { version: ROLLUP_VERSION - 1 });
+    });
+    const s = await withUser(t, "alice").query(api.stats.summary, {
+      from: "2026-08-30",
+      to: "2026-08-31",
+    });
+    expect(s.staleRollupDays).toBe(1);
+    // Scoped to the range on screen: a stale day outside it is somebody else's warning.
+    const later = await withUser(t, "alice").query(api.stats.summary, {
+      from: "2026-08-31",
+      to: "2026-08-31",
+    });
+    expect(later.staleRollupDays).toBe(0);
   });
 
   it("scopes to one user and can skip the previous period", async () => {

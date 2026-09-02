@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { ROLLUP_VERSION } from "../../shared/src/constants";
 import { bucketStart, daysBetween, eachBucket, weekdayOf } from "../../shared/src/days";
 import {
   addTokens,
@@ -197,7 +198,8 @@ export const summary = authedQuery({
   handler: async (ctx, args): Promise<SummaryResult> => {
     const { range, previousRange } = resolvePeriods(args.from, args.to, args.previous);
     const prices = await loadPriceMap(ctx);
-    const current = mergeRollups(await loadRollups(ctx, range, args.userId));
+    const currentDocs = await loadRollups(ctx, range, args.userId);
+    const current = mergeRollups(currentDocs);
     const previous = previousRange
       ? mergeRollups(await loadRollups(ctx, previousRange, args.userId))
       : null;
@@ -214,6 +216,9 @@ export const summary = authedQuery({
       costByKind: currentCost.byKind,
       cacheSavingsUsd: currentCost.cacheSavingsUsd,
       unpricedModels: currentCost.unpricedModels,
+      // Free: these documents are already in hand. Counted only over the current range, so the
+      // notice the UI draws from it describes the numbers actually on screen.
+      staleRollupDays: currentDocs.filter((doc) => doc.version !== ROLLUP_VERSION).length,
     };
   },
 });

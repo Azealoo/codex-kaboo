@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
+import { StaleRollupsNotice } from "@/components/primitives/stale-rollups-notice";
 import { useStableQuery } from "@/hooks/use-stable-query";
 import { EFFICIENCY_CARD_KEYS, VOLUME_CARD_KEYS } from "@/lib/metrics";
 import type { ResolvedRange } from "@/lib/range";
@@ -24,32 +25,35 @@ export function OverviewCards({ range, view }: { range: ResolvedRange; view: Vie
   if (!summary) return <CardsSkeleton count={view === "volume" ? 5 : 6} className={grid} />;
   const keys = view === "volume" ? VOLUME_CARD_KEYS : EFFICIENCY_CARD_KEYS;
   return (
-    <div className={cn(grid, isStale && "opacity-60 transition-opacity")}>
-      {keys.map((key) => (
-        <MetricStatCard
-          key={key}
-          metricKey={key}
-          metric={summary.metrics[key]}
-          badge={key === "costUsd" ? "API list price" : undefined}
-          footer={
-            key === "costUsd" && summary.unpricedModels.length > 0
-              ? `Unpriced: ${summary.unpricedModels.join(", ")}`
-              : undefined
-          }
-        />
-      ))}
-      {view === "volume" ? (
-        <QuotaCard />
-      ) : (
-        <CostStructureCard
-          costByKind={summary.costByKind}
-          // costUsd is a sum (never null in practice); Metric.current is typed `number | null`
-          // for every key, so widen back to `number` here rather than at the rate sites.
-          costUsd={summary.metrics.costUsd.current ?? 0}
-          cacheSavingsUsd={summary.cacheSavingsUsd}
-          unpricedModels={summary.unpricedModels}
-        />
-      )}
-    </div>
+    <>
+      <StaleRollupsNotice days={summary.staleRollupDays} className="mb-4" />
+      <div className={cn(grid, isStale && "opacity-60 transition-opacity")}>
+        {keys.map((key) => (
+          <MetricStatCard
+            key={key}
+            metricKey={key}
+            metric={summary.metrics[key]}
+            badge={key === "costUsd" ? "API list price" : undefined}
+            footer={
+              key === "costUsd" && summary.unpricedModels.length > 0
+                ? `Unpriced: ${summary.unpricedModels.join(", ")}`
+                : undefined
+            }
+          />
+        ))}
+        {view === "volume" ? (
+          <QuotaCard />
+        ) : (
+          <CostStructureCard
+            costByKind={summary.costByKind}
+            // costUsd is a sum (never null in practice); Metric.current is typed `number | null`
+            // for every key, so widen back to `number` here rather than at the rate sites.
+            costUsd={summary.metrics.costUsd.current ?? 0}
+            cacheSavingsUsd={summary.cacheSavingsUsd}
+            unpricedModels={summary.unpricedModels}
+          />
+        )}
+      </div>
+    </>
   );
 }
