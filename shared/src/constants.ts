@@ -9,7 +9,17 @@ export const MAX_EVENTS_PER_REQUEST = 5000;
 // Server-side mutation chunking.
 export const MAX_SESSIONS_PER_MUTATION = 200;
 export const MAX_EVENTS_PER_MUTATION = 1000;
-export const MAX_DAYS_PER_EVENT_CHUNK = 30;
+/**
+ * Distinct `day` values one upsert mutation may touch. Each touched day costs a full
+ * `recomputeDay` — that day's `tokenEvents` and `sessions` re-read — inside the same mutation, so
+ * this multiplied by MAX_EVENTS_PER_MUTATION bounds the mutation's document reads: ~10k here, and
+ * ~20k even when a resend moves events to a different day and touches both. Convex's ceiling is
+ * ~32k documents, and blowing it yields a permanent 503 (the identical retry hits the same wall),
+ * so the margin is deliberate. More mutations per sync is the intended trade. If this is ever
+ * approached again, the next step is the "mark dirty -> scheduled drain" pattern from the design
+ * doc rather than a larger bound.
+ */
+export const MAX_DAYS_PER_EVENT_CHUNK = 10;
 // Payload shape limits.
 export const MAX_KEYED_ENTRIES_PER_SESSION = 64; // mcpTools / skills per session
 export const MAX_ROLLUP_ENTRIES = 100; // per keyed array in a daily rollup

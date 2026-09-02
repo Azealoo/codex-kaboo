@@ -14,26 +14,26 @@ import {
 } from "./test.helpers";
 
 describe("chunkEvents", () => {
-  it("splits by 1,000 events and by 30 distinct days, preserving order", () => {
+  it("splits by 1,000 events and by 10 distinct days, preserving order", () => {
     const sameDay = Array.from({ length: 2500 }, (_, i) => makeEvent({ sessionId: "s", seq: i }));
     expect(chunkEvents(sameDay).map((c) => c.length)).toEqual([1000, 1000, 500]);
     expect(chunkEvents(sameDay).flat().map((e) => e.seq)).toEqual(sameDay.map((e) => e.seq));
     const manyDays = Array.from({ length: 35 }, (_, i) =>
       makeEvent({ sessionId: "s", seq: i, day: addDays("2026-06-01", i) }),
     );
-    expect(chunkEvents(manyDays).map((c) => c.length)).toEqual([30, 5]);
+    expect(chunkEvents(manyDays).map((c) => c.length)).toEqual([10, 10, 10, 5]);
     expect(chunkEvents([])).toEqual([]);
   });
 });
 
 describe("chunkSessions", () => {
-  it("splits by 200 sessions and by 30 distinct days, preserving order", () => {
+  it("splits by 200 sessions and by 10 distinct days, preserving order", () => {
     const sameDay = Array.from({ length: 450 }, (_, i) => makeSession({ sessionId: `s-${i}` }));
     expect(chunkSessions(sameDay).map((c) => c.length)).toEqual([200, 200, 50]);
     const manyDays = Array.from({ length: 45 }, (_, i) =>
       makeSession({ sessionId: `d-${i}`, day: addDays("2026-06-01", i) }),
     );
-    expect(chunkSessions(manyDays).map((c) => c.length)).toEqual([30, 15]);
+    expect(chunkSessions(manyDays).map((c) => c.length)).toEqual([10, 10, 10, 10, 5]);
     expect(chunkSessions(manyDays).flat().map((s) => s.sessionId)).toEqual(
       manyDays.map((s) => s.sessionId),
     );

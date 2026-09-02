@@ -250,6 +250,20 @@ describe("machine bookkeeping", () => {
     });
   });
 
+  it("clamps an out-of-range usedPercent instead of failing the sync", async () => {
+    const t = setup();
+    const { raw } = await userWithToken(t, "alice");
+    // The quota reading is incidental to a sync and must never fail one, so it is clamped, not
+    // rejected — an unclamped 4000 would be echoed straight to the gauge.
+    const res = await postSync(t, raw, makeBatch({
+      rateLimit: { observedAt: T0, usedPercent: 4000, windowMinutes: 10080 },
+    }));
+    expect(res.status).toBe(200);
+    const machine = await t.run(async (ctx) => ctx.db.query("machines").first());
+    expect(machine?.lastRateLimit?.usedPercent).toBe(100);
+    expect(await withUser(t, "alice").query(api.stats.quota, {})).toMatchObject({ usedPercent: 100 });
+  });
+
   it("stores the hostname only when sent and clears it on null", async () => {
     const t = setup();
     const { raw } = await userWithToken(t, "alice");

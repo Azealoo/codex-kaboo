@@ -66,12 +66,12 @@ export function chunkByDays<T extends { day: string }>(items: T[], maxItems: num
   return chunks;
 }
 
-/** One `upsertEvents` mutation: ≤ 1,000 events over ≤ 30 days. */
+/** One `upsertEvents` mutation: ≤ 1,000 events over ≤ 10 days (MAX_DAYS_PER_EVENT_CHUNK). */
 export function chunkEvents(events: TokenEvent[]): TokenEvent[][] {
   return chunkByDays(events, MAX_EVENTS_PER_MUTATION);
 }
 
-/** One `upsertSessions` mutation: ≤ 200 sessions over ≤ 30 days. */
+/** One `upsertSessions` mutation: ≤ 200 sessions over ≤ 10 days (MAX_DAYS_PER_EVENT_CHUNK). */
 export function chunkSessions(sessions: SessionSummary[]): SessionSummary[][] {
   return chunkByDays(sessions, MAX_SESSIONS_PER_MUTATION);
 }
@@ -279,7 +279,13 @@ export const finishSync = internalMutation({
         rateLimit !== undefined &&
         (machine.lastRateLimit === undefined || now >= machine.lastRateLimit.receivedAt)
       ) {
-        patch.lastRateLimit = { ...rateLimit, receivedAt: now };
+        patch.lastRateLimit = {
+          ...rateLimit,
+          // Clamped rather than rejected: the quota reading is incidental to a sync and must never
+          // fail one. Unclamped, a bogus 4000 would be echoed straight to the dashboard gauge.
+          usedPercent: Math.min(100, Math.max(0, rateLimit.usedPercent)),
+          receivedAt: now,
+        };
         rateLimitStored = true;
       }
       await ctx.db.patch(machine._id, patch);
