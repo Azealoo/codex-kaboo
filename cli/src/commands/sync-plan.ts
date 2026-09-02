@@ -32,7 +32,8 @@ export interface SyncPlan {
   truncated: boolean;
   files: PlannedFile[];
   uploads: FileUpload[];
-  rateLimit: RateLimitSnapshot | null; // newest snapshot seen in this run
+  rateLimit: RateLimitSnapshot | null; // newest known snapshot: the one from state, or a newer one seen this run
+  rateLimitChanged: boolean; // true only when a snapshot newer than the one in state was observed this run
   codexVersion: string | null;
   codexLatestVersion: string | undefined;
   warnings: string[];
@@ -79,7 +80,8 @@ export async function planSync(state: SyncState, homes: string[], opts: PlanOpti
     truncated: discovered.truncated,
     files: [],
     uploads: [],
-    rateLimit: null,
+    rateLimit: state.rateLimit, // seeded the same way as codexVersion: idle runs must not wipe it
+    rateLimitChanged: false, // computed once, below, after the newest candidate is known
     codexVersion: state.codexVersion,
     codexLatestVersion: await readCodexLatestVersion(homes),
     warnings: [],
@@ -197,6 +199,11 @@ export async function planSync(state: SyncState, homes: string[], opts: PlanOpti
       deps.log.debug(`${file.name}: unknown line types ${JSON.stringify(parsed.diagnostics.unknownTypes)}`);
     }
   }
+  // plan.rateLimit is now the newest of {state.rateLimit, every snapshot parsed this run}; flag a
+  // change only when that newest one is strictly newer than what state already had, so the caller
+  // knows to send it while always being safe to persist plan.rateLimit (idle runs keep it as-is).
+  plan.rateLimitChanged =
+    plan.rateLimit !== null && (state.rateLimit === null || plan.rateLimit.observedAt > state.rateLimit.observedAt);
   return plan;
 }
 
@@ -229,7 +236,16 @@ export function buildMachineInfo(input: MachineInput): MachineInfo {
 export function toSyncBatch(
   batch: Batch,
   machine: MachineInfo,
-  meta: { cliVersion: string; batchId: string; sentAt: number; rateLimit: RateLimitSnapshot | null },
+  meta: {
+    cliVersion: string;
+    batchId: string;
+    sentAt: number;
+    rateLimit: RateLimitSnapshot | null;
+    // Pass SyncPlan.rateLimitChanged here: the payload includes rateLimit only when true, so an
+    // unchanged snapshot (already known to the server) is never re-sent, even though the caller
+    // should keep persisting SyncPlan.rateLimit locally on every run regardless of this flag.
+    rateLimitChanged: boolean;
+  },
 ): SyncBatch {
   const payload: SyncBatch = {
     schemaVersion: SCHEMA_VERSION,
@@ -241,6 +257,6 @@ export function toSyncBatch(
     sessions: batch.sessions,
     tokenEvents: batch.tokenEvents,
   };
-  if (meta.rateLimit) payload.rateLimit = meta.rateLimit;
+  if (meta.rateLimitChanged && meta.rateLimit) payload.rateLimit = meta.rateLimit;
   return payload;
 }

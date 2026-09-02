@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, statSync, truncateSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it } from "vitest";
+import { cpSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CLI_MAX_FILE_BYTES } from "@codex-kaboo/shared/constants";
+import type { RateLimitSnapshot } from "@codex-kaboo/shared/sync";
 import { buildMachineInfo, planSync, readCodexLatestVersion, toSyncBatch } from "../../src/commands/sync-plan";
 import { emptyFileState, emptyState } from "../../src/core/state";
 import { discoverRolloutFiles } from "../../src/core/discover";
@@ -15,8 +16,20 @@ import { FIXTURE_HOME, FX } from "../fixture-ids";
 const NOW = Date.UTC(2026, 8, 1, 12);
 const deps = { env: {}, now: () => NOW, log: silentLogger, machineZone: "UTC" };
 
+// Every mkdtempSync directory created by a test (directly, or via copyFixtures) is tracked here and
+// removed in afterEach, so failed or repeated runs don't litter os.tmpdir().
+const tmpDirs: string[] = [];
+
+afterEach(() => {
+  while (tmpDirs.length > 0) {
+    const dir = tmpDirs.pop();
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 function copyFixtures(): string {
   const home = mkdtempSync(path.join(os.tmpdir(), "ck-plan-"));
+  tmpDirs.push(home);
   cpSync(FIXTURE_HOME, home, { recursive: true });
   writeFileSync(path.join(home, "version.json"), JSON.stringify({ latest_version: "0.151.0", last_checked_at: "x" }));
   return home;
@@ -111,7 +124,13 @@ describe("machine info and batches", () => {
     const home = copyFixtures();
     const plan = await planSync(emptyState(), [home], { full: false }, deps);
     const [batch] = buildBatches(plan.uploads);
-    const sync = toSyncBatch(batch!, machine, { cliVersion: "0.1.0", batchId: "b1", sentAt: NOW, rateLimit: plan.rateLimit });
+    const sync = toSyncBatch(batch!, machine, {
+      cliVersion: "0.1.0",
+      batchId: "b1",
+      sentAt: NOW,
+      rateLimit: plan.rateLimit,
+      rateLimitChanged: plan.rateLimitChanged,
+    });
     const { SyncBatch } = await import("@codex-kaboo/shared/sync");
     expect(SyncBatch.safeParse(sync).success).toBe(true);
     expect(sync.rateLimit).toEqual(plan.rateLimit);
@@ -135,17 +154,30 @@ describe("relocated files, oversize skip and .zst fast path (carry-over coverage
 
     // Move the file into archived_sessions/ under a new directory, same filename (same threadId,
     // so the same sessionId) — this is the "moved file" case: archival or on-disk relocation.
+    // renameSync is a metadata-only move (same inode): size and mtime are preserved exactly, so
+    // isUnchanged is deterministically true afterwards and the "unchanged" fast path — not a
+    // detectReset + full reparse that merely happens to land on the same answer — is what runs.
     const oldPath = planned.file.path;
     const archivedDir = path.join(home, "archived_sessions", "2026", "08", "30");
     mkdirSync(archivedDir, { recursive: true });
     const newPath = path.join(archivedDir, path.basename(oldPath));
-    cpSync(oldPath, newPath);
-    rmSync(oldPath);
+    renameSync(oldPath, newPath);
+
+    // Prove the fast path never re-reads the file: corrupt its bytes in place (same length, so
+    // size still matches state) and restore the exact original mtime — using raw epoch-seconds
+    // numbers, not Date objects, because Date truncates the sub-millisecond remainder utimesSync
+    // would otherwise lose, which would make mtimeMs mismatch and defeat isUnchanged. If planSync
+    // ever opened this file again, parsing garbage would raise parseErrors and change the summary
+    // hash (or throw), neither of which "unchanged" with the original hash/offset intact allows.
+    const beforeCorrupt = statSync(newPath);
+    writeFileSync(newPath, Buffer.alloc(beforeCorrupt.size, 0x2a));
+    utimesSync(newPath, beforeCorrupt.atimeMs / 1000, beforeCorrupt.mtimeMs / 1000);
+    expect(statSync(newPath).mtimeMs).toBe(beforeCorrupt.mtimeMs); // the restore itself is exact
 
     const plan = await planSync(state, [home], { full: false }, deps);
     const moved = plan.files.find((f) => f.file.sessionId === FX.paginatedSmall)!;
     expect(moved.file.path).toBe(newPath);
-    expect(moved.action).not.toBe("reset");
+    expect(moved.action).toBe("unchanged");
     expect(moved.reason).toBeUndefined();
     expect(moved.upload).toBeNull();
     expect(moved.next.path).toBe(newPath);
@@ -153,10 +185,12 @@ describe("relocated files, oversize skip and .zst fast path (carry-over coverage
     expect(moved.next.offset).toBe(planned.next.offset);
     expect(moved.next.lastUploadedSeq).toBe(158);
     expect(moved.next.summaryHash).toBe(planned.summaryHash);
+    expect(plan.errors).toEqual([]);
   });
 
   it("skips a file larger than 256 MB with a warning, without reading it", async () => {
     const home = mkdtempSync(path.join(os.tmpdir(), "ck-plan-big-"));
+    tmpDirs.push(home);
     const day = path.join(home, "sessions", "2026", "08", "30");
     mkdirSync(day, { recursive: true });
     const big = path.join(day, "rollout-2026-08-30T09-00-00-0199f1c0-0000-7000-8000-0000000000f1.jsonl");
@@ -202,4 +236,61 @@ describe("relocated files, oversize skip and .zst fast path (carry-over coverage
       expect(full.errors.length).toBe(1);
     },
   );
+});
+
+// Review finding (round 1): planSync used to seed plan.rateLimit from null instead of
+// state.rateLimit, so an idle run (nothing reparsed) would make the caller persist null and wipe
+// the last known quota snapshot. Fixed by seeding from state.rateLimit the way codexVersion is
+// seeded, keeping the newest by observedAt, and exposing rateLimitChanged so the caller only sends
+// it to the server when it actually moved forward (but always persists plan.rateLimit).
+describe("rate limit: seeded from state, changed only when newer than stored", () => {
+  it("keeps the stored snapshot and reports no change on an idle run", async () => {
+    const home = copyFixtures();
+    const { files } = await discoverRolloutFiles([home]);
+    const state: SyncState = emptyState();
+    for (const f of files) {
+      state.files[f.sessionId] = {
+        ...emptyFileState(f.path),
+        offset: f.size,
+        size: f.size,
+        mtimeMs: f.mtimeMs,
+        lastUploadedSeq: 10_000,
+        summaryHash: "x".repeat(40),
+      };
+    }
+    const stored: RateLimitSnapshot = { observedAt: Date.UTC(2026, 7, 30), usedPercent: 12.5, windowMinutes: 10080 };
+    state.rateLimit = stored;
+
+    const plan = await planSync(state, [home], { full: false }, deps);
+    expect(plan.files.every((f) => f.action === "unchanged")).toBe(true); // genuinely idle: nothing reparsed
+    expect(plan.rateLimit).toEqual(stored);
+    expect(plan.rateLimitChanged).toBe(false);
+  });
+
+  it("adopts a freshly parsed snapshot newer than the stored one", async () => {
+    const home = copyFixtures();
+    const stale: RateLimitSnapshot = { observedAt: Date.UTC(2020, 0, 1), usedPercent: 1, windowMinutes: 10080 };
+    const state = emptyState();
+    state.rateLimit = stale;
+
+    const plan = await planSync(state, [home], { full: false }, deps);
+    expect(plan.rateLimit).not.toBeNull();
+    expect(plan.rateLimit).not.toEqual(stale);
+    expect(plan.rateLimit!.observedAt).toBeGreaterThan(stale.observedAt);
+    expect(plan.rateLimitChanged).toBe(true);
+  });
+
+  it("keeps a stored snapshot newer than anything parsed this run", async () => {
+    const home = copyFixtures();
+    const future: RateLimitSnapshot = { observedAt: Date.UTC(2030, 0, 1), usedPercent: 50, windowMinutes: 10080 };
+    const state = emptyState();
+    state.rateLimit = future;
+
+    // A fresh state means every fixture is genuinely reparsed (not skipped as unchanged), so this
+    // exercises "saw snapshots this run, all older than stored" rather than "saw nothing at all".
+    const plan = await planSync(state, [home], { full: false }, deps);
+    expect(plan.files.some((f) => f.action === "parsed")).toBe(true);
+    expect(plan.rateLimit).toEqual(future);
+    expect(plan.rateLimitChanged).toBe(false);
+  });
 });
