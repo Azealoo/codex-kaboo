@@ -32,6 +32,10 @@ function TabBody({ tab, range, userId, isMe, today }: { tab: Tab; range: Resolve
       return <EfficiencyTab range={range} userId={userId} />;
     case "sessions":
       return <SessionsTab userId={userId} />;
+    default: {
+      const never: never = tab;
+      return never;
+    }
   }
 }
 
