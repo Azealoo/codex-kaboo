@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { peakHour, timeAnalysisRows } from "./time-analysis";
 import type { Metric, MetricKey, SummaryResult } from "@convex/lib/types";
 
-function summaryWith(values: Partial<Record<MetricKey, number>>): SummaryResult {
+function summaryWith(values: Partial<Record<MetricKey, number | null>>): SummaryResult {
   const metrics = {} as Record<MetricKey, Metric>;
-  for (const [k, v] of Object.entries(values)) metrics[k as MetricKey] = { current: v, previous: null, change: null };
+  for (const [k, v] of Object.entries(values)) metrics[k as MetricKey] = { current: v ?? null, previous: null, change: null };
   return {
     range: { from: "2026-08-03", to: "2026-09-01" },
     previousRange: null,
@@ -44,6 +44,28 @@ describe("time analysis", () => {
       ["Messages / session", "8.0"],
       ["Peak hour", "21:00"],
       ["Most active day", "Wed"],
+    ]);
+  });
+
+  it("renders an em dash for undefined rates instead of a fabricated zero", () => {
+    const summary = summaryWith({
+      wallMs: 0,
+      activeMs: 0,
+      activeRate: null, // no wall time in range: activeMs / wallMs is undefined, not 0%
+      avgSessionActiveMs: null, // no sessions in range: activeMs / sessions is undefined, not 0s
+      messages: null,
+      sessions: null,
+    });
+    const byHour = Array.from({ length: 24 }, () => 0);
+    const rows = timeAnalysisRows(summary, byHour, { grid: [], max: 0, peakHour: null, peakWeekday: null });
+    expect(rows.map((r) => [r.label, r.value])).toEqual([
+      ["Total hours", "0h"],
+      ["Active hours", "0h"],
+      ["Active rate", "—"],
+      ["Avg session", "—"],
+      ["Messages / session", "—"],
+      ["Peak hour", "—"],
+      ["Most active day", "—"],
     ]);
   });
 });

@@ -40,7 +40,9 @@ export function OverviewCards({ range, view }: { range: ResolvedRange; view: Vie
       ) : (
         <CostStructureCard
           costByKind={summary.costByKind}
-          costUsd={summary.metrics.costUsd.current}
+          // costUsd is a sum (never null in practice); Metric.current is typed `number | null`
+          // for every key, so widen back to `number` here rather than at the rate sites.
+          costUsd={summary.metrics.costUsd.current ?? 0}
           cacheSavingsUsd={summary.cacheSavingsUsd}
           unpricedModels={summary.unpricedModels}
         />

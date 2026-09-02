@@ -49,8 +49,10 @@ function EfficiencyStats({ range, userId }: { range: ResolvedRange; userId: Id<"
     previous: range.previous,
   });
   if (!summary) return <CardsSkeleton count={9} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" />;
-  const cost = summary.metrics.costUsd.current;
-  const perLine = costPerLine(cost, summary.metrics.linesAdded.current);
+  // costUsd and linesAdded are sums (never null in practice); Metric.current is typed
+  // `number | null` for every key, so widen back to `number` here rather than at the rate sites.
+  const cost = summary.metrics.costUsd.current ?? 0;
+  const perLine = costPerLine(cost, summary.metrics.linesAdded.current ?? 0);
   return (
     <div className={cn("grid gap-4 md:grid-cols-2 xl:grid-cols-3", isStale && "opacity-60 transition-opacity")}>
       <CostStructureCard

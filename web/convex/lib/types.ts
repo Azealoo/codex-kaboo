@@ -2,7 +2,7 @@
 import type { Id } from "../_generated/dataModel";
 import type { Tokens, ToolCounts } from "../../../shared/src/sync";
 
-export type Metric = { current: number; previous: number | null; change: number | null };
+export type Metric = { current: number | null; previous: number | null; change: number | null };
 export type Range = { from: string; to: string };
 
 export type MetricKey =
@@ -19,7 +19,8 @@ export type SummaryResult = {
   previousRange: Range | null;
   tokens: Tokens;
   previousTokens: Tokens | null;
-  metrics: Record<MetricKey, Metric>;   // rate metrics use 0 as `current` when undefined and set `change: null`
+  metrics: Record<MetricKey, Metric>;   // `current` is null exactly when the metric is an undefined
+                                         // rate (zero denominator); counts and sums are never null
   costByKind: CostByKind;
   cacheSavingsUsd: number;
   unpricedModels: string[];              // models with tokens in range but no price row

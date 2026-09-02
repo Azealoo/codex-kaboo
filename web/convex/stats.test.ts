@@ -91,13 +91,31 @@ describe("stats.summary", () => {
     await seedTeam(t);
     const empty = await withUser(t, "alice").query(api.stats.summary, { from: "2025-01-01", to: "2025-01-07" });
     expect(empty.metrics.totalTokens).toEqual({ current: 0, previous: 0, change: null });
-    expect(empty.metrics.cacheHitRate).toEqual({ current: 0, previous: null, change: null });
+    expect(empty.metrics.cacheHitRate).toEqual({ current: null, previous: null, change: null });
     await expect(
       withUser(t, "alice").query(api.stats.summary, { from: "2026-08-31", to: "2026-08-30" }),
     ).rejects.toMatchObject({ data: { code: "bad_range" } });
     await expect(t.query(api.stats.summary, { from: "2026-08-30", to: "2026-08-31" })).rejects.toMatchObject({
       data: { code: "unauthenticated" },
     });
+  });
+
+  it("distinguishes a genuine zero cache hit rate from an undefined one", async () => {
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    // Input tokens present, none of them cached: a real, measured 0% hit rate.
+    await seedRollup(t, alice, "2026-08-31", [ev({ cachedInput: 0 })], []);
+    const withInput = await withUser(t, "alice").query(api.stats.summary, {
+      from: "2026-08-31", to: "2026-08-31", previous: false,
+    });
+    expect(withInput.metrics.cacheHitRate.current).toBe(0);
+    // No input tokens at all in this range: the rate has no denominator, so it is undefined.
+    const withoutInput = await withUser(t, "alice").query(api.stats.summary, {
+      from: "2025-01-01", to: "2025-01-07", previous: false,
+    });
+    expect(withoutInput.metrics.cacheHitRate.current).toBeNull();
+    // The two must be distinguishable — a null-coalesced convention could not tell them apart.
+    expect(withInput.metrics.cacheHitRate.current).not.toBe(withoutInput.metrics.cacheHitRate.current);
   });
 });
 

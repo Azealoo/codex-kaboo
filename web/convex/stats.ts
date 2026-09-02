@@ -118,7 +118,7 @@ export function buildMetrics(
     const cur = current[key];
     const prev = previous ? previous[key] : null;
     out[key] = {
-      current: cur ?? 0,
+      current: cur,
       previous: prev,
       change: cur === null || prev === null ? null : percentChange(cur, prev),
     };
