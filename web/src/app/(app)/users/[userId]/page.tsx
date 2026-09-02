@@ -12,6 +12,7 @@ import { SegmentedControl } from "@/components/primitives/segmented-control";
 import { BreakdownTab } from "@/components/user/breakdown-tab";
 import { EfficiencyTab } from "@/components/user/efficiency-tab";
 import { OverviewTab } from "@/components/user/overview-tab";
+import { SessionsTab } from "@/components/user/sessions-tab";
 import { UserHeader } from "@/components/user/user-header";
 import { useUserColors } from "@/hooks/use-entity-colors";
 import { useRange } from "@/hooks/use-range";
@@ -29,8 +30,8 @@ function TabBody({ tab, range, userId, isMe, today }: { tab: Tab; range: Resolve
       return <BreakdownTab range={range} userId={userId} />;
     case "efficiency":
       return <EfficiencyTab range={range} userId={userId} />;
-    default:
-      return <EmptyState title="Coming up" description="This tab is added in the next tasks." />;
+    case "sessions":
+      return <SessionsTab userId={userId} />;
   }
 }
 
