@@ -25,11 +25,35 @@ export function renderVbs(target: ScheduleTarget): string {
   return lines.join("\r\n");
 }
 
-/** Fallback when wscript.exe is unavailable (a console may flash briefly). */
+function powershellEnvLines(target: ScheduleTarget, ps: (value: string) => string): string[] {
+  const lines = ["$env:CODEX_KABOO_SCHEDULED='1'"];
+  if (target.codexHome) lines.push(`$env:CODEX_HOME=${ps(target.codexHome)}`);
+  return lines;
+}
+
+/** Fallback when wscript.exe is unavailable (a console may flash briefly). Mirrors the VBS runner's environment. */
 export function renderPowershellCommand(target: ScheduleTarget): string {
   const ps = (s: string): string => `'${s.replace(/'/g, "''")}'`;
-  return `powershell.exe -NoProfile -WindowStyle Hidden -Command "& ${ps(target.nodePath)} ${ps(target.scriptPath)} ${scheduledArgs().join(" ")}"`;
+  const script = [...powershellEnvLines(target, ps), `& ${ps(target.nodePath)} ${ps(target.scriptPath)} ${scheduledArgs().join(" ")}`].join("; ");
+  return `powershell.exe -NoProfile -WindowStyle Hidden -Command "${script}"`;
 }
+
+export function ps1Path(kabooHome: string): string {
+  return path.join(kabooHome, "sync-hidden.ps1");
+}
+
+/**
+ * Written under the kaboo home instead of inlining the command, when the inline -Command string
+ * would exceed schtasks's /TR length limit (documented as 261 characters); mirrors the VBS runner.
+ */
+export function renderPs1(target: ScheduleTarget): string {
+  const ps = (s: string): string => `'${s.replace(/'/g, "''")}'`;
+  const lines = [...powershellEnvLines(target, ps), `& ${ps(target.nodePath)} ${ps(target.scriptPath)} ${scheduledArgs().join(" ")}`, ""];
+  return lines.join("\r\n");
+}
+
+/** Stay well under schtasks's 261-character /TR limit before falling back to a .ps1 file. */
+const PS_INLINE_COMMAND_LIMIT = 250;
 
 export function schtasksCreateArgs(command: string): string[] {
   return ["/Create", "/F", "/SC", "MINUTE", "/MO", "15", "/TN", TASK_NAME, "/TR", command];
@@ -66,7 +90,15 @@ export const schtasksAdapter: SchedulerAdapter = {
       await fs.writeFile(file, renderVbs(target), "utf8");
       command = `wscript.exe //B //Nologo "${file}"`;
     } else {
-      command = renderPowershellCommand(target);
+      const inline = renderPowershellCommand(target);
+      if (inline.length <= PS_INLINE_COMMAND_LIMIT) {
+        command = inline;
+      } else {
+        const file = ps1Path(target.kabooHome);
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, renderPs1(target), "utf8");
+        command = `powershell.exe -NoProfile -WindowStyle Hidden -File "${file}"`;
+      }
     }
     const result = await spawner.run("schtasks", schtasksCreateArgs(command));
     if (result.code !== 0) throw new Error(`schtasks /Create failed: ${result.stderr.trim() || result.stdout.trim()}`);
@@ -75,6 +107,7 @@ export const schtasksAdapter: SchedulerAdapter = {
   async uninstall(target, spawner) {
     await spawner.run("schtasks", schtasksDeleteArgs());
     await fs.rm(vbsPath(target.kabooHome), { force: true });
+    await fs.rm(ps1Path(target.kabooHome), { force: true });
     return `scheduled task ${TASK_NAME} deleted`;
   },
   async status(target, spawner) {

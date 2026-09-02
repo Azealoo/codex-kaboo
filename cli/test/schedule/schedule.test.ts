@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CRON_BEGIN, CRON_END, cronAdapter, removeCronBlock, renderCronLine, upsertCronBlock } from "../../src/schedule/cron";
 import { checkTargetPaths, pickScheduler, type ScheduleTarget, type Spawner, type SpawnResult } from "../../src/schedule/index";
 import { LAUNCHD_LABEL, launchdAdapter, plistPath, renderPlist, xmlEscape } from "../../src/schedule/launchd";
-import { parseSchtasksStatus, renderPowershellCommand, renderVbs, schtasksAdapter, schtasksCreateArgs, TASK_NAME, vbsQuote } from "../../src/schedule/schtasks";
+import { parseSchtasksStatus, ps1Path, renderPowershellCommand, renderPs1, renderVbs, schtasksAdapter, schtasksCreateArgs, TASK_NAME, vbsQuote } from "../../src/schedule/schtasks";
 import { renderService, renderTimer, systemdAdapter, systemdDir } from "../../src/schedule/systemd";
 
 function target(overrides: Partial<ScheduleTarget> = {}): ScheduleTarget {
@@ -188,18 +188,45 @@ describe("schtasks", () => {
     const kabooHome = path.join(homeDir, ".codex-kaboo");
     const t = target({
       nodePath: "C:\\Program Files\\nodejs\\node.exe",
+      scriptPath: "C:\\npm\\codex-kaboo-cli\\codex-kaboo.js",
+      kabooHome,
+      homeDir,
+      codexHome: "D:\\O'Brien\\codex",
+    });
+    const { spawner, calls } = mockSpawner((cmd) => (cmd === "where" ? { code: 1, stdout: "", stderr: "INFO: Could not find files matching the specified pattern." } : undefined));
+    await schtasksAdapter.install(t, spawner);
+    expect(existsSync(path.join(kabooHome, "sync-hidden.vbs"))).toBe(false);
+    expect(existsSync(ps1Path(kabooHome))).toBe(false);
+    const create = calls.find((c) => c.command === "schtasks" && c.args[0] === "/Create")!;
+    const tr = create.args[create.args.length - 1];
+    expect(tr).toBe(renderPowershellCommand(t));
+    expect(tr).toContain("-WindowStyle Hidden");
+    expect(tr).toContain("$env:CODEX_KABOO_SCHEDULED='1'");
+    expect(tr).toContain("$env:CODEX_HOME='D:\\O''Brien\\codex'");
+  });
+
+  it("writes a .ps1 file and invokes it with -File when the inline PowerShell command would exceed schtasks's /TR limit", async () => {
+    const homeDir = freshTempDir("ck-schtasks-ps1-");
+    const kabooHome = path.join(homeDir, ".codex-kaboo");
+    const t = target({
+      nodePath: "C:\\Program Files\\nodejs\\node.exe",
       scriptPath: "C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\codex-kaboo-cli\\dist\\codex-kaboo.js",
       kabooHome,
       homeDir,
       codexHome: "D:\\codex",
     });
+    expect(renderPowershellCommand(t).length).toBeGreaterThan(250); // confirms this fixture exercises the fallback below
     const { spawner, calls } = mockSpawner((cmd) => (cmd === "where" ? { code: 1, stdout: "", stderr: "INFO: Could not find files matching the specified pattern." } : undefined));
     await schtasksAdapter.install(t, spawner);
     expect(existsSync(path.join(kabooHome, "sync-hidden.vbs"))).toBe(false);
+    const file = ps1Path(kabooHome);
+    expect(existsSync(file)).toBe(true);
+    expect(readFileSync(file, "utf8")).toBe(renderPs1(t));
     const create = calls.find((c) => c.command === "schtasks" && c.args[0] === "/Create")!;
     const tr = create.args[create.args.length - 1];
-    expect(tr).toBe(renderPowershellCommand(t));
-    expect(tr).toContain("-WindowStyle Hidden");
+    expect(tr).toBe(`powershell.exe -NoProfile -WindowStyle Hidden -File "${file}"`);
+    await schtasksAdapter.uninstall(t, spawner);
+    expect(existsSync(file)).toBe(false);
   });
 });
 
