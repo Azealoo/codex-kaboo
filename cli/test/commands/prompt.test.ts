@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 // Regression coverage for the hidden-token prompt in cli/src/main.ts (`promptToken`). Node has no
-// built-in way to allocate a pseudo-terminal, and `promptToken` only takes its echo-muting branch
+// built-in way to allocate a pseudo-terminal, and `promptToken` only takes its raw-mode branch
 // when `process.stdin.isTTY` is true, so this can only be exercised end to end against a real pty
 // — hence shelling out to python3's stdlib `pty` module (no new dependency; guarded below and
 // skipped when python3 or a pty aren't available, e.g. on Windows).
@@ -19,7 +19,7 @@ const helper = path.join(here, "pty-helper.py");
 
 function hasPython3WithPty(): boolean {
   if (process.platform === "win32") return false; // the stdlib `pty` module does not exist on Windows
-  const res = spawnSync("python3", ["-c", "import pty"], { stdio: "ignore" });
+  const res = spawnSync("python3", ["-c", "import pty, termios"], { stdio: "ignore" });
   return res.status === 0;
 }
 
@@ -46,17 +46,23 @@ interface PtyResult {
   output_b64: string;
   exit_code: number | null;
   timed_out: boolean;
+  final_icanon: boolean | null;
 }
 
 /**
  * Runs the pty helper and returns its result. Deliberately async (`execFile`, not `execFileSync`):
- * the "paste" test below runs an in-process HTTP mock server that the spawned CLI must be able to
+ * several tests below run an in-process HTTP mock server that the spawned CLI must be able to
  * reach, and that server can only accept/respond to connections while Node's event loop is free to
  * run — a *synchronous* execFileSync call here would block that same event loop for the whole
- * duration of the pty session, deadlocking that test (the request would never be serviced). Keeping
- * this async avoids that trap for every caller, not just the one test that currently needs it.
+ * duration of the pty session, deadlocking those tests (the request would never be serviced).
+ * Keeping this async avoids that trap for every caller, not just the ones that currently need it.
  */
-function runPty(args: string[], actions: PtyAction[], envExtra: Record<string, string>, timeoutS = 10): Promise<{ output: string; exitCode: number | null; timedOut: boolean }> {
+function runPty(
+  args: string[],
+  actions: PtyAction[],
+  envExtra: Record<string, string>,
+  timeoutS = 10,
+): Promise<{ output: string; exitCode: number | null; timedOut: boolean; finalIcanon: boolean | null }> {
   const planDir = mkdtempSync(path.join(os.tmpdir(), "ck-pty-plan-"));
   const planFile = path.join(planDir, "plan.json");
   writeFileSync(
@@ -79,12 +85,43 @@ function runPty(args: string[], actions: PtyAction[], envExtra: Record<string, s
       }
       try {
         const result = JSON.parse(stdout) as PtyResult;
-        resolve({ output: Buffer.from(result.output_b64, "base64").toString("utf8"), exitCode: result.exit_code, timedOut: result.timed_out });
+        resolve({
+          output: Buffer.from(result.output_b64, "base64").toString("utf8"),
+          exitCode: result.exit_code,
+          timedOut: result.timed_out,
+          finalIcanon: result.final_icanon,
+        });
       } catch (parseError) {
         reject(parseError instanceof Error ? parseError : new Error(String(parseError)));
       }
     });
   });
+}
+
+/**
+ * Runs `login --server http://127.0.0.1:<mock port>` against a tiny local mock server that just
+ * records the `Authorization` header of the request it receives (and replies 401, so `runLogin`
+ * fails fast without retrying). Since the CLI is never allowed to print the token anywhere, this
+ * is the only reliable way to check the *exact* value `promptToken` resolved to — proving it was
+ * captured correctly (survived Backspace edits / arrow-key noise / a fast paste) even though it
+ * was never visible in the terminal output.
+ */
+async function runLoginAgainstMockServer(actions: PtyAction[], kabooHome: string, timeoutS = 10): Promise<{ output: string; capturedAuth: string | null | undefined }> {
+  let capturedAuth: string | null | undefined;
+  const server = http.createServer((req, res) => {
+    capturedAuth = req.headers.authorization;
+    const body = JSON.stringify({ error: "unauthorized" });
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(body);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const port = (server.address() as AddressInfo).port;
+    const { output } = await runPty(["login", "--server", `http://127.0.0.1:${port}`], actions, { CODEX_KABOO_HOME: kabooHome }, timeoutS);
+    return { output, capturedAuth };
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 }
 
 describe.skipIf(!canRunPty)("promptToken (real pty)", () => {
@@ -102,11 +139,13 @@ describe.skipIf(!canRunPty)("promptToken (real pty)", () => {
     rmSync(kabooHome, { recursive: true, force: true });
   });
 
-  it("never echoes typed characters, even across a Backspace-triggered line redraw", async () => {
-    // Reproduces the exact finding: typing "135X", Backspace (removing the X), then "79", Enter.
-    // The old `_writeToOutput` override only swallowed writes that did NOT start with the prompt
-    // text — but readline redraws `prompt + currentLine` on Backspace/arrow keys/Ctrl-U, and that
-    // redraw DOES start with the prompt, so it slipped through and leaked "13" in cleartext.
+  it("never echoes typed characters across a Backspace edit, and never erases the prompt", async () => {
+    // Reproduces the exact finding: typing "135X", Backspace (removing the X), then "79", Enter,
+    // yielding "13579". Round 1's fix (mute readline's _writeToOutput) closed the character-echo
+    // leak but readline's _refreshLine also calls cursorTo/clearScreenDown directly on the output,
+    // a separate path _writeToOutput cannot intercept — which erased the freshly-printed prompt on
+    // the very first internal redraw and never redrew it, leaving a blank line for the rest of the
+    // interaction. This asserts BOTH properties: no leak, and the prompt is never erased.
     const { output, exitCode } = await runPty(
       ["login", "--server", "http://127.0.0.1:1"],
       [
@@ -128,38 +167,79 @@ describe.skipIf(!canRunPty)("promptToken (real pty)", () => {
     expect(output).not.toContain("135");
     expect(output).not.toContain("13");
     expect(exitCode).toBe(2); // "13579" doesn't start with ck_, so runLogin rejects it — expected
+
+    // The prompt must still be visible: no "erase to end of screen" / "erase line" escape may
+    // appear anywhere after the prompt bytes (there should be no escape sequences at all here,
+    // since the TTY branch no longer goes through readline's redraw machinery — but assert the
+    // ordering explicitly, not just "none exist", so this stays meaningful if that ever changes).
+    const promptIndex = output.indexOf("Paste your sync token");
+    expect(promptIndex).toBeGreaterThanOrEqual(0);
+    // eslint-disable-next-line no-control-regex -- matching real terminal erase sequences is the point
+    const eraseSeq = /\x1b\[(?:0J|2K)/g;
+    const eraseIndexesAfterPrompt: number[] = [];
+    for (const match of output.matchAll(eraseSeq)) {
+      if ((match.index ?? -1) > promptIndex) eraseIndexesAfterPrompt.push(match.index as number);
+    }
+    expect(eraseIndexesAfterPrompt).toEqual([]);
+  });
+
+  it("resolves a Backspace-edited value to exactly the intended text", async () => {
+    // Same edit pattern as above ("...X", Backspace, "79"), but with a ck_-prefixed value so the
+    // exact resolved string can be checked end to end via the mock server's Authorization header
+    // — proving the Backspace correctly dropped just the "X" and nothing else was corrupted.
+    const { output, capturedAuth } = await runLoginAgainstMockServer(
+      [
+        { sleep_ms: 300 },
+        { write: "ck_1", sleep_ms: 60 },
+        { write: "3", sleep_ms: 60 },
+        { write: "5", sleep_ms: 60 },
+        { write: "X", sleep_ms: 60 },
+        { write: "\x7f", sleep_ms: 60 }, // Backspace: removes the "X"
+        { write: "7", sleep_ms: 60 },
+        { write: "9", sleep_ms: 60 },
+        { write: "\r", sleep_ms: 600 },
+      ],
+      kabooHome,
+    );
+    expect(capturedAuth).toBe("Bearer ck_13579");
+    expect(output).not.toContain("13579");
+    expect(output).not.toContain("ck_13579");
   });
 
   it("still captures a fast multi-character paste in full, without ever echoing it", async () => {
     // A real terminal paste delivers the whole clipboard string in one (or a few) chunk(s), not
-    // one keystroke at a time. Simulated here with a single write() of the whole token. Since the
-    // token is never allowed to reach the terminal, the only way to prove it was captured in full
-    // is to check what the CLI actually sent over the network for `--server`.
+    // one keystroke at a time. Simulated here with a single write() of the whole token.
     const token = "ck_pastedFULLtoken1234567890";
-    let capturedAuth: string | null | undefined;
-    const server = http.createServer((req, res) => {
-      capturedAuth = req.headers.authorization;
-      const body = JSON.stringify({ error: "unauthorized" });
-      res.writeHead(401, { "Content-Type": "application/json" });
-      res.end(body);
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    try {
-      const port = (server.address() as AddressInfo).port;
-      const { output } = await runPty(
-        ["login", "--server", `http://127.0.0.1:${port}`],
-        [{ sleep_ms: 300 }, { write: token, sleep_ms: 300 }, { write: "\r", sleep_ms: 800 }],
-        { CODEX_KABOO_HOME: kabooHome },
-      );
-      expect(output).not.toContain(token);
-      expect(capturedAuth).toBe(`Bearer ${token}`);
-    } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    }
+    const { output, capturedAuth } = await runLoginAgainstMockServer(
+      [{ sleep_ms: 300 }, { write: token, sleep_ms: 300 }, { write: "\r", sleep_ms: 800 }],
+      kabooHome,
+    );
+    expect(output).not.toContain(token);
+    expect(capturedAuth).toBe(`Bearer ${token}`);
   });
 
-  it("exits 130 promptly on a real interactive Ctrl-C instead of hanging", async () => {
-    const { exitCode, timedOut } = await runPty(
+  it("ignores an arrow-key sequence typed mid-entry without corrupting the value", async () => {
+    // Arrow keys are CSI sequences (ESC '[' 'A'/'B'/'C'/'D'); they must be stripped wholesale, not
+    // partially interpreted as literal characters or control codes.
+    const { output, capturedAuth } = await runLoginAgainstMockServer(
+      [
+        { sleep_ms: 300 },
+        { write: "ck_1", sleep_ms: 60 },
+        { write: "\x1b[A", sleep_ms: 60 }, // Up
+        { write: "\x1b[B", sleep_ms: 60 }, // Down
+        { write: "\x1b[C", sleep_ms: 60 }, // Right
+        { write: "\x1b[D", sleep_ms: 60 }, // Left
+        { write: "23", sleep_ms: 60 },
+        { write: "\r", sleep_ms: 600 },
+      ],
+      kabooHome,
+    );
+    expect(capturedAuth).toBe("Bearer ck_123");
+    expect(output).not.toContain("ck_123");
+  });
+
+  it("exits 130 promptly on a real interactive Ctrl-C, restoring cooked mode", async () => {
+    const { exitCode, timedOut, finalIcanon } = await runPty(
       ["login", "--server", "http://127.0.0.1:1"],
       [{ sleep_ms: 300 }, { write: "ab", sleep_ms: 100 }, { sigint: true, sleep_ms: 500 }],
       { CODEX_KABOO_HOME: kabooHome },
@@ -167,6 +247,9 @@ describe.skipIf(!canRunPty)("promptToken (real pty)", () => {
     );
     expect(timedOut).toBe(false);
     expect(exitCode).toBe(130);
+    // The pty must be left in canonical/"cooked" mode (echo + line buffering handled by the tty
+    // driver again), not stuck in raw mode — i.e. setRawMode(false) really ran before exiting.
+    expect(finalIcanon).toBe(true);
   });
 });
 

@@ -24,7 +24,12 @@ plan.json: {
                                        // sent straight to the process, which is a different path)
   ]
 }
-Prints: {"output_b64": "...", "exit_code": <int|null>, "timed_out": <bool>}
+Prints: {"output_b64": "...", "exit_code": <int|null>, "timed_out": <bool>, "final_icanon": <bool>}
+final_icanon reflects the pty's line discipline *after* the child has exited (or been killed on
+timeout): true means canonical/"cooked" mode — echo and line buffering are handled by the tty
+driver again — which is what a well-behaved raw-mode reader must restore before it finishes,
+however it finishes (including on Ctrl-C). false means the pty was left in raw mode, e.g. because
+the child exited (or was killed) without ever calling setRawMode(false).
 """
 import base64
 import json
@@ -33,6 +38,7 @@ import pty
 import select
 import subprocess
 import sys
+import termios
 import time
 
 
@@ -116,6 +122,13 @@ def main() -> None:
         except Exception:
             timed_out = True
 
+    final_icanon = None
+    try:
+        attrs = termios.tcgetattr(master)
+        final_icanon = bool(attrs[3] & termios.ICANON)
+    except (OSError, termios.error):
+        pass  # master already gone (e.g. the child closed its end) — leave as None
+
     try:
         os.close(master)
     except OSError:
@@ -127,6 +140,7 @@ def main() -> None:
                 "output_b64": base64.b64encode(b"".join(output)).decode("ascii"),
                 "exit_code": exit_code,
                 "timed_out": timed_out,
+                "final_icanon": final_icanon,
             }
         )
     )

@@ -62,37 +62,42 @@ function emit(json: boolean, data: unknown, lines: string[]): void {
 
 /**
  * Prompts for the sync token on stderr. Exact guarantees:
- *  - When stdin is a real TTY: this function writes the question itself, once, before the
- *    readline interface is even created. From that point until the interface closes, readline's
- *    own output writer (`_writeToOutput`) is replaced with a no-op that swallows EVERY write it
- *    would otherwise make — unconditionally, not just ones that look like a bare character echo.
- *    That matters because readline redraws the *whole* `prompt + currentLine` on Backspace, the
- *    arrow keys, Ctrl-U and paste (not just the single changed character), so any conditional
- *    filter keyed on "does this write start with the prompt" still lets those redraws through —
- *    that was the bug here: a Backspace after typing 3 characters redrew "prompt + first two
- *    characters", which passed a `startsWith(question)` check and leaked them. Swallowing
- *    unconditionally closes that hole. Backspace/arrow-key editing and paste still work — only
- *    the *visual echo* is suppressed; readline's own line-buffer handling (and thus the final
- *    returned string) is untouched. On Enter, this function writes the trailing newline itself
- *    (readline's own newline echo is swallowed along with everything else) and resolves with the
- *    typed text. On Ctrl-C (SIGINT), it closes the interface, writes a newline, and terminates
- *    the process with exit code 130 (the standard 128+SIGINT convention) — without an explicit
- *    handler, readline in muted terminal mode does not raise SIGINT on the process by default, so
- *    Ctrl-C would otherwise appear to hang instead of exiting.
+ *  - When stdin is a real TTY: this function is the ONLY thing that ever writes to `output` for
+ *    the whole prompt. It writes `question` once, up front, and never writes it again and never
+ *    erases it. It does NOT create a `readline` interface for this branch at all — deliberately:
+ *    an earlier version did, and tried to silence it by overriding its `_writeToOutput` method,
+ *    but readline's line-editing machinery (`_refreshLine`) also calls `cursorTo`/`clearScreenDown`
+ *    directly on the output stream, a separate path `_writeToOutput` cannot intercept — so the
+ *    very first internal redraw erased the just-printed prompt and it was never redrawn, leaving a
+ *    blank line for the whole interaction. Reading the keystrokes by hand avoids the problem
+ *    entirely: nothing but this function ever touches the terminal, so there is nothing left that
+ *    could erase or redraw anything.
+ *    Concretely: stdin is put into raw mode and read chunk by chunk. Each chunk first has ANSI/CSI
+ *    escape sequences stripped (arrow keys, bracketed-paste markers, ...) plus any stray bare ESC
+ *    byte, so cursor/navigation input can't corrupt the typed value; a pasted string arrives as
+ *    plain characters and is appended in full. Of what's left: CR or LF finishes; Backspace/Delete
+ *    drops the last character typed so far; Ctrl-U clears everything typed so far; any other
+ *    control character (code point < 0x20) — Ctrl-C aside — is ignored; everything else is
+ *    appended to the value. On Ctrl-C, raw mode is restored, a newline is written, and the process
+ *    exits with code 130 (the standard 128+SIGINT convention) instead of leaving the process
+ *    hanging. On finish, raw mode is restored the same way, a single trailing newline is written,
+ *    and the promise resolves with the trimmed value.
  *  - When stdin is not a TTY (piped input, some CI shells): there is no terminal echo to
  *    suppress in the first place, and no way to guarantee a piping shell won't show it, so this
- *    prints a warning first and falls back to a plain, visible prompt.
+ *    prints a warning first and falls back to a plain, visible `readline` prompt — unchanged from
+ *    before.
  *  Either way, the raw token is only ever returned to the caller — never written to a log or the
  *  console by this function itself.
  */
 function promptToken(question: string): Promise<string> {
   return new Promise((resolve) => {
     const output = process.stderr;
-    const isTTY = process.stdin.isTTY === true;
+    const input = process.stdin;
+    const isTTY = input.isTTY === true;
 
     if (!isTTY) {
       output.write("warning: stdin is not a TTY; input cannot be hidden and may be echoed by your terminal or shell\n");
-      const rl = readline.createInterface({ input: process.stdin, output, terminal: false });
+      const rl = readline.createInterface({ input, output, terminal: false });
       rl.question(question, (answer) => {
         rl.close();
         resolve(answer);
@@ -101,22 +106,59 @@ function promptToken(question: string): Promise<string> {
     }
 
     output.write(question);
-    const rl = readline.createInterface({ input: process.stdin, output, terminal: true });
-    // Unconditional no-op: swallows character echo AND every prompt+line redraw (Backspace,
-    // arrow keys, Ctrl-U, paste) for as long as this interface lives. See the doc comment above.
-    (rl as unknown as { _writeToOutput: (text: string) => void })._writeToOutput = () => {};
 
-    rl.on("SIGINT", () => {
-      rl.close();
-      output.write("\n");
-      process.exit(130);
-    });
+    let value = "";
+    let done = false;
 
-    rl.question("", (answer) => {
-      rl.close();
+    // Idempotent: safe to call from the finish path, the Ctrl-C path, or (in principle) both.
+    const cleanup = (): void => {
+      if (done) return;
+      done = true;
+      input.setRawMode(false);
+      input.pause();
+      input.removeListener("data", onData);
+    };
+
+    const finish = (): void => {
+      if (done) return;
+      cleanup();
       output.write("\n");
-      resolve(answer);
-    });
+      resolve(value.trim());
+    };
+
+    function onData(chunk: string): void {
+      // Strip CSI escape sequences (ESC '[' params letter — arrow keys, bracketed-paste markers,
+      // ...) and any leftover bare ESC byte, so navigation input can never reach `value`; ordinary
+      // (including pasted) text passes through untouched.
+      // eslint-disable-next-line no-control-regex -- matching the ESC (0x1b) byte is the point
+      const stripped = chunk.replace(/\x1b\[[0-9;?]*[A-Za-z~]/g, "").replace(/\x1b/g, "");
+      for (const ch of stripped) {
+        if (ch === "\r" || ch === "\n") {
+          finish();
+          return;
+        }
+        const code = ch.codePointAt(0) ?? 0;
+        if (code === 0x03) {
+          // Ctrl-C: never leave the process hanging in raw mode.
+          cleanup();
+          output.write("\n");
+          process.exit(130);
+        } else if (code === 0x7f || ch === "\b") {
+          value = value.slice(0, -1); // Backspace / Delete
+        } else if (code === 0x15) {
+          value = ""; // Ctrl-U
+        } else if (code < 0x20) {
+          // ignore other control characters
+        } else {
+          value += ch;
+        }
+      }
+    }
+
+    input.setRawMode(true);
+    input.resume();
+    input.setEncoding("utf8");
+    input.on("data", onData);
   });
 }
 
