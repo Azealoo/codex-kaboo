@@ -61,29 +61,60 @@ function emit(json: boolean, data: unknown, lines: string[]): void {
 }
 
 /**
- * Prompts for the sync token on stderr without echoing it back. When stdin is a real TTY, readline's
- * own echo is muted by intercepting its output writer (backspace/paste/Ctrl-C still work — only the
- * visual echo of typed characters is suppressed), so the token never appears on screen. When stdin is
- * not a TTY (piped input, some CI shells) there is no reliable way to suppress terminal echo, so this
- * falls back to a plain prompt and warns first. Either way the raw token is only ever returned to the
- * caller — never written to a log or the console by this function.
+ * Prompts for the sync token on stderr. Exact guarantees:
+ *  - When stdin is a real TTY: this function writes the question itself, once, before the
+ *    readline interface is even created. From that point until the interface closes, readline's
+ *    own output writer (`_writeToOutput`) is replaced with a no-op that swallows EVERY write it
+ *    would otherwise make — unconditionally, not just ones that look like a bare character echo.
+ *    That matters because readline redraws the *whole* `prompt + currentLine` on Backspace, the
+ *    arrow keys, Ctrl-U and paste (not just the single changed character), so any conditional
+ *    filter keyed on "does this write start with the prompt" still lets those redraws through —
+ *    that was the bug here: a Backspace after typing 3 characters redrew "prompt + first two
+ *    characters", which passed a `startsWith(question)` check and leaked them. Swallowing
+ *    unconditionally closes that hole. Backspace/arrow-key editing and paste still work — only
+ *    the *visual echo* is suppressed; readline's own line-buffer handling (and thus the final
+ *    returned string) is untouched. On Enter, this function writes the trailing newline itself
+ *    (readline's own newline echo is swallowed along with everything else) and resolves with the
+ *    typed text. On Ctrl-C (SIGINT), it closes the interface, writes a newline, and terminates
+ *    the process with exit code 130 (the standard 128+SIGINT convention) — without an explicit
+ *    handler, readline in muted terminal mode does not raise SIGINT on the process by default, so
+ *    Ctrl-C would otherwise appear to hang instead of exiting.
+ *  - When stdin is not a TTY (piped input, some CI shells): there is no terminal echo to
+ *    suppress in the first place, and no way to guarantee a piping shell won't show it, so this
+ *    prints a warning first and falls back to a plain, visible prompt.
+ *  Either way, the raw token is only ever returned to the caller — never written to a log or the
+ *  console by this function itself.
  */
 function promptToken(question: string): Promise<string> {
   return new Promise((resolve) => {
     const output = process.stderr;
     const isTTY = process.stdin.isTTY === true;
-    if (!isTTY) output.write("warning: stdin is not a TTY; input cannot be hidden and may be echoed by your terminal or shell\n");
-    const rl = readline.createInterface({ input: process.stdin, output, terminal: isTTY });
-    if (isTTY) {
-      const muted = rl as unknown as { _writeToOutput: (text: string) => void };
-      const originalWrite = muted._writeToOutput.bind(rl);
-      muted._writeToOutput = (text: string) => {
-        if (text.startsWith(question)) originalWrite(text); // show the prompt itself, swallow every keystroke echo
-      };
+
+    if (!isTTY) {
+      output.write("warning: stdin is not a TTY; input cannot be hidden and may be echoed by your terminal or shell\n");
+      const rl = readline.createInterface({ input: process.stdin, output, terminal: false });
+      rl.question(question, (answer) => {
+        rl.close();
+        resolve(answer);
+      });
+      return;
     }
-    rl.question(question, (answer) => {
-      if (isTTY) output.write("\n");
+
+    output.write(question);
+    const rl = readline.createInterface({ input: process.stdin, output, terminal: true });
+    // Unconditional no-op: swallows character echo AND every prompt+line redraw (Backspace,
+    // arrow keys, Ctrl-U, paste) for as long as this interface lives. See the doc comment above.
+    (rl as unknown as { _writeToOutput: (text: string) => void })._writeToOutput = () => {};
+
+    rl.on("SIGINT", () => {
       rl.close();
+      output.write("\n");
+      process.exit(130);
+    });
+
+    rl.question("", (answer) => {
+      rl.close();
+      output.write("\n");
       resolve(answer);
     });
   });
