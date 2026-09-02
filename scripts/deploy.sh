@@ -45,7 +45,13 @@ if [ -n "${CLERK_FRONTEND_API_URL:-}" ]; then
   (cd "$ROOT/web" && npx convex env set CLERK_FRONTEND_API_URL "$CLERK_FRONTEND_API_URL" --prod)
 fi
 
-echo "== 1/5  link (creates the project if it does not exist)"
+echo "== 1/5  create and link the project"
+# Two steps, not one. `vercel link --project` only links an EXISTING project ("required for
+# non-interactive existing-project links"), and a bare `vercel deploy` in an unlinked directory
+# names the project after the current DIRECTORY — which here is the worktree, so it would silently
+# create one called `v1-build`. Create it explicitly by name first; `|| true` because re-running
+# this script must stay idempotent.
+npx vercel project add "$PROJECT" 2>/dev/null || true
 npx vercel link --yes --project "$PROJECT"
 PROJECT_ID=$(node -p "require('$ROOT/.vercel/project.json').projectId")
 ORG_ID=$(node -p "require('$ROOT/.vercel/project.json').orgId")
