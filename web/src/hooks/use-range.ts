@@ -1,21 +1,12 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { makeFunctionReference } from "convex/server";
+import { api } from "@convex/_generated/api";
 import { useQueryStates } from "nuqs";
 import { useCallback, useMemo } from "react";
-import type { Id } from "@convex/_generated/dataModel";
-import type { BoundsResult } from "@convex/lib/types";
 import { isCustom, resolveRange, type Preset, type RangeParams, type ResolvedRange } from "@/lib/range";
 import { rangeHref, rangeParsers } from "@/lib/search-params";
 import { useToday } from "./use-today";
-
-// `stats.ts` lands in a later Convex task (contracts §9: `stats.bounds | authedQuery |
-// { userId? } | BoundsResult`), so `api.stats.bounds` isn't in the generated `api` object yet.
-// `makeFunctionReference` builds the identical reference (`{ [functionName]: "stats:bounds" }`,
-// the same shape `api.stats.bounds` resolves to once codegen catches up) typed against the
-// contract's argument/result types, without inventing the backend function here.
-const statsBounds = makeFunctionReference<"query", { userId?: Id<"users"> }, BoundsResult>("stats:bounds");
 
 export function useRange(): {
   params: RangeParams;
@@ -29,7 +20,7 @@ export function useRange(): {
   // Exactly the inverse of `resolveRange`'s ALL branch: a half-filled custom range
   // (`?range=ALL&from=<day>` with no `to`) must still fetch bounds, or the page never resolves.
   const needBounds = !isCustom(params) && params.range === "ALL" && today !== null;
-  const bounds = useQuery(statsBounds, needBounds ? {} : "skip");
+  const bounds = useQuery(api.stats.bounds, needBounds ? {} : "skip");
   const resolved = useMemo(
     () => (today === null ? null : resolveRange(params, today, needBounds ? (bounds ?? null) : undefined)),
     [params, today, needBounds, bounds],
