@@ -1,6 +1,9 @@
+import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import { internalMutation, type MutationCtx } from "./_generated/server";
 import { computeDayRollup } from "./lib/aggregate";
+import { REBUILD_PAGE_SIZE } from "./lib/constants";
 
 export type RecomputeOutcome = "inserted" | "replaced" | "deleted" | "none";
 
@@ -55,3 +58,26 @@ export async function recomputeDays(
   }
   return outcomes;
 }
+
+/**
+ * Recomputes every existing rollup, REBUILD_PAGE_SIZE per invocation, rescheduling itself until
+ * the index is exhausted. Idempotent; run after bumping ROLLUP_VERSION:
+ *   npx convex run rollups:rebuildAll '{}'
+ */
+export const rebuildAll = internalMutation({
+  args: { cursor: v.optional(v.string()), pageSize: v.optional(v.number()) },
+  handler: async (ctx, { cursor, pageSize }): Promise<{ done: boolean; recomputed: number }> => {
+    const page = await ctx.db
+      .query("dailyRollups")
+      .withIndex("by_user_day")
+      .paginate({ cursor: cursor ?? null, numItems: pageSize ?? REBUILD_PAGE_SIZE });
+    const now = Date.now();
+    for (const rollup of page.page) await recomputeDay(ctx, rollup.userId, rollup.day, now);
+    if (page.isDone) return { done: true, recomputed: page.page.length };
+    await ctx.scheduler.runAfter(0, internal.rollups.rebuildAll, {
+      cursor: page.continueCursor,
+      pageSize,
+    });
+    return { done: false, recomputed: page.page.length };
+  },
+});

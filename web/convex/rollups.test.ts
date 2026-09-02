@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { addDays } from "../../shared/src/days";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { recomputeDay, recomputeDays } from "./rollups";
 import { getRollup, makeEvent, makeSession, registerUser, setup, T0, type Harness } from "./test.helpers";
@@ -70,5 +72,36 @@ describe("recomputeDay", () => {
       { key: "project-a", tokens: 600, responses: 1, sessions: 0, userMessages: 0, linesAdded: 0, linesRemoved: 0 },
     ]);
     expect(day2?.byMachine).toEqual([]);
+  });
+});
+
+afterEach(() => vi.useRealTimers());
+
+describe("rebuildAll", () => {
+  it("recomputes every rollup page by page through the scheduler", async () => {
+    const t = setup();
+    vi.useFakeTimers();
+    const userId = await registerUser(t, "alice");
+    const days = Array.from({ length: 5 }, (_, i) => addDays("2026-08-01", i));
+    await t.run(async (ctx) => {
+      for (const [i, day] of days.entries()) {
+        await ctx.db.insert("tokenEvents", { ...makeEvent({ sessionId: "s", seq: i, day }), userId });
+      }
+    });
+    await t.run(async (ctx) => recomputeDays(ctx, userId, days, T0));
+    await t.run(async (ctx) => {
+      for (const rollup of await ctx.db.query("dailyRollups").collect()) {
+        await ctx.db.patch(rollup._id, { version: 0, responses: 999 });
+      }
+    });
+
+    const first = await t.mutation(internal.rollups.rebuildAll, { pageSize: 2 });
+    expect(first).toEqual({ done: false, recomputed: 2 });
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+
+    const rollups = await t.run(async (ctx) => ctx.db.query("dailyRollups").collect());
+    expect(rollups).toHaveLength(5);
+    expect(rollups.every((r) => r.version === 1 && r.responses === 1)).toBe(true);
+    expect(await t.mutation(internal.rollups.rebuildAll, {})).toEqual({ done: true, recomputed: 5 });
   });
 });
