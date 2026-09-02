@@ -147,16 +147,16 @@ describe("upsertEvents", () => {
     const e1 = makeEvent({ sessionId: "s1", seq: 1 });
     const e2 = makeEvent({ sessionId: "s1", seq: 2, hour: 10 });
 
-    const r1 = await t.mutation(internal.ingest.upsertEvents, { userId: alice, events: [e1, e2], now: T0 });
+    const r1 = await t.mutation(internal.ingest.upsertEvents, { userId: alice, machineId: "machine-1", events: [e1, e2], now: T0 });
     expect(r1).toEqual({ counts: { inserted: 2, updated: 0, unchanged: 0 }, conflicts: 0 });
     expect(await getRollup(t, alice, "2026-08-31")).toMatchObject({ responses: 2, computedAt: T0 });
 
-    const r2 = await t.mutation(internal.ingest.upsertEvents, { userId: alice, events: [e1, e2], now: T0 + 1 });
+    const r2 = await t.mutation(internal.ingest.upsertEvents, { userId: alice, machineId: "machine-1", events: [e1, e2], now: T0 + 1 });
     expect(r2.counts).toEqual({ inserted: 0, updated: 0, unchanged: 2 });
     expect((await getRollup(t, alice, "2026-08-31"))?.computedAt).toBe(T0);
 
     const movedE2 = { ...e2, day: "2026-09-01", hour: 0, output: 999, total: 1499 };
-    const r3 = await t.mutation(internal.ingest.upsertEvents, { userId: alice, events: [movedE2], now: T0 + 2 });
+    const r3 = await t.mutation(internal.ingest.upsertEvents, { userId: alice, machineId: "machine-1", events: [movedE2], now: T0 + 2 });
     expect(r3.counts).toEqual({ inserted: 0, updated: 1, unchanged: 0 });
     expect(await getRollup(t, alice, "2026-08-31")).toMatchObject({ responses: 1, computedAt: T0 + 2 });
     const day2 = await getRollup(t, alice, "2026-09-01");
@@ -165,7 +165,7 @@ describe("upsertEvents", () => {
     expect(await t.run(async (ctx) => ctx.db.query("tokenEvents").collect())).toHaveLength(2);
 
     const r4 = await t.mutation(internal.ingest.upsertEvents, {
-      userId: bob, events: [{ ...e1, output: 5, reasoning: 5, total: 505 }], now: T0 + 3,
+      userId: bob, machineId: "machine-1", events: [{ ...e1, output: 5, reasoning: 5, total: 505 }], now: T0 + 3,
     });
     expect(r4).toEqual({ counts: { inserted: 0, updated: 0, unchanged: 0 }, conflicts: 1 });
     expect(await getRollup(t, bob, "2026-08-31")).toBeNull();
@@ -193,7 +193,7 @@ describe("upsertEvents session-owner memoisation", () => {
     );
 
     const { metrics } = await t.mutation(async (ctx) => {
-      await ctx.runMutation(internal.ingest.upsertEvents, { userId: alice, events, now: T0 });
+      await ctx.runMutation(internal.ingest.upsertEvents, { userId: alice, machineId: "machine-1", events, now: T0 });
       return { metrics: await ctx.meta.getTransactionMetrics() };
     });
 
@@ -255,7 +255,7 @@ describe("counts", () => {
       userId: alice, machineId: "machine-1", sessions: [makeSession({ sessionId: "s1" })], now: T0,
     });
     await t.mutation(internal.ingest.upsertEvents, {
-      userId: alice, events: [makeEvent({ sessionId: "s1", seq: 1 }), makeEvent({ sessionId: "s1", seq: 2 })], now: T0,
+      userId: alice, machineId: "machine-1", events: [makeEvent({ sessionId: "s1", seq: 1 }), makeEvent({ sessionId: "s1", seq: 2 })], now: T0,
     });
     expect(await t.query(internal.ingest.counts, {})).toEqual({
       sessions: 1,
@@ -263,5 +263,49 @@ describe("counts", () => {
       dailyRollups: 1,
       capped: { sessions: false, tokenEvents: false, dailyRollups: false },
     });
+  });
+});
+
+describe("upsertEvents machine stamping", () => {
+  // `machineId` is stamped by the server from the batch's machine block, never sent per event —
+  // the same shape `sessions` has always used. A machine is constant for a whole batch by
+  // construction, so a per-event copy is redundant bytes on every one of up to 5,000 events, and
+  // it is a required wire field the CLI cannot fill before login (it had to reach for a
+  // placeholder id on the `--dry-run` path). Stamping also makes it structurally impossible for an
+  // event to claim a different machine than the batch it arrived in.
+  it("stamps the batch's machineId onto every event", async () => {
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    await t.mutation(internal.ingest.upsertEvents, {
+      userId: alice,
+      machineId: "machine-b",
+      events: [makeEvent({ sessionId: "s1", seq: 1 }), makeEvent({ sessionId: "s1", seq: 2 })],
+      now: T0,
+    });
+    const stored = await t.run(async (ctx) => ctx.db.query("tokenEvents").collect());
+    expect(stored.map((e) => e.machineId)).toEqual(["machine-b", "machine-b"]);
+  });
+
+  // `source` IS a payload field, so it has to take part in the equality check that decides
+  // insert/unchanged/replace. Left out, a parser fix that corrects a source — exactly what the
+  // `subagent:<kind>` guard does — could never reach rows already uploaded: the re-upload would be
+  // judged unchanged and the stale value would stand forever, `--full` included.
+  it("replaces an event whose source was corrected by a newer parser", async () => {
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    const before = makeEvent({ sessionId: "s1", seq: 1, source: "unknown" });
+    await t.mutation(internal.ingest.upsertEvents, {
+      userId: alice, machineId: "machine-a", events: [before], now: T0,
+    });
+
+    const after = await t.mutation(internal.ingest.upsertEvents, {
+      userId: alice,
+      machineId: "machine-a",
+      events: [{ ...before, source: "subagent:guardian" }],
+      now: T0 + 1,
+    });
+    expect(after.counts).toEqual({ inserted: 0, updated: 1, unchanged: 0 });
+    const stored = await t.run(async (ctx) => ctx.db.query("tokenEvents").collect());
+    expect(stored.map((e) => e.source)).toEqual(["subagent:guardian"]);
   });
 });

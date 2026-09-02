@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { CRON_BEGIN, CRON_END, cronAdapter, cronQuote, removeCronBlock, renderCronLine, upsertCronBlock } from "../../src/schedule/cron";
+import { CRON_BEGIN, CRON_END, CrontabUnavailableError, cronAdapter, cronQuote, removeCronBlock, renderCronLine, upsertCronBlock } from "../../src/schedule/cron";
 import { checkTargetPaths, pickScheduler, type ScheduleTarget, type Spawner, type SpawnResult } from "../../src/schedule/index";
 import { LAUNCHD_LABEL, launchdAdapter, plistPath, renderPlist, xmlEscape } from "../../src/schedule/launchd";
 import { parseSchtasksStatus, powershellQuote, ps1Path, renderPowershellCommand, renderPs1, renderVbs, schtasksAdapter, schtasksCreateArgs, TASK_NAME, vbsQuote } from "../../src/schedule/schtasks";
@@ -197,6 +197,34 @@ describe("cron", () => {
     const { spawner, calls } = mockSpawner((cmd, args) => (args[0] === "-l" ? { code: 1, stdout: "", stderr: "no crontab for me" } : undefined));
     await expect(cronAdapter.install(target({ nodePath: "/opt/node\n/bin/node" }), spawner)).rejects.toThrow(/newline/i);
     expect(calls.some((c) => c.args[0] === "-")).toBe(false);
+  });
+
+  // Review finding: a Linux box with no `crontab` binary at all (common on minimal/container
+  // images) resolved `crontab -l` to `{ code: null, stdout: "" }` — indistinguishable, before this
+  // fix, from a user who simply has no crontab yet (`{ code: 1, stderr: "no crontab for me" }`).
+  // Both told `status`/`doctor` "not installed" and pointed at a remedy (`codex-kaboo install`)
+  // that fails identically on such a machine. Mocked spawner only — this must not shell out.
+  it("distinguishes a missing crontab binary from an empty, not-yet-installed crontab", async () => {
+    const missingBinary = mockSpawner((cmd, args) => (args[0] === "-l" ? { code: null, stdout: "", stderr: "spawn crontab ENOENT" } : undefined));
+    expect(await cronAdapter.status(target(), missingBinary.spawner)).toEqual({
+      installed: false,
+      healthy: false,
+      detail: expect.stringMatching(/crontab is not available.*--systemd/i),
+    });
+    // install/uninstall read the crontab too and must fail loudly rather than silently overwrite
+    // a crontab that was never actually read.
+    await expect(cronAdapter.install(target(), missingBinary.spawner)).rejects.toThrow(CrontabUnavailableError);
+    await expect(cronAdapter.uninstall(target(), missingBinary.spawner)).rejects.toThrow(CrontabUnavailableError);
+
+    // Contrast: crontab runs fine and reports none installed yet — a normal, healthy state, not
+    // an error.
+    const noCrontabYet = mockSpawner((cmd, args) => (args[0] === "-l" ? { code: 1, stdout: "", stderr: "no crontab for me" } : undefined));
+    expect(await cronAdapter.status(target(), noCrontabYet.spawner)).toEqual({ installed: false, healthy: false, detail: "not installed" });
+
+    // A timed-out `crontab -l` (nodeSpawner: `code: null, timedOut: true`) is also "could not be
+    // run", not "empty" — same bucket as a missing binary, with its own detail.
+    const timedOut = mockSpawner((cmd, args) => (args[0] === "-l" ? { code: null, stdout: "", stderr: "", timedOut: true } : undefined));
+    expect((await cronAdapter.status(target(), timedOut.spawner)).detail).toMatch(/timed out/i);
   });
 });
 

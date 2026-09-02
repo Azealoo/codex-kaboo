@@ -163,9 +163,11 @@ export const TokenEvent = z.object({
   effort: shortString.optional(),
   turnId: shortString.optional(),
   project: nonEmptyString,
-  // Denormalised from the run and the session so the day's machine and source token totals can be
-  // computed from EVENTS, on the event's own day, like every other token metric on the page.
-  machineId: nonEmptyString,
+  // Denormalised from the parent session so the day's source token totals can be computed from
+  // EVENTS, on the event's own day, like every other token metric on the page — the session may
+  // sit on a different day, so a join would not do. The machine is NOT here: it is constant for a
+  // whole batch, so the server stamps it from `machine.machineId` (as it already does for
+  // sessions) rather than repeating it on every one of up to MAX_EVENTS_PER_REQUEST events.
   source: nonEmptyString, // the parent session's source
   isSubagent: z.boolean(),
   origin: TokenEventOrigin, // the line type this row was derived from

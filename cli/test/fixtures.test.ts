@@ -15,7 +15,7 @@ async function files(): Promise<Map<string, DiscoveredFile>> {
 async function parse(sessionId: string) {
   const file = (await files()).get(sessionId);
   if (!file) throw new Error(`fixture ${sessionId} not found`);
-  return parseRolloutFile(file, { machineId: "machine-1", machineZone: "UTC", now: NOW, generation: 0 });
+  return parseRolloutFile(file, { machineZone: "UTC", now: NOW, generation: 0 });
 }
 
 describe("fixtures", () => {
@@ -101,7 +101,7 @@ describe("fixtures", () => {
     // mechanism each row came from for the server to retract it later.
     expect(parsed.summary.eventOrigin).toBe("record");
     expect(parsed.events).toHaveLength(1);
-    expect(parsed.events[0]).toMatchObject({ seq: 5, origin: "record", machineId: "machine-1", source: "vscode", total: 320 });
+    expect(parsed.events[0]).toMatchObject({ seq: 5, origin: "record", source: "vscode", total: 320 });
     expect(parsed.diagnostics.unknownTypes).toMatchObject({ world_state: 1, inter_agent_communication: 1 });
     expect(parsed.diagnostics.mcpFallbackUsed).toBe(false);
   });

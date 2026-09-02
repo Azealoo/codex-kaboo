@@ -60,7 +60,6 @@ export function makeEvent(overrides: Partial<TokenEvent> = {}): TokenEvent {
     effort: "xhigh",
     turnId: "turn-1",
     project: "project-a",
-    machineId: "4d2f7d0e-2d5c-4c0d-9a9c-8e3f0c9b1a11",
     source: "cli",
     isSubagent: false,
     origin: "record",

@@ -14,10 +14,11 @@ async function insertData(t: Harness, userId: Id<"users">) {
       machineId: "machine-1",
       syncedAt: T0,
     });
-    await ctx.db.insert("tokenEvents", { ...makeEvent({ sessionId: "s1", seq: 5 }), userId });
+    await ctx.db.insert("tokenEvents", { ...makeEvent({ sessionId: "s1", seq: 5 }), userId, machineId: "machine-1" });
     await ctx.db.insert("tokenEvents", {
       ...makeEvent({ sessionId: "s1", seq: 9, day: "2026-09-01", hour: 0, ts: T0 + 15 * 3_600_000 }),
       userId,
+      machineId: "machine-1",
     });
   });
 }
@@ -90,7 +91,7 @@ describe("rebuildAll", () => {
     const days = Array.from({ length: 5 }, (_, i) => addDays("2026-08-01", i));
     await t.run(async (ctx) => {
       for (const [i, day] of days.entries()) {
-        await ctx.db.insert("tokenEvents", { ...makeEvent({ sessionId: "s", seq: i, day }), userId });
+        await ctx.db.insert("tokenEvents", { ...makeEvent({ sessionId: "s", seq: i, day }), userId, machineId: "machine-1" });
       }
     });
     await t.run(async (ctx) => recomputeDays(ctx, userId, days, T0));

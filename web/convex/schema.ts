@@ -62,6 +62,7 @@ export default defineSchema({
 
   tokenEvents: defineTable({
     userId: v.id("users"),
+    machineId: v.string(),
     ...tokenEventFields,
   })
     .index("by_session_seq", ["sessionId", "seq"])

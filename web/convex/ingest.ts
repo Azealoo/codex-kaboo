@@ -78,9 +78,14 @@ export function chunkSessions(sessions: SessionSummary[]): SessionSummary[][] {
   return chunkByDays(sessions, MAX_SESSIONS_PER_MUTATION);
 }
 
+// Every payload field, `source` included: a field left out here can never be corrected on a row
+// that is already stored, because the re-upload is judged unchanged and skipped — `--full` and a
+// deleted `state.json` both included. `machineId` is deliberately absent: the server stamps it, so
+// it is not a payload field at all.
 const EVENT_KEYS = [
-  "sessionId", "seq", "ts", "day", "hour", "model", "effort", "turnId", "project", "isSubagent",
-  "origin", "input", "cachedInput", "cacheWrite", "output", "reasoning", "total", "contextWindow",
+  "sessionId", "seq", "ts", "day", "hour", "model", "effort", "turnId", "project", "source",
+  "isSubagent", "origin", "input", "cachedInput", "cacheWrite", "output", "reasoning", "total",
+  "contextWindow",
 ] as const;
 
 /**
@@ -236,10 +241,11 @@ export const upsertSessions = internalMutation({
 export const upsertEvents = internalMutation({
   args: {
     userId: v.id("users"),
+    machineId: v.string(),
     events: v.array(v.object(tokenEventFields)),
     now: v.number(),
   },
-  handler: async (ctx, { userId, events, now }): Promise<{ counts: UpsertCounts; conflicts: number }> => {
+  handler: async (ctx, { userId, machineId, events, now }): Promise<{ counts: UpsertCounts; conflicts: number }> => {
     const counts = zeroCounts();
     let conflicts = 0;
     const touched = new Set<string>();
@@ -274,7 +280,7 @@ export const upsertEvents = internalMutation({
           conflicts += 1;
           continue;
         }
-        await ctx.db.insert("tokenEvents", { ...event, userId });
+        await ctx.db.insert("tokenEvents", { ...event, userId, machineId });
         counts.inserted += 1;
         touched.add(event.day);
         continue;
@@ -287,7 +293,11 @@ export const upsertEvents = internalMutation({
         counts.unchanged += 1;
         continue;
       }
-      await ctx.db.replace(existing._id, { ...event, userId });
+      // Re-stamps machineId from the batch that carried this version of the row. A machine-only
+      // difference does not reach here — machineId is not compared, so it is judged unchanged —
+      // which is the intent: re-syncing the same file from a second install must not make two
+      // machines fight over the same rows.
+      await ctx.db.replace(existing._id, { ...event, userId, machineId });
       counts.updated += 1;
       touched.add(existing.day);
       touched.add(event.day);
@@ -473,6 +483,7 @@ export const syncHandler = httpAction(async (ctx, request) => {
     for (const chunk of chunkEvents(batch.tokenEvents)) {
       const result = await ctx.runMutation(internal.ingest.upsertEvents, {
         userId: auth.userId,
+        machineId: batch.machine.machineId,
         events: chunk,
         now,
       });

@@ -53,7 +53,6 @@ export interface PlanDeps {
   env: NodeJS.ProcessEnv;
   now: () => number;
   log: Logger;
-  machineId: string; // stamped on every parsed event; DRY_RUN_MACHINE_ID when not logged in
   machineZone: string | undefined;
   budgetMs?: number;
   startedAt?: number;
@@ -175,7 +174,7 @@ export async function planSync(state: SyncState, homes: string[], opts: PlanOpti
     let result;
     try {
       result = await parseRolloutFile(file, {
-        machineId: deps.machineId, machineZone: deps.machineZone, now: deps.now(), generation: prev?.generation ?? 0,
+        machineZone: deps.machineZone, now: deps.now(), generation: prev?.generation ?? 0,
       });
     } catch (error) {
       const message = errorMessage(error);

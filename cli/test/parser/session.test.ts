@@ -22,7 +22,7 @@ const meta = (extra: Record<string, unknown> = {}) => ({
 });
 
 function ctx(overrides: Partial<ReducerContext> = {}): ReducerContext {
-  return { sessionId: TID, threadId: TID, rolloutId: null, fileTimestampMs: Date.UTC(2026, 7, 30, 17), machineId: "machine-1", machineZone: "UTC", ...overrides };
+  return { sessionId: TID, threadId: TID, rolloutId: null, fileTimestampMs: Date.UTC(2026, 7, 30, 17), machineZone: "UTC", ...overrides };
 }
 
 function run(lines: string[], c = ctx(), opts = { now: Date.UTC(2026, 7, 30, 18), generation: 0 }) {
@@ -129,8 +129,9 @@ describe("reducer: sessions, turns and token events", () => {
     const full = run([...upTo4, line("token_usage_record", { turn_id: "t1", usage: usage(300, 100, 20, 5) }, T(2), 4)]);
     expect(full.events).toHaveLength(1);
     expect(full.events[0]).toMatchObject({ seq: 4, origin: "record", total: 320 });
-    // Denormalised so the day's machine/source token totals can be computed from events alone.
-    expect(full.events[0]).toMatchObject({ machineId: "machine-1", source: "cli" });
+    // Denormalised so the day's source token totals can be computed from events alone; the
+    // machine is not here, the server stamps it from the batch.
+    expect(full.events[0]).toMatchObject({ source: "cli" });
     expect(full.summary.eventOrigin).toBe("record");
     expect(full.summary.tokens.total).toBe(320);
     expect(TokenEvent.safeParse(full.events[0]).success).toBe(true);

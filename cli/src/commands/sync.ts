@@ -10,7 +10,7 @@ import { acquireLock, releaseLock } from "../util/lock";
 import type { Logger } from "../util/log";
 import { compareVersions } from "../util/version";
 import {
-  buildMachineInfo, DRY_RUN_MACHINE_ID, planSync, toSyncBatch, type FileAction, type SyncPlan,
+  buildMachineInfo, planSync, toSyncBatch, type FileAction, type SyncPlan,
 } from "./sync-plan";
 
 export interface SyncOptions {
@@ -137,7 +137,7 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
     const state: SyncState = opts.full ? resetAllFiles(loaded.state) : loaded.state;
     const homes = resolveCodexHomes({ override: opts.codexHome, env: deps.env, configured: config?.codexHomes });
     const plan = await planSync(state, homes, { full: opts.full, codexHome: opts.codexHome }, {
-      env: deps.env, now: deps.now, log: deps.log, machineId: config?.machineId ?? DRY_RUN_MACHINE_ID,
+      env: deps.env, now: deps.now, log: deps.log,
       machineZone: deps.machineZone, budgetMs: deps.budgetMs, startedAt: start,
     });
     report.homes = plan.homes;

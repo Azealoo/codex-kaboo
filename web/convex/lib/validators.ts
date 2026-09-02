@@ -105,7 +105,8 @@ export const sessionSummaryFields = {
   summaryHash: v.string(),
 };
 
-// TokenEvent (contracts §3). The tokenEvents table adds userId.
+// TokenEvent (contracts §3). The tokenEvents table adds userId and machineId — machineId is
+// stamped by the server from the batch's machine, exactly as it is for sessions above.
 export const tokenEventFields = {
   sessionId: v.string(),
   seq: v.number(),
@@ -116,8 +117,7 @@ export const tokenEventFields = {
   effort: v.optional(v.string()),
   turnId: v.optional(v.string()),
   project: v.string(),
-  machineId: v.string(), // denormalised so byMachine tokens are event-derived (contracts §3)
-  source: v.string(), // denormalised from the parent session, same reason
+  source: v.string(), // denormalised from the parent session so bySource tokens are event-derived
   isSubagent: v.boolean(),
   origin: v.string(), // TokenEventOrigin: "count" | "record"
   input: v.number(),
