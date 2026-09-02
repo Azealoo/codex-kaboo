@@ -9,7 +9,6 @@ coverage/
 .env.*.local
 .vercel/
 web/public/cli/
-web/convex/_generated/
 .DS_Store
 *.log
 *.tgz
