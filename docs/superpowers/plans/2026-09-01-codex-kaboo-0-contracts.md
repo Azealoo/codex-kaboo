@@ -49,7 +49,7 @@ npm run test -w cli
 npm run test -w web -- --project convex     # convex-test suite only
 npm run test -w web -- --project unit
 npm run test -w web -- --project dom
-npm run typecheck -w web                     # runs `convex codegen` then `tsc --noEmit`
+npm run typecheck -w web                     # runs `next typegen` then `tsc --noEmit` (convex/_generated is committed)
 npm run typecheck                            # all workspaces
 ```
 

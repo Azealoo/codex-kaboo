@@ -5683,7 +5683,7 @@ Claude-Session: https://claude.ai/code/session_01Q8G1yVYF1rfbje5mJGvMVt"
 Run (from `web/`):
 
 ```bash
-cd web && npx convex dev --once --configure=new --project codex-kaboo
+cd web && npx convex dev --once   # the dev deployment already exists (created during Plan 1 Task 5): team yining044, project codex-kaboo, deployment qualified-nightingale-360; web/.env.local is already written
 ```
 
 Answer the team prompt if asked. Expected: `.env.local` is written; the first push then FAILS with `Environment variable CLERK_FRONTEND_API_URL is used in auth config file but its value was not set` — that is expected and the deployment already exists.

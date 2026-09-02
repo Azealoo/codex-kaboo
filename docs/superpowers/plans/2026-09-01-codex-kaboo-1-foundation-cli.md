@@ -1243,12 +1243,12 @@ MSG
 
 **Files:**
 - Create (generated): `web/**` via create-next-app; `web/components.json`, `web/src/lib/utils.ts` via shadcn init; `web/convex/tsconfig.json`, `web/convex/README.md`, `web/convex/_generated/**` (git-ignored) via `convex codegen --init`
-- Create: `web/vitest.config.ts`, `web/vitest.setup.ts`, `web/src/lib/alias.test.ts`, `web/convex/bootstrap.test.ts`, `web/src/components/bootstrap.test.tsx`
+- Create: `web/vitest.config.mts`, `web/vitest.setup.ts`, `web/src/lib/alias.test.ts`, `web/convex/bootstrap.test.ts`, `web/src/components/bootstrap.test.tsx`
 - Modify: `package.json` (root workspaces), `web/package.json` (scripts + deps), `web/tsconfig.json` (`@shared/*` path), `web/next.config.ts` (`turbopack.root`), `web/README.md`
 
 **Interfaces:**
 - Consumes: `shared/src/constants.ts`, `shared/src/days.ts` (alias smoke tests).
-- Produces: the `web` workspace that Plans 2 and 3 fill; test projects `convex` (edge-runtime), `unit` (node), `dom` (jsdom); scripts `typecheck` (`convex codegen && tsc --noEmit`), `test` (`vitest run`), `codegen`.
+- Produces: the `web` workspace that Plans 2 and 3 fill; test projects `convex` (edge-runtime), `unit` (node), `dom` (jsdom); scripts `typecheck` (`next typegen && tsc --noEmit`), `test` (`vitest run`), `codegen`.
 
 - [ ] **Step 1: Scaffold the Next app (non-interactive) and register the workspace**
 
@@ -1272,7 +1272,7 @@ npm install -w web -D convex-test@latest @edge-runtime/vm@latest vitest@^4.1.11 
 node -e '
 const fs=require("fs");const p=JSON.parse(fs.readFileSync("web/package.json","utf8"));
 p.name="web";p.private=true;
-p.scripts=Object.assign({},p.scripts,{typecheck:"convex codegen && tsc --noEmit",test:"vitest run",codegen:"convex codegen"});
+p.scripts=Object.assign({},p.scripts,{typecheck:"next typegen && tsc --noEmit",test:"vitest run",codegen:"convex codegen"});
 fs.writeFileSync("web/package.json",JSON.stringify(p,null,2)+"\n");'
 ```
 
@@ -1312,7 +1312,7 @@ export default nextConfig;
 
 - [ ] **Step 5: Write the vitest configuration with three projects**
 
-`web/vitest.config.ts`:
+`web/vitest.config.mts`:
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -1371,7 +1371,7 @@ cd web && npx convex codegen --init && cd ..
 ls web/convex
 ```
 
-Expected: `README.md  _generated  tsconfig.json` (and `_generated` is git-ignored by the root `.gitignore`). If `convex codegen` refuses to run without a configured deployment, run `npx convex dev --once` inside `web/` (this needs `npx convex login`, which Plan 2 requires anyway) and then re-run `npx convex codegen --init`.
+Expected: `README.md  _generated  tsconfig.json` (and `_generated` is committed, as the Convex CLI recommends). If `convex codegen` refuses to run without a configured deployment, run `npx convex dev --once` inside `web/` (this needs `npx convex login`, which Plan 2 requires anyway) and then re-run `npx convex codegen --init`.
 
 - [ ] **Step 7: Write the three bootstrap tests**
 
