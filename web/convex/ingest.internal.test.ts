@@ -172,6 +172,43 @@ describe("upsertEvents", () => {
   });
 });
 
+describe("upsertEvents session-owner memoisation", () => {
+  // Pins the `sessionOwners` cache (ingest.ts) that makes a session's owner get looked up at most
+  // once per distinct sessionId, not once per event: without it, a 1,000-event chunk over a
+  // handful of sessions would spend one `by_sessionId` index read PER EVENT instead of per
+  // session, quietly restoring the read pressure the cache exists to relieve.
+  //
+  // convex-test has no direct "spy on this index read" hook, but it does implement Convex's real
+  // `ctx.meta.getTransactionMetrics()` (convex/server, @public) faithfully enough to use here: a
+  // nested `ctx.runMutation` opens a child transaction-metrics layer that folds back into its
+  // caller's on commit (convex-test's TransactionMetricsTracker), so wrapping the call to
+  // `upsertEvents` in an outer mutation and reading `getTransactionMetrics()` right after reports
+  // every index range `upsertEvents` opened — a genuine read count, not a correctness proxy.
+  it("looks up each session's owner once per distinct session, not once per event", async () => {
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    const sessionIds = ["s0", "s1", "s2"];
+    const events = Array.from({ length: 12 }, (_, i) =>
+      makeEvent({ sessionId: sessionIds[i % sessionIds.length], seq: i }),
+    );
+
+    const { metrics } = await t.mutation(async (ctx) => {
+      await ctx.runMutation(internal.ingest.upsertEvents, { userId: alice, events, now: T0 });
+      return { metrics: await ctx.meta.getTransactionMetrics() };
+    });
+
+    // Two OTHER fixed costs share this same total, neither of which the cache under test touches:
+    // one `by_session_seq` range per event (the existing-tokenEvent check, always a miss here since
+    // every event is new), and exactly 3 more for the single touched day's `recomputeDay` (its
+    // `by_user_day` ranges over tokenEvents, sessions and dailyRollups — verified against this
+    // scenario's `documentsRead.used` of 12, which is exactly the 12 just-inserted events that one
+    // `.collect()` reads back and nothing else). Subtracting both isolates the session-owner
+    // lookups, which is the number this test exists to pin.
+    const ownerLookups = metrics.databaseQueries.used - events.length - 3;
+    expect(ownerLookups).toBe(sessionIds.length);
+  });
+});
+
 describe("finishSync", () => {
   it("updates lastSyncAt, keeps the newest snapshot by receivedAt (server clock), touches the token", async () => {
     const t = setup();

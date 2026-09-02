@@ -70,13 +70,31 @@ export const MAX_EVENTS_PER_REQUEST = 5000;
 // Server-side mutation chunking.
 export const MAX_SESSIONS_PER_MUTATION = 200;
 export const MAX_EVENTS_PER_MUTATION = 1000;
-export const MAX_DAYS_PER_EVENT_CHUNK = 10; // bounds one mutation's recomputeDay reads; see the
-// constant's own comment for the arithmetic against Convex's ~32k document ceiling
+/**
+ * Distinct `day` values one upsert mutation may touch. Each touched day costs a full
+ * `recomputeDay` — that day's `tokenEvents` and `sessions` re-read — inside the same mutation, so
+ * this multiplied by MAX_EVENTS_PER_MUTATION bounds the mutation's document reads: ~10k here, and
+ * ~20k even when a resend moves events to a different day and touches both. Convex's ceiling is
+ * ~32k documents, and blowing it yields a permanent 503 (the identical retry hits the same wall),
+ * so the margin is deliberate. More mutations per sync is the intended trade. If this is ever
+ * approached again, the next step is the "mark dirty -> scheduled drain" pattern from the design
+ * doc rather than a larger bound.
+ */
+export const MAX_DAYS_PER_EVENT_CHUNK = 10;
 // Payload shape limits.
 export const MAX_KEYED_ENTRIES_PER_SESSION = 64; // mcpTools / skills per session
 export const MAX_ROLLUP_ENTRIES = 100; // per keyed array in a daily rollup
 export const OTHER_KEY = "(other)";
 export const MAX_STRING_LENGTH = 256;
+
+/**
+ * Upper bound on a manually entered model price (USD per million tokens), checked by both
+ * `parsePrice` (client) and `prices.upsert` (server) so the two cannot drift. This is a typo
+ * guard, not a pricing policy — it exists to catch a fat-fingered entry (e.g. `2000000` typed for
+ * `2.00`), not to express a real ceiling: it is roughly 333x the priciest seed-table entry
+ * (`gpt-5.5` output at 30), so no real model price can hit it.
+ */
+export const MAX_PRICE_USD_PER_MTOK = 10000;
 
 export const TTFT_BUCKETS_MS = [
   250, 500, 750, 1000, 1500, 2000, 3000, 4000, 6000, 8000, 12000, 16000, 24000, 32000, 60000,
@@ -429,10 +447,13 @@ advances it when patching an existing row (only when inserting a new one).
 - `sessions` gains `effort?: string` (from `SessionSummary.effort`). `machineId` is stamped by the
   server from `batch.machine.machineId`; `SessionSummary` does not carry it.
 - `machines.lastRateLimit` = `RateLimitSnapshot & { receivedAt: number }` (`receivedAt` = server time
-  of the request that carried it; replaced when the incoming `receivedAt` is newer — the server
-  clock, never the client's). The client's `observedAt` is stored for display only and never decides
-  a replacement: one machine with a fast RTC would otherwise store a future date and freeze the
-  shared quota gauge for good. `usedPercent` is clamped to [0, 100] on ingest.
+  of the request that carried it; the stored snapshot is replaced when the incoming `receivedAt` is
+  newer-or-equal to the one on file — `now >= machine.lastRateLimit.receivedAt`, so a same-millisecond
+  resend still overwrites — the server clock, never the client's). The client's `observedAt` is
+  stored for display only and never gates storage: one machine with a fast RTC would otherwise store
+  a future date and freeze the shared quota gauge for good. On read, `quota()` picks the snapshot
+  with the greatest `receivedAt` across all machines, breaking a millisecond tie on `receivedAt` by
+  the greater `observedAt`. `usedPercent` is clamped to [0, 100] on ingest.
 - Every keyed array (`mcpTools`, `skills`, rollup `by*`) is an array of `{ key: string, … }`, sorted
   by `key` ascending, capped at 100 in rollups with the overflow folded into `key: "(other)"`.
 - `SessionSummary.inProgress` is purely structural: `true` while a turn has started without completing
@@ -656,8 +677,13 @@ export type MeResult = { _id: Id<"users">; clerkId: string; email: string | null
 Cost rules used by every function: a `(model, tokens)` pair is priced with `costOf` when a
 `modelPrices` row with that exact `model` exists; otherwise it contributes 0 to `costUsd` and the
 model is listed in `unpricedModels` / the row is flagged `unpriced` / `costUsd: null`. The
-`"(other)"` fold key is never listed in `unpricedModels`: it is the 100-entry keyed-array fold, not
-a model name.
+`"(other)"` fold key is never listed in `unpricedModels`: it is the keyed-array fold, not a model
+name. `byModel` is keyed at the (model, effort) grain (`lib/aggregate.ts`'s `addModel`), so the
+`MAX_ROLLUP_ENTRIES` (100) cap that produces that fold bounds 100 distinct (model, effort) PAIRS,
+not 100 distinct models — with Codex's five effort levels, the real margin is roughly 21 distinct
+models. Below that margin (and only below it), `unpricedModels` and `leaderboard.unpriced` are
+exact; above it, a priced-but-folded pair can silently contribute cost that is not reflected in
+either signal.
 
 ## 10. Web ↔ CLI strings (Plan 3 shows, Plan 1 implements)
 

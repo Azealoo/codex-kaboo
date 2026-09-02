@@ -212,6 +212,12 @@ export class Collector {
     this.body.byHour[index] = (this.body.byHour[index] ?? 0) + total;
   }
 
+  // `byModel` is keyed at the (model, effort) grain, not by model alone — `mapKey` folds both
+  // into one entry below. So the MAX_ROLLUP_ENTRIES (100) cap that `finish()` applies to
+  // `byModel` bounds 100 distinct (model, effort) PAIRS, not 100 distinct models: with Codex's
+  // five effort levels (minimal/low/medium/high/none), the real margin before the `(other)` fold
+  // — and the `unpricedModels` / `leaderboard.unpriced` blind spot it can cause — is roughly 21
+  // distinct models, not 100.
   addModel(key: string, effort: string | undefined, tokens: Tokens, responses: number): void {
     const mapKey = JSON.stringify([key, effort ?? null]);
     const entry = this.models.get(mapKey) ?? {

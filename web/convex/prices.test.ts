@@ -1,12 +1,26 @@
 import { describe, expect, it } from "vitest";
+import { MAX_PRICE_USD_PER_MTOK } from "../../shared/src/constants";
 import { api, internal } from "./_generated/api";
 import type { EventInput } from "./lib/aggregate";
+import { SEED_PRICES } from "./prices";
 import { withUser, registerUser, seedRollup, setup } from "./test.helpers";
 
 const event: EventInput = {
   hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", isSubagent: false,
   input: 1000, cachedInput: 400, cacheWrite: 0, output: 200, reasoning: 50, total: 1200,
 };
+
+describe("SEED_PRICES", () => {
+  // Replaces a 42-number mirror of these values that used to live in web/src/lib/prices.test.ts:
+  // a copy can drift from its source silently, and this cannot — it imports the real table, so a
+  // model priced above the bound fails here instead of passing a stale mirror. This is the one
+  // property worth pinning: the typo guard (MAX_PRICE_USD_PER_MTOK) must never reject a real seed
+  // price.
+  it("keeps every seed price at or under the typo-guard bound", () => {
+    const prices = SEED_PRICES.flatMap((row) => [row.inputUsdPerMTok, row.cachedInputUsdPerMTok, row.outputUsdPerMTok]);
+    expect(Math.max(...prices)).toBeLessThanOrEqual(MAX_PRICE_USD_PER_MTOK);
+  });
+});
 
 describe("prices.seed", () => {
   it("inserts the 14 seed rows once", async () => {
