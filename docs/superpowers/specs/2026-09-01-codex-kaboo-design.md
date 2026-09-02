@@ -290,7 +290,7 @@ Authorization: Bearer ck_…    Content-Type: application/json    X-Codex-Kaboo-
   "machine": { "machineId": "uuid", "label": "brisk-otter", "platform": "darwin", "arch": "arm64",
                "nodeVersion": "24.17.0", "codexVersion": "0.150.1", "codexLatestVersion": "0.150.1",
                "hostname": null, "tz": "America/Los_Angeles" },
-  "sessions":    [ /* SessionSummary = sessions doc minus userId/syncedAt; re-derived in full per changed file */ ],
+  "sessions":    [ /* SessionSummary = sessions doc minus userId/machineId/syncedAt, plus `effort`; re-derived in full per changed file */ ],
   "tokenEvents": [ /* TokenEvent = tokenEvents doc minus userId; only seq > lastUploadedSeq */ ],
   "rateLimit":   { "observedAt": 0, "usedPercent": 12.5, "windowMinutes": 10080, "resetsAt": 0, "planType": "…", "limitId": "…" }
 }
@@ -578,7 +578,7 @@ repository URLs, hostnames. Test fixtures are synthetic. `sync --dry-run --json`
 
 - `npm test` at the root passes (shared, cli, convex, web suites); CI green on GitHub.
 - CLI against real data: `--dry-run --json` output contains no text/paths; totals match the
-  verified numbers; `sync` to the dev deployment reports 11 inserted sessions and 430 inserted
+  verified numbers; `sync` to the dev deployment reports 11 inserted sessions and 426 inserted (430 `token_count` lines minus 4 all-zero)
   events; a second run makes no request (nothing changed) and `sync --full` reports everything
   unchanged.
 - Dashboard on `localhost:3000`: sign in, see the synced sessions; card totals equal the CLI
