@@ -23,6 +23,9 @@ describe("formatInt", () => {
     [1000, "1,000"],
     [1234567.6, "1,234,568"],
     [-42, "-42"],
+    [NaN, "—"],
+    [Infinity, "—"],
+    [-Infinity, "—"],
   ])("%s → %s", (input, expected) => {
     expect(formatInt(input)).toBe(expected);
   });
@@ -40,6 +43,9 @@ describe("formatCompact", () => {
     [5_600_000_000, "5.6B"],
     [2_100_000_000_000, "2.1T"],
     [-1234, "-1.2K"],
+    [NaN, "—"],
+    [Infinity, "—"],
+    [-Infinity, "—"],
   ])("%s → %s", (input, expected) => {
     expect(formatCompact(input)).toBe(expected);
   });
@@ -55,6 +61,9 @@ describe("formatUsd", () => {
     [100, "$100"],
     [1234.5, "$1,235"],
     [-3.5, "-$3.50"],
+    [NaN, "—"],
+    [Infinity, "—"],
+    [-Infinity, "—"],
   ])("%s → %s", (input, expected) => {
     expect(formatUsd(input)).toBe(expected);
   });
@@ -92,6 +101,11 @@ describe("formatDurationMs", () => {
     expect(formatHours(45_000_000)).toBe("12.5h");
     expect(formatHours(0)).toBe("0h");
     expect(formatHours(360_000_000)).toBe("100h");
+  });
+  it("returns an em dash for non-finite formatHours input", () => {
+    expect(formatHours(NaN)).toBe("—");
+    expect(formatHours(Infinity)).toBe("—");
+    expect(formatHours(-Infinity)).toBe("—");
   });
 });
 

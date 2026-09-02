@@ -10,6 +10,7 @@ function group(n: number): string {
 }
 
 export function formatInt(n: number): string {
+  if (!Number.isFinite(n)) return EM_DASH;
   return group(n);
 }
 
@@ -18,6 +19,7 @@ function trimZero(s: string): string {
 }
 
 export function formatCompact(n: number): string {
+  if (!Number.isFinite(n)) return EM_DASH;
   const abs = Math.abs(n);
   const sign = n < 0 ? "-" : "";
   if (abs < 999.5) return group(n);
@@ -38,6 +40,7 @@ export function formatCompact(n: number): string {
 }
 
 export function formatUsd(n: number): string {
+  if (!Number.isFinite(n)) return EM_DASH;
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
   if (abs === 0) return "$0.00";
@@ -73,6 +76,7 @@ export function formatDurationMs(ms: number): string {
 }
 
 export function formatHours(ms: number): string {
+  if (!Number.isFinite(ms)) return EM_DASH;
   const hours = Math.max(0, ms) / 3_600_000;
   if (hours >= 100) return `${Math.round(hours)}h`;
   return `${trimZero(hours.toFixed(1))}h`;
