@@ -45,6 +45,11 @@ describe("prices.upsert / remove", () => {
     await expect(withUser(t, "alice").mutation(api.prices.upsert, {
       model: "gpt-9", inputUsdPerMTok: -1, cachedInputUsdPerMTok: 0, outputUsdPerMTok: 0,
     })).rejects.toMatchObject({ data: { code: "bad_price" } });
+    // Typo guard: 10000.01 is just above MAX_PRICE_USD_PER_MTOK (10000), a fat-fingered magnitude
+    // rather than a real price — see the constant's comment in shared/src/constants.ts.
+    await expect(withUser(t, "alice").mutation(api.prices.upsert, {
+      model: "gpt-9", inputUsdPerMTok: 10000.01, cachedInputUsdPerMTok: 0, outputUsdPerMTok: 0,
+    })).rejects.toMatchObject({ data: { code: "bad_price" } });
     await expect(withUser(t, "alice").mutation(api.prices.upsert, {
       model: "  ", inputUsdPerMTok: 1, cachedInputUsdPerMTok: 0, outputUsdPerMTok: 0,
     })).rejects.toMatchObject({ data: { code: "bad_model" } });

@@ -26,6 +26,15 @@ export const MAX_ROLLUP_ENTRIES = 100; // per keyed array in a daily rollup
 export const OTHER_KEY = "(other)";
 export const MAX_STRING_LENGTH = 256;
 
+/**
+ * Upper bound on a manually entered model price (USD per million tokens), checked by both
+ * `parsePrice` (client) and `prices.upsert` (server) so the two cannot drift. This is a typo
+ * guard, not a pricing policy — it exists to catch a fat-fingered entry (e.g. `2000000` typed for
+ * `2.00`), not to express a real ceiling: it is roughly 333x the priciest seed-table entry
+ * (`gpt-5.5` output at 30), so no real model price can hit it.
+ */
+export const MAX_PRICE_USD_PER_MTOK = 10000;
+
 export const TTFT_BUCKETS_MS = [
   250, 500, 750, 1000, 1500, 2000, 3000, 4000, 6000, 8000, 12000, 16000, 24000, 32000, 60000,
   Number.POSITIVE_INFINITY,

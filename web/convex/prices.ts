@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { MAX_PRICE_USD_PER_MTOK } from "../../shared/src/constants";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation } from "./_generated/server";
 import { authedMutation, authedQuery } from "./lib/auth";
@@ -53,7 +54,12 @@ export const upsert = authedMutation({
     const model = args.model.trim();
     if (model.length === 0 || model.length > 256) throw new ConvexError({ code: "bad_model" });
     for (const value of [args.inputUsdPerMTok, args.cachedInputUsdPerMTok, args.outputUsdPerMTok]) {
-      if (!Number.isFinite(value) || value < 0) throw new ConvexError({ code: "bad_price" });
+      // Upper bound is a typo guard (e.g. `2000000` fat-fingered for `2.00`), not a policy limit —
+      // see MAX_PRICE_USD_PER_MTOK's comment. Re-validated here even though the client already
+      // enforces it, so a bypassed/future client can never write an implausible price.
+      if (!Number.isFinite(value) || value < 0 || value > MAX_PRICE_USD_PER_MTOK) {
+        throw new ConvexError({ code: "bad_price" });
+      }
     }
     const fields = {
       inputUsdPerMTok: args.inputUsdPerMTok,

@@ -28,6 +28,7 @@ function PriceEditor({
   onRemove,
   removeLabel = "Remove",
   modelEditable,
+  error,
 }: {
   draft: Draft;
   onChange: (next: Draft) => void;
@@ -35,6 +36,7 @@ function PriceEditor({
   onRemove?: () => void;
   removeLabel?: string;
   modelEditable: boolean;
+  error: string | null;
 }) {
   const input = parsePrice(draft.input);
   const cached = parsePrice(draft.cached);
@@ -71,16 +73,94 @@ function PriceEditor({
       {field("cached", "Cached input")}
       {field("output", "Output")}
       <TableCell className="text-right whitespace-nowrap">
-        <Button size="sm" disabled={!valid} onClick={onSave}>
-          Save
-        </Button>
-        {onRemove ? (
-          <Button size="sm" variant="ghost" className="text-destructive" onClick={onRemove}>
-            {removeLabel}
-          </Button>
-        ) : null}
+        <div className="inline-flex flex-col items-end gap-1">
+          <span className="inline-flex gap-1">
+            <Button size="sm" disabled={!valid} onClick={onSave}>
+              Save
+            </Button>
+            {onRemove ? (
+              <Button size="sm" variant="ghost" className="text-destructive" onClick={onRemove}>
+                {removeLabel}
+              </Button>
+            ) : null}
+          </span>
+          <InlineError message={error} />
+        </div>
       </TableCell>
     </TableRow>
+  );
+}
+
+/** The "add a model" row: it owns its own `useAsyncAction`, matching `RenameCell`'s pattern in
+ * `machines-card.tsx`, so its pending/error state can never be shared with an existing price row. */
+function AddedPriceRow({
+  draft,
+  onChange,
+  onCancel,
+  onAdded,
+}: {
+  draft: Draft;
+  onChange: (next: Draft) => void;
+  onCancel: () => void;
+  onAdded: () => void;
+}) {
+  const upsert = useMutation(api.prices.upsert);
+  const save = useAsyncAction(async (d: Draft) => {
+    await upsert({
+      model: d.model.trim(),
+      inputUsdPerMTok: parsePrice(d.input)!,
+      cachedInputUsdPerMTok: parsePrice(d.cached)!,
+      outputUsdPerMTok: parsePrice(d.output)!,
+    });
+    onAdded();
+  });
+  return (
+    <PriceEditor
+      draft={draft}
+      onChange={onChange}
+      onSave={() => void save.run(draft)}
+      onRemove={onCancel}
+      removeLabel="Cancel"
+      modelEditable
+      error={save.error}
+    />
+  );
+}
+
+/** One existing price row. Owns its own `useAsyncAction` for both save and remove, matching
+ * `RenameCell`'s pattern — a row's pending/error state must never leak into a sibling row's. */
+function ExistingPriceRow({
+  price,
+  draft,
+  onChange,
+  onSaved,
+}: {
+  price: PriceRow;
+  draft: Draft;
+  onChange: (next: Draft) => void;
+  onSaved: () => void;
+}) {
+  const upsert = useMutation(api.prices.upsert);
+  const removePrice = useMutation(api.prices.remove);
+  const save = useAsyncAction(async (d: Draft) => {
+    await upsert({
+      model: d.model.trim(),
+      inputUsdPerMTok: parsePrice(d.input)!,
+      cachedInputUsdPerMTok: parsePrice(d.cached)!,
+      outputUsdPerMTok: parsePrice(d.output)!,
+    });
+    onSaved();
+  });
+  const remove = useAsyncAction(removePrice);
+  return (
+    <PriceEditor
+      draft={draft}
+      modelEditable={false}
+      onChange={onChange}
+      onSave={() => void save.run(draft)}
+      onRemove={() => void remove.run({ model: price.model })}
+      error={save.error ?? remove.error}
+    />
   );
 }
 
@@ -95,8 +175,6 @@ function toDraft(p: PriceRow): Draft {
 
 export function PricesCard() {
   const prices = useQuery(api.prices.list, {});
-  const upsert = useMutation(api.prices.upsert);
-  const removePrice = useMutation(api.prices.remove);
   const today = useToday();
   // The server already reports which models had tokens but no price row (contracts §9), so this
   // is a summary over the widest legal window, not the far heavier `stats.breakdowns`.
@@ -106,22 +184,6 @@ export function PricesCard() {
   );
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [added, setAdded] = useState<Draft | null>(null);
-
-  const save = useAsyncAction(async (draft: Draft) => {
-    await upsert({
-      model: draft.model.trim(),
-      inputUsdPerMTok: parsePrice(draft.input)!,
-      cachedInputUsdPerMTok: parsePrice(draft.cached)!,
-      outputUsdPerMTok: parsePrice(draft.output)!,
-    });
-    setDrafts((d) => {
-      const next = { ...d };
-      delete next[draft.model];
-      return next;
-    });
-    setAdded(null);
-  });
-  const remove = useAsyncAction(removePrice);
 
   const unpriced = seen ? [...seen.unpricedModels].sort() : [];
 
@@ -141,7 +203,6 @@ export function PricesCard() {
       }
       bodyClassName="flex flex-col gap-3"
     >
-      <InlineError message={save.error ?? remove.error} />
       {unpriced.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           Unpriced models seen:
@@ -182,27 +243,30 @@ export function PricesCard() {
             </TableHeader>
             <TableBody>
               {added ? (
-                <PriceEditor
+                <AddedPriceRow
                   draft={added}
                   onChange={setAdded}
-                  onSave={() => void save.run(added)}
                   // Otherwise starting "Add model" is a dead end: the header button is disabled
                   // while a draft is open, and there is no other way to back out of it.
-                  onRemove={() => setAdded(null)}
-                  removeLabel="Cancel"
-                  modelEditable
+                  onCancel={() => setAdded(null)}
+                  onAdded={() => setAdded(null)}
                 />
               ) : null}
               {prices.map((p) => {
                 const draft = drafts[p.model] ?? toDraft(p);
                 return (
-                  <PriceEditor
+                  <ExistingPriceRow
                     key={p._id}
+                    price={p}
                     draft={draft}
-                    modelEditable={false}
                     onChange={(next) => setDrafts((d) => ({ ...d, [p.model]: next }))}
-                    onSave={() => void save.run(draft)}
-                    onRemove={() => void remove.run({ model: p.model })}
+                    onSaved={() =>
+                      setDrafts((d) => {
+                        const next = { ...d };
+                        delete next[p.model];
+                        return next;
+                      })
+                    }
                   />
                 );
               })}

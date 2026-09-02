@@ -63,7 +63,7 @@ function RenameCell({ machine }: { machine: MachineRow }) {
           className="h-8 w-40"
           aria-label="Machine label"
         />
-        <Button type="submit" size="sm" disabled={rename.pending}>
+        <Button type="submit" size="sm" disabled={rename.pending || label.trim().length === 0}>
           Save
         </Button>
         <Button
