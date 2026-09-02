@@ -16,11 +16,14 @@ Codex CLI ──writes──▶ ~/.codex/sessions/**/rollout-*.jsonl
 
 ## What is uploaded (and what never is)
 
-Uploaded: token counts per model response, model names and reasoning efforts, tool kinds, skill
-names, the **basename** of the project folder, git branch names, timestamps and durations,
-counts of added/removed lines, Codex and collector versions, platform/arch and the machine label
-you choose. Never uploaded: prompts, responses, command strings, file paths, diff contents,
-repository URLs, hostnames (unless you opt in with `--hostname`).
+Uploaded: token counts per model response, model names and reasoning efforts, tool kinds and MCP
+tool identifiers (`server/tool`), skill names, the **basename** of the project folder, git branch
+names, timestamps and durations, counts of added/removed and changed files, how the session was
+started (`cli`, `exec`, `subagent:<kind>`, …), the session's IANA time zone (e.g.
+`America/Los_Angeles`), your weekly rate-limit percentage, Codex/collector/Node versions,
+platform/arch and the machine label you choose. Never uploaded: prompts, responses, command
+strings, file paths, diff contents, repository URLs, hostnames (unless you opt in with
+`--hostname`).
 
 Run `codex-kaboo sync --dry-run --json` any time to see the exact payload before you trust it —
 it parses your logs and prints what a real sync would send, with no network call and no state
