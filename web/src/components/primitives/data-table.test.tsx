@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { barWidth } from "./bar-cell";
 import { DataTable, type Column } from "./data-table";
 
@@ -34,5 +35,42 @@ describe("DataTable", () => {
   it("shows the empty label when there are no rows", () => {
     render(<DataTable columns={columns} rows={[]} rowKey={(r) => r.id} emptyLabel="No data in this range" />);
     expect(screen.getByText("No data in this range")).toBeInTheDocument();
+  });
+});
+
+describe("DataTable keyboard accessibility", () => {
+  it("makes a clickable row focusable and fires onRowClick exactly once for Enter and once for Space", async () => {
+    const onRowClick = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => r.id}
+        onRowClick={onRowClick}
+        rowLabel={(r) => r.name}
+      />,
+    );
+    const adaRow = screen.getByRole("button", { name: "Ada" });
+    expect(adaRow).toHaveAttribute("tabindex", "0");
+    adaRow.focus();
+    expect(adaRow).toHaveFocus();
+
+    await userEvent.keyboard("{Enter}");
+    expect(onRowClick).toHaveBeenCalledTimes(1);
+    expect(onRowClick).toHaveBeenNthCalledWith(1, rows[0]);
+
+    const bobRow = screen.getByRole("button", { name: "Bob" });
+    bobRow.focus();
+    await userEvent.keyboard(" ");
+    expect(onRowClick).toHaveBeenCalledTimes(2);
+    expect(onRowClick).toHaveBeenNthCalledWith(2, rows[1]);
+  });
+
+  it("keeps a plain, non-interactive row when onRowClick is not set", () => {
+    render(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />);
+    expect(screen.queryByRole("button", { name: "Ada" })).not.toBeInTheDocument();
+    const row = screen.getByText("Ada").closest("tr");
+    expect(row).not.toHaveAttribute("role");
+    expect(row).not.toHaveAttribute("tabindex");
   });
 });

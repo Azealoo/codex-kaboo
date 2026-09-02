@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { BarCell, type BarScale } from "./bar-cell";
@@ -19,6 +19,7 @@ export function DataTable<T>({
   scale = "linear",
   emptyLabel = "No data in this range",
   onRowClick,
+  rowLabel,
   barColor,
 }: {
   columns: Column<T>[];
@@ -27,6 +28,12 @@ export function DataTable<T>({
   scale?: BarScale;
   emptyLabel?: string;
   onRowClick?: (row: T) => void;
+  /**
+   * Accessible name for a clickable row, used as `aria-label` on the row when `onRowClick` is set.
+   * A consumer that wires `onRowClick` should always supply this (e.g. the row's subject name) —
+   * without it a keyboard/screen-reader user can activate the row but has no announced name for it.
+   */
+  rowLabel?: (row: T) => string;
   barColor?: (row: T) => string;
 }) {
   const maxima = new Map<string, number>();
@@ -58,25 +65,42 @@ export function DataTable<T>({
               </TableCell>
             </TableRow>
           ) : (
-            rows.map((row) => (
-              <TableRow
-                key={rowKey(row)}
-                onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={cn(onRowClick && "cursor-pointer")}
-              >
-                {columns.map((c) => (
-                  <TableCell key={c.key} className={cn("text-sm", c.align === "right" && "text-right font-mono tabular")}>
-                    {c.bar ? (
-                      <BarCell value={c.bar(row)} max={maxima.get(c.key) ?? 0} scale={scale} color={barColor?.(row)}>
-                        {c.render(row)}
-                      </BarCell>
-                    ) : (
-                      c.render(row)
-                    )}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
+            rows.map((row) => {
+              const handleKeyDown = onRowClick
+                ? (event: KeyboardEvent<HTMLTableRowElement>) => {
+                    if (event.key === "Enter") {
+                      onRowClick(row);
+                    } else if (event.key === " ") {
+                      // Match native button behaviour: Space activates but must not scroll the page.
+                      event.preventDefault();
+                      onRowClick(row);
+                    }
+                  }
+                : undefined;
+              return (
+                <TableRow
+                  key={rowKey(row)}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  onKeyDown={handleKeyDown}
+                  role={onRowClick ? "button" : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  aria-label={onRowClick ? rowLabel?.(row) : undefined}
+                  className={cn(onRowClick && "cursor-pointer")}
+                >
+                  {columns.map((c) => (
+                    <TableCell key={c.key} className={cn("text-sm", c.align === "right" && "text-right font-mono tabular")}>
+                      {c.bar ? (
+                        <BarCell value={c.bar(row)} max={maxima.get(c.key) ?? 0} scale={scale} color={barColor?.(row)}>
+                          {c.render(row)}
+                        </BarCell>
+                      ) : (
+                        c.render(row)
+                      )}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              );
+            })
           )}
         </TableBody>
       </Table>

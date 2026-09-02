@@ -33,7 +33,7 @@ export function StatCard({
 }: StatCardProps) {
   const rendered = typeof value === "number" || value === null ? formatMetricValue(kind, value) : value;
   return (
-    <Card className={cn("gap-1 rounded-xl border-border p-4 shadow-none", className)}>
+    <Card className={cn("gap-1 rounded-lg border-border p-4 shadow-none", className)}>
       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <span>{label}</span>
         {help ? <InfoTooltip text={help} /> : null}

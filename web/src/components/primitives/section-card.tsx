@@ -21,7 +21,7 @@ export function SectionCard({
   bodyClassName?: string;
 }) {
   return (
-    <Card className={cn("gap-3 rounded-xl border-border p-4 shadow-none", className)}>
+    <Card className={cn("gap-3 rounded-lg border-border p-4 shadow-none", className)}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="flex items-center gap-1.5 text-sm font-semibold">
