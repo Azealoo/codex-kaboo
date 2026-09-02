@@ -14,6 +14,18 @@ export const TOKEN_LAST_USED_THROTTLE_MS = 60_000;
  */
 export const REBUILD_PAGE_SIZE = 20;
 
+/**
+ * Guards `stats.loadRollups`'s document read. `dailyRollups` holds one document per (user, day),
+ * so a team-scope read over the full range is bounded only by active users × days — Convex caps a
+ * single query read at roughly 32,000 documents (and a 16 MiB payload, which can bind sooner,
+ * since each rollup carries several 100-entry sub-arrays). This cap fails loudly well under either
+ * ceiling; crossing it means it's time to add monthly rollups, exactly as the spec's Risks section
+ * already anticipates: "Rollups older than ~3 years would push an ALL-time query toward the 16 MiB
+ * read limit; add monthly rollups then." At this product's current scale (3 users, ~3,300 documents
+ * at the 1100-day maximum range) the cap is nowhere close.
+ */
+export const MAX_ROLLUP_DOCS_PER_QUERY = 20_000;
+
 /** Advertised in every sync response so the CLI can re-chunk (contracts §7). */
 export const LIMITS: SyncLimits = {
   maxBodyBytes: MAX_BODY_BYTES,

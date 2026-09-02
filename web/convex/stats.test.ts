@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { EventInput, SessionInput } from "./lib/aggregate";
+import { loadRollups } from "./stats";
 import { withUser, registerUser, seedRollup, setup, ZERO_TOOLS, type Harness } from "./test.helpers";
 
 const ev = (o: Partial<EventInput> = {}): EventInput => ({
@@ -131,6 +132,31 @@ describe("stats.leaderboard", () => {
     expect(board.previousRange).toBeNull();
     expect(board.rows.map((r) => [r.name, r.rank, r.previousRank])).toEqual([["Alice", 1, null], ["Bob", 2, null]]);
     expect(await withUser(t, "alice").query(api.stats.leaderboard, { from: "2025-01-01", to: "2025-01-01" })).toMatchObject({ rows: [] });
+  });
+});
+
+describe("loadRollups document cap", () => {
+  it("throws range_too_large past the cap, in both team and user scope", async () => {
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    await seedRollup(t, alice, "2026-08-29", [ev()], []);
+    await seedRollup(t, alice, "2026-08-30", [ev()], []);
+    await seedRollup(t, alice, "2026-08-31", [ev()], []);
+    const range = { from: "2026-08-29", to: "2026-08-31" };
+    await expect(
+      t.run(async (ctx) => loadRollups(ctx, range, undefined, 2)),
+    ).rejects.toMatchObject({ data: { code: "range_too_large", days: 3, docs: 2 } });
+    await expect(
+      t.run(async (ctx) => loadRollups(ctx, range, alice, 2)),
+    ).rejects.toMatchObject({ data: { code: "range_too_large", days: 3, docs: 2 } });
+  });
+
+  it("does not trip the cap for an ordinary-sized range", async () => {
+    const t = setup();
+    await seedTeam(t);
+    const range = { from: "2026-08-29", to: "2026-08-31" };
+    const rows = await t.run(async (ctx) => loadRollups(ctx, range, undefined));
+    expect(rows).toHaveLength(4);
   });
 });
 

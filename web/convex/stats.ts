@@ -1,11 +1,12 @@
-import { v } from "convex/values";
-import { bucketStart, eachBucket } from "../../shared/src/days";
+import { ConvexError, v } from "convex/values";
+import { bucketStart, daysBetween, eachBucket } from "../../shared/src/days";
 import { addTokens, emptyTokens, percentChange, ratio, ttftMean, ttftMedianApprox } from "../../shared/src/metrics";
 import type { Tokens } from "../../shared/src/sync";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { mergeRollups, type Aggregate } from "./lib/aggregate";
 import { authedQuery } from "./lib/auth";
+import { MAX_ROLLUP_DOCS_PER_QUERY } from "./lib/constants";
 import { loadPriceMap, priceTokens, sumCost } from "./lib/cost";
 import { assertRange, resolvePeriods } from "./lib/days";
 import type {
@@ -33,24 +34,41 @@ export const METRIC_KEYS: MetricKey[] = [
 
 // ---------- shared helpers (also used by Tasks 14–15) ----------
 
-/** Team scope reads by_day, user scope by_user_day; both inclusive on [from, to]. */
+/**
+ * Team scope reads by_day, user scope by_user_day; both inclusive on [from, to]. `dailyRollups`
+ * holds one document per (user, day), so a team-scope read is bounded only by active users × days
+ * in range — unbounded by this function alone. `.take(maxDocs + 1)` peeks one row past the cap
+ * (production default `MAX_ROLLUP_DOCS_PER_QUERY`; see its comment for the exact arithmetic) and
+ * throws `range_too_large` instead of silently reading toward Convex's ~32,000-document read
+ * ceiling, or the 16 MiB payload ceiling, which can bind sooner since each rollup carries several
+ * 100-entry sub-arrays.
+ */
 export async function loadRollups(
   ctx: QueryCtx,
   range: Range,
   userId?: Id<"users">,
+  maxDocs: number = MAX_ROLLUP_DOCS_PER_QUERY,
 ): Promise<Doc<"dailyRollups">[]> {
-  if (userId !== undefined) {
-    return await ctx.db
-      .query("dailyRollups")
-      .withIndex("by_user_day", (q) =>
-        q.eq("userId", userId).gte("day", range.from).lte("day", range.to),
-      )
-      .collect();
+  const rows =
+    userId !== undefined
+      ? await ctx.db
+          .query("dailyRollups")
+          .withIndex("by_user_day", (q) =>
+            q.eq("userId", userId).gte("day", range.from).lte("day", range.to),
+          )
+          .take(maxDocs + 1)
+      : await ctx.db
+          .query("dailyRollups")
+          .withIndex("by_day", (q) => q.gte("day", range.from).lte("day", range.to))
+          .take(maxDocs + 1);
+  if (rows.length > maxDocs) {
+    throw new ConvexError({
+      code: "range_too_large",
+      days: daysBetween(range.from, range.to),
+      docs: maxDocs,
+    });
   }
-  return await ctx.db
-    .query("dailyRollups")
-    .withIndex("by_day", (q) => q.gte("day", range.from).lte("day", range.to))
-    .collect();
+  return rows;
 }
 
 /** Every card metric as a plain number; `null` marks an undefined rate (division by zero). */
