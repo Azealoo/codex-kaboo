@@ -16,7 +16,12 @@ export function ActivityHeatmap({ grid }: { grid: ActivityGrid }) {
   return (
     <div className="relative overflow-x-auto" data-heatmap>
       <CellTooltip tip={tip} />
-      <div className="inline-grid gap-0.5" style={{ gridTemplateColumns: `auto repeat(${columns}, 11px)` }}>
+      <div
+        role="grid"
+        aria-label="Daily token usage heatmap"
+        className="inline-grid gap-0.5"
+        style={{ gridTemplateColumns: `auto repeat(${columns}, 11px)` }}
+      >
         <div />
         {grid.weeks.map((_, col) => {
           const label = grid.monthLabels.find((m) => m.column === col)?.label;

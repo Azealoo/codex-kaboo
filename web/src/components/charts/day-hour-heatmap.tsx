@@ -11,7 +11,12 @@ export function DayHourHeatmap({ grid, format }: { grid: number[][]; format: (va
   return (
     <div className="relative overflow-x-auto" data-heatmap>
       <CellTooltip tip={tip} />
-      <div className="inline-grid gap-0.5" style={{ gridTemplateColumns: "auto repeat(24, minmax(14px, 1fr))" }}>
+      <div
+        role="grid"
+        aria-label="Token usage heatmap by weekday and hour"
+        className="inline-grid gap-0.5"
+        style={{ gridTemplateColumns: "auto repeat(24, minmax(14px, 1fr))" }}
+      >
         <div />
         {Array.from({ length: 24 }, (_, h) => (
           <div key={h} className="text-center text-[10px] text-muted-foreground">
