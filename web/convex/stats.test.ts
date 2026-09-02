@@ -274,3 +274,95 @@ describe("stats.breakdowns", () => {
     expect(b.byHour).toEqual(new Array(24).fill(0));
   });
 });
+
+describe("stats.activityHeatmap", () => {
+  it("lists only days with data for one user, with cost and maxima", async () => {
+    const t = setup();
+    const { alice, bob } = await seedTeam(t);
+    await seedRollup(t, alice, "2026-08-15", [], [ses({ isSubagent: true, source: "subagent:review" })]);
+    const r = await withUser(t, "alice").query(api.stats.activityHeatmap, { userId: alice, from: "2026-08-01", to: "2026-08-31" });
+    expect(r.range).toEqual({ from: "2026-08-01", to: "2026-08-31" });
+    expect(r.days.map((d) => [d.day, d.tokens, d.sessions])).toEqual([
+      ["2026-08-29", 1200, 0],
+      ["2026-08-30", 1200, 1],
+      ["2026-08-31", 2400, 1],
+    ]);
+    expect(r.days[2]?.costUsd).toBeCloseTo(0.00656, 8);
+    expect(r.activeDays).toBe(3);
+    expect(r.maxTokens).toBe(2400);
+
+    const b = await withUser(t, "alice").query(api.stats.activityHeatmap, { userId: bob, from: "2026-08-01", to: "2026-08-31" });
+    expect(b.days).toEqual([{ day: "2026-08-31", tokens: 1200, sessions: 0, costUsd: 0 }]);
+  });
+});
+
+describe("stats.dayHourHeatmap", () => {
+  it("accumulates hourly tokens per weekday (Monday = 0) and finds the peak cell", async () => {
+    const t = setup();
+    await seedTeam(t);
+    const r = await withUser(t, "alice").query(api.stats.dayHourHeatmap, { from: "2026-08-29", to: "2026-08-31" });
+    expect(r.grid).toHaveLength(7);
+    expect(r.grid.every((row) => row.length === 24)).toBe(true);
+    expect(r.grid[5]?.[9]).toBe(1200); // Saturday 2026-08-29
+    expect(r.grid[6]?.[9]).toBe(1200); // Sunday 2026-08-30
+    expect(r.grid[0]?.[9]).toBe(2400); // Monday 2026-08-31 (alice + bob)
+    expect(r.grid[0]?.[10]).toBe(1200);
+    expect(r.max).toBe(2400);
+    expect(r.peakWeekday).toBe(0);
+    expect(r.peakHour).toBe(9);
+  });
+
+  it("returns an all-zero grid without peaks when there is no data", async () => {
+    const t = setup();
+    await registerUser(t, "alice");
+    const r = await withUser(t, "alice").query(api.stats.dayHourHeatmap, { from: "2025-01-01", to: "2025-01-07" });
+    expect(r.grid.flat().every((v) => v === 0)).toBe(true);
+    expect(r).toMatchObject({ max: 0, peakHour: null, peakWeekday: null });
+  });
+});
+
+describe("stats.quota", () => {
+  it("returns null without snapshots and otherwise the most recently received one", async () => {
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    const bob = await registerUser(t, "bob");
+    expect(await withUser(t, "alice").query(api.stats.quota, {})).toBeNull();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("machines", {
+        machineId: "machine-1", userId: alice, label: "brisk-otter", platform: "darwin", cliVersion: "0.1.0",
+        firstSeenAt: 1, lastSyncAt: 100,
+        lastRateLimit: { observedAt: 90, usedPercent: 10, windowMinutes: 10080, resetsAt: 1000, planType: "team", receivedAt: 100 },
+      });
+      await ctx.db.insert("machines", {
+        machineId: "machine-2", userId: bob, label: "calm-heron", platform: "linux", cliVersion: "0.1.0",
+        firstSeenAt: 1, lastSyncAt: 200,
+        lastRateLimit: { observedAt: 80, usedPercent: 55, windowMinutes: 10080, receivedAt: 200 },
+      });
+      await ctx.db.insert("machines", {
+        machineId: "machine-3", userId: bob, label: "no-snapshot", platform: "win32", cliVersion: "0.1.0",
+        firstSeenAt: 1, lastSyncAt: 300,
+      });
+    });
+    expect(await withUser(t, "alice").query(api.stats.quota, {})).toEqual({
+      usedPercent: 55, windowMinutes: 10080, resetsAt: null, planType: null, limitId: null,
+      observedAt: 80, receivedAt: 200,
+      machine: { machineId: "machine-2", label: "calm-heron" },
+      user: { userId: bob, name: "Bob", imageUrl: null },
+    });
+  });
+});
+
+describe("stats.bounds", () => {
+  it("returns the first and last rollup day for the team or one user", async () => {
+    const t = setup();
+    const { bob } = await seedTeam(t);
+    expect(await withUser(t, "alice").query(api.stats.bounds, {})).toEqual({ firstDay: "2026-08-29", lastDay: "2026-08-31" });
+    expect(await withUser(t, "alice").query(api.stats.bounds, { userId: bob })).toEqual({ firstDay: "2026-08-31", lastDay: "2026-08-31" });
+  });
+
+  it("returns nulls without data", async () => {
+    const t = setup();
+    await registerUser(t, "alice");
+    expect(await withUser(t, "alice").query(api.stats.bounds, {})).toEqual({ firstDay: null, lastDay: null });
+  });
+});

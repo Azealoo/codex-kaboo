@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { bucketStart, daysBetween, eachBucket } from "../../shared/src/days";
+import { bucketStart, daysBetween, eachBucket, weekdayOf } from "../../shared/src/days";
 import { addTokens, emptyTokens, percentChange, ratio, ttftMean, ttftMedianApprox } from "../../shared/src/metrics";
 import type { Tokens } from "../../shared/src/sync";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -10,12 +10,16 @@ import { MAX_ROLLUP_DOCS_PER_QUERY } from "./lib/constants";
 import { loadPriceMap, priceTokens, sumCost } from "./lib/cost";
 import { assertRange, resolvePeriods } from "./lib/days";
 import type {
+  ActivityHeatmapResult,
+  BoundsResult,
   BreakdownsResult,
+  DayHourHeatmapResult,
   LeaderboardResult,
   LeaderboardRow,
   Metric,
   MetricKey,
   ModelRow,
+  QuotaResult,
   Range,
   SummaryResult,
   TrendPoint,
@@ -403,5 +407,108 @@ export const breakdowns = authedQuery({
       byHour: agg.byHour,
       toolCalls,
     };
+  },
+});
+
+export const activityHeatmap = authedQuery({
+  args: { userId: v.id("users"), from: v.string(), to: v.string() },
+  handler: async (ctx, args): Promise<ActivityHeatmapResult> => {
+    const range = assertRange(args.from, args.to);
+    const prices = await loadPriceMap(ctx);
+    const docs = await loadRollups(ctx, range, args.userId);
+    const days = docs
+      .filter((doc) => doc.tokens.total > 0 || doc.sessions > 0)
+      .map((doc) => ({
+        day: doc.day,
+        tokens: doc.tokens.total,
+        sessions: doc.sessions,
+        costUsd: sumCost(doc.byModel, prices).totalUsd,
+      }))
+      .sort((a, b) => cmpKey(a.day, b.day));
+    return {
+      range,
+      days,
+      activeDays: days.length,
+      maxTokens: days.reduce((max, d) => Math.max(max, d.tokens), 0),
+    };
+  },
+});
+
+export const dayHourHeatmap = authedQuery({
+  args: { from: v.string(), to: v.string(), userId: v.optional(v.id("users")) },
+  handler: async (ctx, args): Promise<DayHourHeatmapResult> => {
+    const range = assertRange(args.from, args.to);
+    const docs = await loadRollups(ctx, range, args.userId);
+    const grid = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
+    for (const doc of docs) {
+      const row = grid[weekdayOf(doc.day)];
+      if (!row) continue;
+      for (let hour = 0; hour < 24; hour++) row[hour] = (row[hour] ?? 0) + (doc.byHour[hour] ?? 0);
+    }
+    let max = 0;
+    let peakHour: number | null = null;
+    let peakWeekday: number | null = null;
+    for (let weekday = 0; weekday < 7; weekday++) {
+      for (let hour = 0; hour < 24; hour++) {
+        const value = grid[weekday]?.[hour] ?? 0;
+        if (value > max) {
+          max = value;
+          peakWeekday = weekday;
+          peakHour = hour;
+        }
+      }
+    }
+    return { grid, max, peakHour, peakWeekday };
+  },
+});
+
+export const quota = authedQuery({
+  args: {},
+  handler: async (ctx): Promise<QuotaResult> => {
+    const machines = await ctx.db.query("machines").collect();
+    let best: Doc<"machines"> | null = null;
+    for (const machine of machines) {
+      const candidate = machine.lastRateLimit;
+      if (!candidate) continue;
+      const current = best?.lastRateLimit;
+      if (
+        !current ||
+        candidate.receivedAt > current.receivedAt ||
+        (candidate.receivedAt === current.receivedAt && candidate.observedAt > current.observedAt)
+      ) {
+        best = machine;
+      }
+    }
+    if (!best?.lastRateLimit) return null;
+    const snapshot = best.lastRateLimit;
+    return {
+      usedPercent: snapshot.usedPercent,
+      windowMinutes: snapshot.windowMinutes,
+      resetsAt: snapshot.resetsAt ?? null,
+      planType: snapshot.planType ?? null,
+      limitId: snapshot.limitId ?? null,
+      observedAt: snapshot.observedAt,
+      receivedAt: snapshot.receivedAt,
+      machine: { machineId: best.machineId, label: best.label },
+      user: await userRef(ctx, best.userId),
+    };
+  },
+});
+
+export const bounds = authedQuery({
+  args: { userId: v.optional(v.id("users")) },
+  handler: async (ctx, args): Promise<BoundsResult> => {
+    const userId = args.userId;
+    const ordered = (direction: "asc" | "desc") =>
+      userId !== undefined
+        ? ctx.db
+            .query("dailyRollups")
+            .withIndex("by_user_day", (q) => q.eq("userId", userId))
+            .order(direction)
+            .first()
+        : ctx.db.query("dailyRollups").withIndex("by_day").order(direction).first();
+    const first = await ordered("asc");
+    const last = await ordered("desc");
+    return { firstDay: first?.day ?? null, lastDay: last?.day ?? null };
   },
 });
