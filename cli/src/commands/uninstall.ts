@@ -8,7 +8,10 @@ export interface UninstallResult {
   detail: string;
 }
 
-export async function runUninstall(opts: { systemd: boolean; json: boolean }, deps: ScheduleDeps): Promise<UninstallResult> {
+export async function runUninstall(
+  opts: { systemd: boolean; json: boolean },
+  deps: ScheduleDeps,
+): Promise<UninstallResult> {
   const adapter = pickScheduler(deps.platform, { systemd: opts.systemd });
   try {
     const detail = await adapter.uninstall(await buildScheduleTarget(deps), deps.spawner);

@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDays, bucketFor, bucketStart, compareDays, dayHourIn, daysBetween, dayToUtcMs, eachBucket,
-  eachDay, isValidDay, monthStart, previousPeriod, utcMsToDay, weekStart, weekdayOf,
+  addDays,
+  bucketFor,
+  bucketStart,
+  compareDays,
+  dayHourIn,
+  daysBetween,
+  dayToUtcMs,
+  eachBucket,
+  eachDay,
+  isValidDay,
+  monthStart,
+  previousPeriod,
+  utcMsToDay,
+  weekStart,
+  weekdayOf,
 } from "./days";
 
 describe("isValidDay", () => {
@@ -33,7 +46,12 @@ describe("day arithmetic", () => {
     expect(daysBetween("2026-01-01", "2026-01-31")).toBe(31);
     expect(daysBetween("2026-01-01", "2026-01-01")).toBe(1);
     expect(daysBetween("2026-01-02", "2026-01-01")).toBe(0);
-    expect(eachDay("2026-02-27", "2026-03-02")).toEqual(["2026-02-27", "2026-02-28", "2026-03-01", "2026-03-02"]);
+    expect(eachDay("2026-02-27", "2026-03-02")).toEqual([
+      "2026-02-27",
+      "2026-02-28",
+      "2026-03-01",
+      "2026-03-02",
+    ]);
     expect(eachDay("2026-01-02", "2026-01-01")).toEqual([]);
   });
   it("compares lexically", () => {
@@ -45,9 +63,18 @@ describe("day arithmetic", () => {
 
 describe("previousPeriod", () => {
   it("returns the same-length period immediately before", () => {
-    expect(previousPeriod("2026-03-01", "2026-03-30")).toEqual({ from: "2026-01-30", to: "2026-02-28" });
-    expect(previousPeriod("2024-03-01", "2024-03-01")).toEqual({ from: "2024-02-29", to: "2024-02-29" });
-    expect(previousPeriod("2026-01-01", "2026-01-07")).toEqual({ from: "2025-12-25", to: "2025-12-31" });
+    expect(previousPeriod("2026-03-01", "2026-03-30")).toEqual({
+      from: "2026-01-30",
+      to: "2026-02-28",
+    });
+    expect(previousPeriod("2024-03-01", "2024-03-01")).toEqual({
+      from: "2024-02-29",
+      to: "2024-02-29",
+    });
+    expect(previousPeriod("2026-01-01", "2026-01-07")).toEqual({
+      from: "2025-12-25",
+      to: "2025-12-31",
+    });
   });
 });
 
@@ -62,8 +89,16 @@ describe("buckets", () => {
   it("enumerates bucket starts covering the range", () => {
     expect(bucketStart("2026-09-01", "day")).toBe("2026-09-01");
     expect(eachBucket("2026-08-30", "2026-09-02", "week")).toEqual(["2026-08-24", "2026-08-31"]);
-    expect(eachBucket("2025-12-15", "2026-02-03", "month")).toEqual(["2025-12-01", "2026-01-01", "2026-02-01"]);
-    expect(eachBucket("2026-01-30", "2026-02-01", "day")).toEqual(["2026-01-30", "2026-01-31", "2026-02-01"]);
+    expect(eachBucket("2025-12-15", "2026-02-03", "month")).toEqual([
+      "2025-12-01",
+      "2026-01-01",
+      "2026-02-01",
+    ]);
+    expect(eachBucket("2026-01-30", "2026-02-01", "day")).toEqual([
+      "2026-01-30",
+      "2026-01-31",
+      "2026-02-01",
+    ]);
   });
   it("picks the granularity from the span", () => {
     expect(bucketFor(1)).toBe("day");
@@ -77,13 +112,28 @@ describe("buckets", () => {
 describe("dayHourIn", () => {
   it("formats in the given zone with h23 hours", () => {
     expect(dayHourIn(Date.UTC(2026, 0, 1, 0, 0, 0), "UTC")).toEqual({ day: "2026-01-01", hour: 0 });
-    expect(dayHourIn(Date.UTC(2026, 0, 1, 0, 0, 0), "Asia/Tokyo")).toEqual({ day: "2026-01-01", hour: 9 });
-    expect(dayHourIn(Date.UTC(2026, 0, 1, 7, 59, 59), "America/Los_Angeles")).toEqual({ day: "2025-12-31", hour: 23 });
-    expect(dayHourIn(Date.UTC(2026, 0, 1, 8, 0, 0), "America/Los_Angeles")).toEqual({ day: "2026-01-01", hour: 0 });
+    expect(dayHourIn(Date.UTC(2026, 0, 1, 0, 0, 0), "Asia/Tokyo")).toEqual({
+      day: "2026-01-01",
+      hour: 9,
+    });
+    expect(dayHourIn(Date.UTC(2026, 0, 1, 7, 59, 59), "America/Los_Angeles")).toEqual({
+      day: "2025-12-31",
+      hour: 23,
+    });
+    expect(dayHourIn(Date.UTC(2026, 0, 1, 8, 0, 0), "America/Los_Angeles")).toEqual({
+      day: "2026-01-01",
+      hour: 0,
+    });
   });
   it("handles the DST switch (2026-03-08 in Los Angeles)", () => {
-    expect(dayHourIn(Date.UTC(2026, 2, 8, 9, 30, 0), "America/Los_Angeles")).toEqual({ day: "2026-03-08", hour: 1 });
-    expect(dayHourIn(Date.UTC(2026, 2, 8, 10, 30, 0), "America/Los_Angeles")).toEqual({ day: "2026-03-08", hour: 3 });
+    expect(dayHourIn(Date.UTC(2026, 2, 8, 9, 30, 0), "America/Los_Angeles")).toEqual({
+      day: "2026-03-08",
+      hour: 1,
+    });
+    expect(dayHourIn(Date.UTC(2026, 2, 8, 10, 30, 0), "America/Los_Angeles")).toEqual({
+      day: "2026-03-08",
+      hour: 3,
+    });
   });
   it("falls back instead of throwing for an invalid or missing zone", () => {
     const a = dayHourIn(Date.UTC(2026, 5, 15, 12, 0, 0), "Mars/Olympus");

@@ -31,14 +31,21 @@ export function AvatarName({
         <img src={imageUrl} alt="" className={cn("rounded-full object-cover", dim)} style={ring} />
       ) : (
         <span
-          className={cn("inline-flex items-center justify-center rounded-full bg-muted font-semibold text-muted-foreground", dim)}
+          className={cn(
+            "inline-flex items-center justify-center rounded-full bg-muted font-semibold text-muted-foreground",
+            dim,
+          )}
           style={ring}
           aria-hidden="true"
         >
           {initials(name) || "?"}
         </span>
       )}
-      {hideName ? <span className="sr-only">{name}</span> : <span className="truncate text-sm">{name}</span>}
+      {hideName ? (
+        <span className="sr-only">{name}</span>
+      ) : (
+        <span className="truncate text-sm">{name}</span>
+      )}
     </span>
   );
 }

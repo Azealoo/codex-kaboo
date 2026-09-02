@@ -4,8 +4,18 @@ import os from "node:os";
 import path from "node:path";
 import { kabooPaths } from "../../src/core/paths";
 import {
-  clearFailure, detectReset, emptyFileState, emptyState, isPermanentlyFailing, isUnchanged, MAX_FILE_FAILURES,
-  readState, recordFailure, resetAllFiles, resetFileState, writeState,
+  clearFailure,
+  detectReset,
+  emptyFileState,
+  emptyState,
+  isPermanentlyFailing,
+  isUnchanged,
+  MAX_FILE_FAILURES,
+  readState,
+  recordFailure,
+  resetAllFiles,
+  resetFileState,
+  writeState,
 } from "../../src/core/state";
 
 // Temp dirs are tracked and removed in afterEach so failed runs don't litter os.tmpdir().
@@ -39,7 +49,15 @@ describe("state file", () => {
     expect((await readState(paths)).corrupt).toBe(true);
   });
   it("resets file state while bumping the generation", () => {
-    const prev = { ...emptyFileState("/p/a.jsonl"), offset: 100, lines: 5, lastUploadedSeq: 4, summaryHash: "h", generation: 2, tail: "AA==" };
+    const prev = {
+      ...emptyFileState("/p/a.jsonl"),
+      offset: 100,
+      lines: 5,
+      lastUploadedSeq: 4,
+      summaryHash: "h",
+      generation: 2,
+      tail: "AA==",
+    };
     const reset = resetFileState(prev, "/p/moved.jsonl");
     expect(reset).toEqual({ ...emptyFileState("/p/moved.jsonl"), generation: 3 });
     expect(resetFileState(undefined, "/p/new.jsonl").generation).toBe(0);
@@ -62,10 +80,21 @@ describe("detectReset / isUnchanged", () => {
     writeFileSync(file, `${content.slice(0, 50)}XXXXXXXXXX${content.slice(60)}`);
     expect(await detectReset(good, file, 100)).toBe("tail-mismatch");
     expect(await detectReset({ ...good, offset: 0, tail: "" }, file, 100)).toBeNull();
-    const short = { ...emptyFileState(file), offset: 20, size: 20, tail: Buffer.from("different-bytes-here").toString("base64") };
+    const short = {
+      ...emptyFileState(file),
+      offset: 20,
+      size: 20,
+      tail: Buffer.from("different-bytes-here").toString("base64"),
+    };
     expect(await detectReset(short, file, 100)).toBe("tail-mismatch");
     writeFileSync(file, content);
-    expect(await detectReset({ ...short, tail: Buffer.from(content.slice(0, 20)).toString("base64") }, file, 100)).toBeNull();
+    expect(
+      await detectReset(
+        { ...short, tail: Buffer.from(content.slice(0, 20)).toString("base64") },
+        file,
+        100,
+      ),
+    ).toBeNull();
   });
   it("treats identical size+mtime as unchanged unless the last run errored", () => {
     const f = { ...emptyFileState("/p"), size: 10, mtimeMs: 5 };

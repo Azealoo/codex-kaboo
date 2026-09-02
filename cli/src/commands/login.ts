@@ -48,39 +48,69 @@ export function normalizeServer(url: string): string | null {
  * `--hostname` → true, `--no-hostname` → false, neither flag → keep whatever was already
  * configured (false for a first-ever login). The only way back from an opt-in short of `logout`.
  */
-export function resolveHostnameOptIn(flag: boolean | undefined, existing: boolean | undefined): boolean {
+export function resolveHostnameOptIn(
+  flag: boolean | undefined,
+  existing: boolean | undefined,
+): boolean {
   return flag ?? existing ?? false;
 }
 
 export async function runLogin(opts: LoginOptions, deps: LoginDeps): Promise<LoginResult> {
-  const fail = (error: string, server = ""): LoginResult => ({ ok: false, exitCode: 2, server, label: "", machineId: "", user: null, token: null, error });
+  const fail = (error: string, server = ""): LoginResult => ({
+    ok: false,
+    exitCode: 2,
+    server,
+    label: "",
+    machineId: "",
+    user: null,
+    token: null,
+    error,
+  });
   const rawServer = opts.server ?? deps.env.CODEX_KABOO_SERVER ?? deps.bakedServer;
-  if (!rawServer) return fail("no server configured: pass --server https://<deployment>.convex.site (or set CODEX_KABOO_SERVER)");
+  if (!rawServer)
+    return fail(
+      "no server configured: pass --server https://<deployment>.convex.site (or set CODEX_KABOO_SERVER)",
+    );
   const server = normalizeServer(rawServer);
-  if (server === null) return fail(`invalid server URL "${rawServer}": expected https://<deployment>.convex.site (--server)`);
+  if (server === null)
+    return fail(
+      `invalid server URL "${rawServer}": expected https://<deployment>.convex.site (--server)`,
+    );
 
   const token = (opts.token ?? (await deps.prompt("Paste your sync token (ck_…): "))).trim();
   // An empty value is what a non-interactive caller gets when stdin is at EOF (`login < /dev/null`
   // in a provisioning script): say so explicitly instead of complaining about a missing `ck_`
   // prefix, which reads as "you typed the wrong thing" when nothing was typed at all.
   if (token.length === 0) {
-    return fail(`no token provided: pass --token ck_… or run \`codex-kaboo login\` interactively (stdin was empty)`, server);
+    return fail(
+      `no token provided: pass --token ck_… or run \`codex-kaboo login\` interactively (stdin was empty)`,
+      server,
+    );
   }
   if (!token.startsWith(TOKEN_PREFIX) || token.length <= TOKEN_PREFIX.length) {
-    return fail(`invalid token: expected a token starting with ${TOKEN_PREFIX} (create one in the dashboard under Settings → Sync tokens)`, server);
+    return fail(
+      `invalid token: expected a token starting with ${TOKEN_PREFIX} (create one in the dashboard under Settings → Sync tokens)`,
+      server,
+    );
   }
 
   let who;
   try {
     who = await deps.createClient({ server, token }).whoami();
   } catch (error) {
-    return fail(`the server rejected the token or is unreachable: ${error instanceof Error ? error.message : String(error)}`, server);
+    return fail(
+      `the server rejected the token or is unreachable: ${error instanceof Error ? error.message : String(error)}`,
+      server,
+    );
   }
 
   const existing = await readConfig(deps.paths).catch(() => null);
   const machineId = existing?.machineId ?? deps.newId();
   const requestedLabel = opts.machineName?.trim();
-  const label = requestedLabel && requestedLabel.length > 0 ? requestedLabel.slice(0, 64) : (existing?.label ?? randomLabel());
+  const label =
+    requestedLabel && requestedLabel.length > 0
+      ? requestedLabel.slice(0, 64)
+      : (existing?.label ?? randomLabel());
   const config: Config = {
     server,
     token,
@@ -95,7 +125,9 @@ export async function runLogin(opts: LoginOptions, deps: LoginDeps): Promise<Log
     loggedInAt: deps.now(),
   };
   await writeConfig(deps.paths, config);
-  deps.log.info(`logged in to ${server} as ${who.name ?? who.email ?? who.userId} (machine "${label}")`);
+  deps.log.info(
+    `logged in to ${server} as ${who.name ?? who.email ?? who.userId} (machine "${label}")`,
+  );
   return {
     ok: true,
     exitCode: 0,

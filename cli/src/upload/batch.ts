@@ -1,4 +1,8 @@
-import { CLI_BATCH_MAX_BYTES, CLI_BATCH_MAX_EVENTS, MAX_SESSIONS_PER_REQUEST } from "@codex-kaboo/shared/constants";
+import {
+  CLI_BATCH_MAX_BYTES,
+  CLI_BATCH_MAX_EVENTS,
+  MAX_SESSIONS_PER_REQUEST,
+} from "@codex-kaboo/shared/constants";
 import type { SessionSummary, TokenEvent } from "@codex-kaboo/shared/sync";
 
 export interface FileUpload {
@@ -44,7 +48,10 @@ function newBatch(): Batch {
   return { sessions: [], tokenEvents: [], files: [] };
 }
 
-export function buildBatches(uploads: FileUpload[], limits: BatchLimits = DEFAULT_BATCH_LIMITS): Batch[] {
+export function buildBatches(
+  uploads: FileUpload[],
+  limits: BatchLimits = DEFAULT_BATCH_LIMITS,
+): Batch[] {
   const batches: Batch[] = [];
   let current = newBatch();
   let bytes = 0;
@@ -56,7 +63,10 @@ export function buildBatches(uploads: FileUpload[], limits: BatchLimits = DEFAUL
   };
   const pushSummary = (upload: FileUpload, lastSeq: number): void => {
     const size = summaryBytes(upload.summary);
-    if (!isEmpty() && (bytes + size > limits.maxBytes || current.sessions.length >= limits.maxSessions)) {
+    if (
+      !isEmpty() &&
+      (bytes + size > limits.maxBytes || current.sessions.length >= limits.maxSessions)
+    ) {
       if (lastSeq >= 0) current.files.push({ sessionId: upload.sessionId, lastSeq, final: false });
       flush();
     }
@@ -77,7 +87,8 @@ export function buildBatches(uploads: FileUpload[], limits: BatchLimits = DEFAUL
       while (i < events.length) {
         const event = events[i]!;
         const size = eventBytes(event);
-        const fits = current.tokenEvents.length < limits.maxEvents && bytes + size <= limits.maxBytes;
+        const fits =
+          current.tokenEvents.length < limits.maxEvents && bytes + size <= limits.maxBytes;
         if (!fits && !isEmpty()) break;
         current.tokenEvents.push(event); // an oversize event still ships alone in an empty batch
         bytes += size;

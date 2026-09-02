@@ -29,7 +29,8 @@ function defaultIsAlive(pid: number): boolean {
 export async function readLock(lockPath: string): Promise<LockInfo | null> {
   try {
     const raw = JSON.parse(await fs.readFile(lockPath, "utf8")) as Partial<LockInfo>;
-    if (typeof raw.pid === "number" && typeof raw.at === "number") return { pid: raw.pid, at: raw.at };
+    if (typeof raw.pid === "number" && typeof raw.at === "number")
+      return { pid: raw.pid, at: raw.at };
     return null;
   } catch {
     return null;

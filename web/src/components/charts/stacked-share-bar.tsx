@@ -14,7 +14,11 @@ export function StackedShareBar({
   const visible = segments.filter((s) => s.share > 0);
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex h-3 w-full gap-0.5 overflow-hidden rounded-sm bg-muted" role="list" aria-label="Share">
+      <div
+        className="flex h-3 w-full gap-0.5 overflow-hidden rounded-sm bg-muted"
+        role="list"
+        aria-label="Share"
+      >
         {visible.map((s) => (
           <div
             key={s.key}
@@ -31,10 +35,16 @@ export function StackedShareBar({
         <ul className="grid gap-1 text-xs sm:grid-cols-2">
           {segments.map((s) => (
             <li key={s.key} className="flex items-center gap-2">
-              <span className="inline-block size-2.5 shrink-0 rounded-sm" style={{ backgroundColor: s.color }} aria-hidden="true" />
+              <span
+                className="inline-block size-2.5 shrink-0 rounded-sm"
+                style={{ backgroundColor: s.color }}
+                aria-hidden="true"
+              />
               <span className="truncate text-muted-foreground">{s.label}</span>
               <span className="ml-auto font-medium tabular">{format(s.value)}</span>
-              <span className="w-12 text-right text-muted-foreground tabular">{formatPercent(s.share)}</span>
+              <span className="w-12 text-right text-muted-foreground tabular">
+                {formatPercent(s.share)}
+              </span>
             </li>
           ))}
         </ul>

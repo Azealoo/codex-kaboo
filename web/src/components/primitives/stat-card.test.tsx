@@ -6,7 +6,15 @@ import { StatCard } from "./stat-card";
 
 describe("StatCard", () => {
   it("renders label, formatted value and a positive delta pill", () => {
-    render(<StatCard label="Total tokens" value={1_234_567} kind="tokens" change={0.25} goodDirection="up" />);
+    render(
+      <StatCard
+        label="Total tokens"
+        value={1_234_567}
+        kind="tokens"
+        change={0.25}
+        goodDirection="up"
+      />,
+    );
     expect(screen.getByText("Total tokens")).toBeInTheDocument();
     expect(screen.getByText("1.2M")).toBeInTheDocument();
     const pill = screen.getByLabelText("+25.0% vs previous period, better");
@@ -14,7 +22,15 @@ describe("StatCard", () => {
     expect(pill).toHaveAttribute("data-good", "true");
   });
   it("hides the delta when change is null and shows an em dash for null values", () => {
-    render(<StatCard label="Cache hit rate" value={null} kind="percent" change={null} goodDirection="up" />);
+    render(
+      <StatCard
+        label="Cache hit rate"
+        value={null}
+        kind="percent"
+        change={null}
+        goodDirection="up"
+      />,
+    );
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(screen.queryByText(/vs previous/)).not.toBeInTheDocument();
   });

@@ -1,5 +1,12 @@
 import path from "node:path";
-import { assertNoNewline, checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTarget, type Spawner } from "./index";
+import {
+  assertNoNewline,
+  checkTargetPaths,
+  scheduledArgs,
+  type SchedulerAdapter,
+  type ScheduleTarget,
+  type Spawner,
+} from "./index";
 
 export const CRON_BEGIN = "# BEGIN codex-kaboo";
 export const CRON_END = "# END codex-kaboo";
@@ -31,7 +38,10 @@ export function cronQuote(value: string): string {
 
 /** POSIX-only generator: `path.posix` so the crontab line is byte-identical wherever the tests run (Windows CI included). */
 export function renderCronLine(target: ScheduleTarget): string {
-  const env = ["CODEX_KABOO_SCHEDULED=1", ...(target.codexHome ? [`CODEX_HOME=${cronQuote(target.codexHome)}`] : [])].join(" ");
+  const env = [
+    "CODEX_KABOO_SCHEDULED=1",
+    ...(target.codexHome ? [`CODEX_HOME=${cronQuote(target.codexHome)}`] : []),
+  ].join(" ");
   const log = cronQuote(path.posix.join(target.kabooHome, "cron.log"));
   return `*/15 * * * * ${env} ${cronQuote(target.nodePath)} ${cronQuote(target.scriptPath)} ${scheduledArgs().join(" ")} >> ${log} 2>&1`;
 }
@@ -107,14 +117,23 @@ export const cronAdapter: SchedulerAdapter = {
       current = await readCrontab(spawner);
     } catch (error) {
       if (error instanceof CrontabUnavailableError) {
-        return { installed: false, healthy: false, detail: `crontab is not available on this machine (${error.message}) — use \`codex-kaboo install --systemd\` instead` };
+        return {
+          installed: false,
+          healthy: false,
+          detail: `crontab is not available on this machine (${error.message}) — use \`codex-kaboo install --systemd\` instead`,
+        };
       }
       throw error;
     }
     const installed = current.includes(CRON_BEGIN);
     if (!installed) return { installed: false, healthy: false, detail: "not installed" };
     const missing = await checkTargetPaths(target);
-    if (missing.length > 0) return { installed: true, healthy: false, detail: `schedule broken: missing ${missing.join(", ")}; run \`codex-kaboo install\` again` };
+    if (missing.length > 0)
+      return {
+        installed: true,
+        healthy: false,
+        detail: `schedule broken: missing ${missing.join(", ")}; run \`codex-kaboo install\` again`,
+      };
     return { installed: true, healthy: true, detail: "crontab entry present" };
   },
 };

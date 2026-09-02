@@ -16,8 +16,15 @@ describe("constants", () => {
   });
   it("lists the nine fixed tool kinds", () => {
     expect(TOOL_KINDS).toEqual([
-      "commandRead", "commandList", "commandSearch", "commandOther", "fileChange",
-      "webSearch", "imageView", "mcpTool", "other",
+      "commandRead",
+      "commandList",
+      "commandSearch",
+      "commandOther",
+      "fileChange",
+      "webSearch",
+      "imageView",
+      "mcpTool",
+      "other",
     ]);
     expect(SCHEMA_VERSION).toBe(1);
   });

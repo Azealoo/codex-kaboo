@@ -15,7 +15,13 @@ export function SkillsSection({ range, userId }: { range: ResolvedRange; userId?
   const { data, isStale } = useBreakdowns(range, userId);
   const columns: Column<SkillRow>[] = [
     { key: "skill", header: "Skill", render: (r) => r.key },
-    { key: "count", header: "Invocations", align: "right", bar: (r) => r.count, render: (r) => formatInt(r.count) },
+    {
+      key: "count",
+      header: "Invocations",
+      align: "right",
+      bar: (r) => r.count,
+      render: (r) => formatInt(r.count),
+    },
     { key: "sessions", header: "Sessions", align: "right", render: (r) => formatInt(r.sessions) },
   ];
   return (
@@ -25,7 +31,13 @@ export function SkillsSection({ range, userId }: { range: ResolvedRange; userId?
       data={data}
       isStale={isStale}
     >
-      {(b) => (b.bySkill.length === 0 ? <EmptyState title="No skill use in this range" /> : <DataTable columns={columns} rows={b.bySkill} rowKey={(r) => r.key} />)}
+      {(b) =>
+        b.bySkill.length === 0 ? (
+          <EmptyState title="No skill use in this range" />
+        ) : (
+          <DataTable columns={columns} rows={b.bySkill} rowKey={(r) => r.key} />
+        )
+      }
     </QuerySection>
   );
 }

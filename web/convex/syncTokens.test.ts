@@ -40,11 +40,15 @@ describe("syncTokens.create", () => {
     await expect(t.action(api.syncTokens.create, { name: "x" })).rejects.toMatchObject({
       data: { code: "unauthenticated" },
     });
-    await expect(withUser(t, "alice").action(api.syncTokens.create, { name: "x" })).rejects.toMatchObject({
+    await expect(
+      withUser(t, "alice").action(api.syncTokens.create, { name: "x" }),
+    ).rejects.toMatchObject({
       data: { code: "user_not_registered" },
     });
     await registerUser(t, "alice");
-    await expect(withUser(t, "alice").action(api.syncTokens.create, { name: "   " })).rejects.toMatchObject({
+    await expect(
+      withUser(t, "alice").action(api.syncTokens.create, { name: "   " }),
+    ).rejects.toMatchObject({
       data: { code: "bad_name" },
     });
   });
@@ -69,7 +73,9 @@ describe("syncTokens.revoke", () => {
     await expect(
       withUser(t, "bob").mutation(api.syncTokens.revoke, { tokenId: alice.tokenId }),
     ).rejects.toMatchObject({ data: { code: "forbidden" } });
-    expect(await withUser(t, "alice").mutation(api.syncTokens.revoke, { tokenId: alice.tokenId })).toBeNull();
+    expect(
+      await withUser(t, "alice").mutation(api.syncTokens.revoke, { tokenId: alice.tokenId }),
+    ).toBeNull();
     const listed = await withUser(t, "alice").query(api.syncTokens.list, {});
     expect(listed[0]?.revokedAt).toEqual(expect.any(Number));
     const lookup = await t.query(internal.syncTokens.lookupByHash, {
@@ -83,7 +89,9 @@ describe("lookupByHash / touchLastUsed", () => {
   it("resolves a token to its user without the hash and throttles lastUsedAt to once a minute", async () => {
     const t = setup();
     const { userId, raw, tokenId } = await userWithToken(t, "alice");
-    const found = await t.query(internal.syncTokens.lookupByHash, { tokenHash: await sha256Hex(raw) });
+    const found = await t.query(internal.syncTokens.lookupByHash, {
+      tokenHash: await sha256Hex(raw),
+    });
     expect(found).toEqual({
       tokenId,
       userId,
@@ -93,11 +101,19 @@ describe("lookupByHash / touchLastUsed", () => {
       lastUsedAt: null,
       user: { name: "Alice", email: "alice@example.com" },
     });
-    expect(await t.query(internal.syncTokens.lookupByHash, { tokenHash: "0".repeat(64) })).toBeNull();
+    expect(
+      await t.query(internal.syncTokens.lookupByHash, { tokenHash: "0".repeat(64) }),
+    ).toBeNull();
 
-    expect(await t.mutation(internal.syncTokens.touchLastUsed, { tokenId, now: 1_000_000 })).toBe(true);
-    expect(await t.mutation(internal.syncTokens.touchLastUsed, { tokenId, now: 1_059_999 })).toBe(false);
-    expect(await t.mutation(internal.syncTokens.touchLastUsed, { tokenId, now: 1_060_000 })).toBe(true);
+    expect(await t.mutation(internal.syncTokens.touchLastUsed, { tokenId, now: 1_000_000 })).toBe(
+      true,
+    );
+    expect(await t.mutation(internal.syncTokens.touchLastUsed, { tokenId, now: 1_059_999 })).toBe(
+      false,
+    );
+    expect(await t.mutation(internal.syncTokens.touchLastUsed, { tokenId, now: 1_060_000 })).toBe(
+      true,
+    );
     const row = await t.run(async (ctx) => ctx.db.get(tokenId));
     expect(row?.lastUsedAt).toBe(1_060_000);
   });
@@ -106,14 +122,26 @@ describe("lookupByHash / touchLastUsed", () => {
 describe("syncTokens.mint (bootstrap)", () => {
   it("creates a pending user that the first Clerk sign-in adopts", async () => {
     const t = setup();
-    const minted = await t.action(internal.syncTokens.mint, { email: "Alice@Example.com", name: "Alice" });
+    const minted = await t.action(internal.syncTokens.mint, {
+      email: "Alice@Example.com",
+      name: "Alice",
+    });
     expect(minted.token).toMatch(/^ck_[A-Za-z0-9_-]{43}$/);
     expect(minted.prefix).toBe(minted.token.slice(0, 9));
     const pending = await t.run(async (ctx) => ctx.db.get(minted.userId));
-    expect(pending).toMatchObject({ clerkId: "pending:alice@example.com", email: "alice@example.com", name: "Alice" });
-    const who = await t.fetch("/api/v1/whoami", { headers: { authorization: `Bearer ${minted.token}` } });
+    expect(pending).toMatchObject({
+      clerkId: "pending:alice@example.com",
+      email: "alice@example.com",
+      name: "Alice",
+    });
+    const who = await t.fetch("/api/v1/whoami", {
+      headers: { authorization: `Bearer ${minted.token}` },
+    });
     expect(who.status).toBe(200);
-    expect(await who.json()).toMatchObject({ userId: minted.userId, token: { name: "cli-bootstrap" } });
+    expect(await who.json()).toMatchObject({
+      userId: minted.userId,
+      token: { name: "cli-bootstrap" },
+    });
 
     const adopted = await withUser(t, "alice").mutation(api.users.ensure, {});
     expect(adopted).toBe(minted.userId);
@@ -122,7 +150,9 @@ describe("syncTokens.mint (bootstrap)", () => {
       clerkId: "user_alice",
       tokenIdentifier: "https://clerk.example|user_alice",
     });
-    expect((await withUser(t, "alice").query(api.syncTokens.list, {})).map((r) => r.name)).toEqual(["cli-bootstrap"]);
+    expect((await withUser(t, "alice").query(api.syncTokens.list, {})).map((r) => r.name)).toEqual([
+      "cli-bootstrap",
+    ]);
   });
 
   it("attaches to an already registered user with the same email", async () => {

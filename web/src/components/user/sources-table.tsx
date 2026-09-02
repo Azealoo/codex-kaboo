@@ -16,7 +16,13 @@ export function SourcesTable({ range, userId }: { range: ResolvedRange; userId: 
   const { data, isStale } = useBreakdowns(range, userId);
   const columns: Column<SourceRow>[] = [
     { key: "source", header: "Source", render: (r) => sourceLabel(r.key) },
-    { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
+    {
+      key: "tokens",
+      header: "Tokens",
+      align: "right",
+      bar: (r) => r.tokens,
+      render: (r) => formatCompact(r.tokens),
+    },
     { key: "sessions", header: "Sessions", align: "right", render: (r) => formatInt(r.sessions) },
     { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },
   ];
@@ -28,7 +34,13 @@ export function SourcesTable({ range, userId }: { range: ResolvedRange; userId: 
       isStale={isStale}
       skeletonClassName="h-32"
     >
-      {(b) => (b.bySource.length === 0 ? <EmptyState title="No sessions in this range" /> : <DataTable columns={columns} rows={b.bySource} rowKey={(r) => r.key} />)}
+      {(b) =>
+        b.bySource.length === 0 ? (
+          <EmptyState title="No sessions in this range" />
+        ) : (
+          <DataTable columns={columns} rows={b.bySource} rowKey={(r) => r.key} />
+        )
+      }
     </QuerySection>
   );
 }

@@ -13,7 +13,14 @@ import {
   unpricedFooter,
 } from "./chart-data";
 
-const tokens = (total: number) => ({ input: total, cachedInput: 0, cacheWrite: 0, output: 0, reasoning: 0, total });
+const tokens = (total: number) => ({
+  input: total,
+  cachedInput: 0,
+  cacheWrite: 0,
+  output: 0,
+  reasoning: 0,
+  total,
+});
 const u1 = "u1" as Id<"users">;
 const u2 = "u2" as Id<"users">;
 
@@ -76,7 +83,12 @@ describe("trendByUser", () => {
   it("builds one slot series per user sorted by total desc, zero-filled rows and the peak", () => {
     const stacked = trendByUser(trends, colors);
     expect(stacked.series.map((s) => s.label)).toEqual(["Bob", "Ada"]);
-    expect(stacked.series[0]).toEqual({ key: "s0", label: "Bob", color: CATEGORICAL[1], entity: "u2" });
+    expect(stacked.series[0]).toEqual({
+      key: "s0",
+      label: "Bob",
+      color: CATEGORICAL[1],
+      entity: "u2",
+    });
     expect(stacked.rows).toEqual([
       { x: "2026-09-01", label: "Sep 1", s0: 0, s1: 100 },
       { x: "2026-09-02", label: "Sep 2", s0: 300, s1: 100 },
@@ -91,8 +103,18 @@ describe("trendByModel", () => {
     const colors = assignSlots(["gpt-5.6-sol", "gpt-5.6-luna"]);
     const stacked = trendByModel(trends, colors, 7);
     expect(stacked.series).toHaveLength(8);
-    expect(stacked.series[0]).toEqual({ key: "s0", label: "gpt-5.6-sol", color: CATEGORICAL[0], entity: "gpt-5.6-sol" });
-    expect(stacked.series[7]).toEqual({ key: "other", label: "Other", color: OTHER_COLOR, entity: "(other)" });
+    expect(stacked.series[0]).toEqual({
+      key: "s0",
+      label: "gpt-5.6-sol",
+      color: CATEGORICAL[0],
+      entity: "gpt-5.6-sol",
+    });
+    expect(stacked.series[7]).toEqual({
+      key: "other",
+      label: "Other",
+      color: OTHER_COLOR,
+      entity: "(other)",
+    });
     for (const s of stacked.series) expect(s.key).not.toContain(".");
     expect(stacked.rows[1]?.other).toBe(20); // m8 + m9
     expect(stacked.rows[0]?.other).toBe(0);

@@ -4,7 +4,8 @@ import type { Metric, MetricKey, SummaryResult } from "@convex/lib/types";
 
 function summaryWith(values: Partial<Record<MetricKey, number | null>>): SummaryResult {
   const metrics = {} as Record<MetricKey, Metric>;
-  for (const [k, v] of Object.entries(values)) metrics[k as MetricKey] = { current: v ?? null, previous: null, change: null };
+  for (const [k, v] of Object.entries(values))
+    metrics[k as MetricKey] = { current: v ?? null, previous: null, change: null };
   return {
     range: { from: "2026-08-03", to: "2026-09-01" },
     previousRange: null,
@@ -35,7 +36,12 @@ describe("time analysis", () => {
       sessions: 5,
     });
     const byHour = Array.from({ length: 24 }, (_, h) => (h === 21 ? 100 : 0));
-    const rows = timeAnalysisRows(summary, byHour, { grid: [], max: 0, peakHour: 21, peakWeekday: 2 });
+    const rows = timeAnalysisRows(summary, byHour, {
+      grid: [],
+      max: 0,
+      peakHour: 21,
+      peakWeekday: 2,
+    });
     expect(rows.map((r) => [r.label, r.value])).toEqual([
       ["Total hours", "10h"],
       ["Active hours", "5h"],
@@ -57,7 +63,12 @@ describe("time analysis", () => {
       sessions: null,
     });
     const byHour = Array.from({ length: 24 }, () => 0);
-    const rows = timeAnalysisRows(summary, byHour, { grid: [], max: 0, peakHour: null, peakWeekday: null });
+    const rows = timeAnalysisRows(summary, byHour, {
+      grid: [],
+      max: 0,
+      peakHour: null,
+      peakWeekday: null,
+    });
     expect(rows.map((r) => [r.label, r.value])).toEqual([
       ["Total hours", "0h"],
       ["Active hours", "0h"],

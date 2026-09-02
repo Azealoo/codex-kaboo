@@ -12,19 +12,36 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { sourceLabel } from "@/lib/breakdowns";
-import { formatCompact, formatDateTime, formatDurationMs, formatInt, formatPercent, formatUsd } from "@/lib/format";
+import {
+  formatCompact,
+  formatDateTime,
+  formatDurationMs,
+  formatInt,
+  formatPercent,
+  formatUsd,
+} from "@/lib/format";
 
 const PAGE_SIZE = 20;
 
 function SessionsTable({ userId }: { userId: Id<"users"> }) {
-  const { results, status, loadMore } = usePaginatedQuery(api.sessions.listRecent, { userId }, { initialNumItems: PAGE_SIZE });
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.sessions.listRecent,
+    { userId },
+    { initialNumItems: PAGE_SIZE },
+  );
   const columns: Column<SessionRow>[] = [
     {
       key: "started",
       header: "Started",
       render: (s) => (
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-          {s.inProgress ? <span className="inline-block size-1.5 rounded-full bg-status-good" title="In progress" aria-label="In progress" /> : null}
+          {s.inProgress ? (
+            <span
+              className="inline-block size-1.5 rounded-full bg-status-good"
+              title="In progress"
+              aria-label="In progress"
+            />
+          ) : null}
           {formatDateTime(s.startedAt)}
         </span>
       ),
@@ -34,10 +51,30 @@ function SessionsTable({ userId }: { userId: Id<"users"> }) {
     { key: "model", header: "Model", render: (s) => s.model },
     { key: "effort", header: "Effort", render: (s) => s.effort ?? "—" },
     { key: "turns", header: "Turns", align: "right", render: (s) => formatInt(s.turns) },
-    { key: "tokens", header: "Tokens", align: "right", render: (s) => formatCompact(s.tokens.total) },
-    { key: "cache", header: "Cache hit", align: "right", render: (s) => formatPercent(s.cacheHitRate) },
-    { key: "cost", header: "Cost", align: "right", render: (s) => (s.costUsd === null ? "unpriced" : formatUsd(s.costUsd)) },
-    { key: "active", header: "Active", align: "right", render: (s) => formatDurationMs(s.activeMs) },
+    {
+      key: "tokens",
+      header: "Tokens",
+      align: "right",
+      render: (s) => formatCompact(s.tokens.total),
+    },
+    {
+      key: "cache",
+      header: "Cache hit",
+      align: "right",
+      render: (s) => formatPercent(s.cacheHitRate),
+    },
+    {
+      key: "cost",
+      header: "Cost",
+      align: "right",
+      render: (s) => (s.costUsd === null ? "unpriced" : formatUsd(s.costUsd)),
+    },
+    {
+      key: "active",
+      header: "Active",
+      align: "right",
+      render: (s) => formatDurationMs(s.activeMs),
+    },
     {
       key: "source",
       header: "Source",
@@ -49,7 +86,12 @@ function SessionsTable({ userId }: { userId: Id<"users"> }) {
     },
   ];
   return (
-    <SectionCard title="Sessions" description="Newest first, independent of the selected range." help="One row per Codex thread. Cost is estimated with the session's primary model." bodyClassName="flex flex-col gap-3">
+    <SectionCard
+      title="Sessions"
+      description="Newest first, independent of the selected range."
+      help="One row per Codex thread. Cost is estimated with the session's primary model."
+      bodyClassName="flex flex-col gap-3"
+    >
       {status === "LoadingFirstPage" ? (
         <Skeleton className="h-48" />
       ) : results.length === 0 ? (
@@ -58,7 +100,13 @@ function SessionsTable({ userId }: { userId: Id<"users"> }) {
         <>
           <DataTable columns={columns} rows={results} rowKey={(s) => s.sessionId} />
           {status === "CanLoadMore" || status === "LoadingMore" ? (
-            <Button variant="outline" size="sm" className="self-center" disabled={status === "LoadingMore"} onClick={() => loadMore(PAGE_SIZE)}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="self-center"
+              disabled={status === "LoadingMore"}
+              onClick={() => loadMore(PAGE_SIZE)}
+            >
               {status === "LoadingMore" ? "Loading…" : "Load more"}
             </Button>
           ) : null}

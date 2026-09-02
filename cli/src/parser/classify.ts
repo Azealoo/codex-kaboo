@@ -35,10 +35,31 @@ export function detectSkills(values: readonly unknown[]): string[] {
 
 /** Codex built-in function/custom tool names (never counted as MCP). */
 export const BUILTIN_TOOL_NAMES: ReadonlySet<string> = new Set([
-  "exec", "shell", "shell_command", "local_shell", "container.exec", "exec_command", "write_stdin",
-  "unified_exec", "apply_patch", "update_plan", "view_image", "web_search", "wait", "js_repl",
-  "image_generation", "spawn_agent", "send_input", "wait_agent", "close_agent", "list_agents",
-  "request_user_input", "codex_review", "read_file", "list_dir", "grep_files",
+  "exec",
+  "shell",
+  "shell_command",
+  "local_shell",
+  "container.exec",
+  "exec_command",
+  "write_stdin",
+  "unified_exec",
+  "apply_patch",
+  "update_plan",
+  "view_image",
+  "web_search",
+  "wait",
+  "js_repl",
+  "image_generation",
+  "spawn_agent",
+  "send_input",
+  "wait_agent",
+  "close_agent",
+  "list_agents",
+  "request_user_input",
+  "codex_review",
+  "read_file",
+  "list_dir",
+  "grep_files",
 ]);
 
 const MCP_PREFIXED = /^mcp__(.+?)__(.+)$/;
@@ -48,7 +69,8 @@ const MCP_BARE = /^([A-Za-z0-9][A-Za-z0-9.-]*)__([A-Za-z0-9][A-Za-z0-9_.-]*)$/;
 export function mcpKeyFromFunctionName(name: unknown): string | null {
   if (typeof name !== "string" || name.length === 0) return null;
   const prefixed = MCP_PREFIXED.exec(name);
-  if (prefixed && prefixed[1] && prefixed[2]) return clipString(`${prefixed[1]}/${prefixed[2]}`) ?? null;
+  if (prefixed && prefixed[1] && prefixed[2])
+    return clipString(`${prefixed[1]}/${prefixed[2]}`) ?? null;
   if (BUILTIN_TOOL_NAMES.has(name)) return null;
   const bare = MCP_BARE.exec(name);
   if (bare && bare[1] && bare[2]) return clipString(`${bare[1]}/${bare[2]}`) ?? null;

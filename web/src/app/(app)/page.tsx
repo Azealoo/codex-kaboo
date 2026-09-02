@@ -16,10 +16,19 @@ import { SegmentedControl } from "@/components/primitives/segmented-control";
 import { useRange } from "@/hooks/use-range";
 import { SECTIONS, VIEWS, sectionParser, viewParser, type Section } from "@/lib/search-params";
 
-const SECTION_OPTIONS = SECTIONS.map((s) => ({ value: s, label: s[0]!.toUpperCase() + s.slice(1) }));
+const SECTION_OPTIONS = SECTIONS.map((s) => ({
+  value: s,
+  label: s[0]!.toUpperCase() + s.slice(1),
+}));
 const VIEW_OPTIONS = VIEWS.map((v) => ({ value: v, label: v[0]!.toUpperCase() + v.slice(1) }));
 
-function SectionBody({ section, range }: { section: Section; range: NonNullable<ReturnType<typeof useRange>["resolved"]> }) {
+function SectionBody({
+  section,
+  range,
+}: {
+  section: Section;
+  range: NonNullable<ReturnType<typeof useRange>["resolved"]>;
+}) {
   switch (section) {
     case "users":
       return <UsersSection range={range} />;
@@ -44,13 +53,27 @@ export default function HomePage() {
       <PageHeader
         title="Insights"
         description={`${resolved.label} · ${resolved.days} day${resolved.days === 1 ? "" : "s"}`}
-        actions={<SegmentedControl ariaLabel="View" options={VIEW_OPTIONS} value={view} onChange={(v) => void setView(v)} />}
+        actions={
+          <SegmentedControl
+            ariaLabel="View"
+            options={VIEW_OPTIONS}
+            value={view}
+            onChange={(v) => void setView(v)}
+          />
+        }
       />
       <SectionErrorBoundary title="Overview could not load">
         <OnboardingCard />
         <OverviewCards range={resolved} view={view} />
       </SectionErrorBoundary>
-      <SegmentedControl ariaLabel="Section" options={SECTION_OPTIONS} value={section} onChange={(s) => void setSection(s)} size="default" className="self-start" />
+      <SegmentedControl
+        ariaLabel="Section"
+        options={SECTION_OPTIONS}
+        value={section}
+        onChange={(s) => void setSection(s)}
+        size="default"
+        className="self-start"
+      />
       <SectionErrorBoundary>
         <SectionBody section={section} range={resolved} />
       </SectionErrorBoundary>

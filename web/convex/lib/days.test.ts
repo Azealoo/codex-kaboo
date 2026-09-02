@@ -4,7 +4,10 @@ import { assertRange, resolvePeriods } from "./days";
 
 describe("assertRange", () => {
   it("accepts an inclusive range and returns it", () => {
-    expect(assertRange("2026-08-03", "2026-09-01")).toEqual({ from: "2026-08-03", to: "2026-09-01" });
+    expect(assertRange("2026-08-03", "2026-09-01")).toEqual({
+      from: "2026-08-03",
+      to: "2026-09-01",
+    });
   });
   it("rejects invalid days, reversed ranges and spans over 1100 days", () => {
     expect(() => assertRange("2026-02-30", "2026-03-01")).toThrow();

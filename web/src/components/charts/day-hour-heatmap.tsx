@@ -5,7 +5,13 @@ import { WEEKDAY_LABELS, heatLevel, hourLabel } from "@/lib/heatmap";
 import { CellTooltip, useCellTooltip } from "./cell-tooltip";
 
 /** Weekday × hour grid (Mon..Sun × 00..23), colored relative to the busiest cell. */
-export function DayHourHeatmap({ grid, format }: { grid: number[][]; format: (value: number) => string }) {
+export function DayHourHeatmap({
+  grid,
+  format,
+}: {
+  grid: number[][];
+  format: (value: number) => string;
+}) {
   const { tip, show, hide } = useCellTooltip();
   const max = grid.reduce((m, row) => Math.max(m, ...row), 0);
   return (

@@ -32,7 +32,11 @@ let builtOnce = false;
  * execFileSync not resolving `npm` (vs. `npm.cmd`) there without it. */
 function ensureBuilt(): void {
   if (builtOnce) return;
-  execFileSync("npm", ["run", "build"], { cwd: cliRoot, stdio: "pipe", shell: process.platform === "win32" });
+  execFileSync("npm", ["run", "build"], {
+    cwd: cliRoot,
+    stdio: "pipe",
+    shell: process.platform === "win32",
+  });
   builtOnce = true;
 }
 
@@ -62,7 +66,12 @@ function runPty(
   actions: PtyAction[],
   envExtra: Record<string, string>,
   timeoutS = 10,
-): Promise<{ output: string; exitCode: number | null; timedOut: boolean; finalIcanon: boolean | null }> {
+): Promise<{
+  output: string;
+  exitCode: number | null;
+  timedOut: boolean;
+  finalIcanon: boolean | null;
+}> {
   const planDir = mkdtempSync(path.join(os.tmpdir(), "ck-pty-plan-"));
   const planFile = path.join(planDir, "plan.json");
   writeFileSync(
@@ -77,24 +86,29 @@ function runPty(
   );
   return new Promise((resolve, reject) => {
     // -B: never write a __pycache__ next to the checked-in helper (this is a repo, not a scratch dir).
-    execFile("python3", ["-B", helper, planFile], { encoding: "utf8", timeout: (timeoutS + 5) * 1000 }, (error, stdout, stderr) => {
-      rmSync(planDir, { recursive: true, force: true });
-      if (error) {
-        reject(new Error(`pty-helper.py failed: ${error.message}\n${stderr}`));
-        return;
-      }
-      try {
-        const result = JSON.parse(stdout) as PtyResult;
-        resolve({
-          output: Buffer.from(result.output_b64, "base64").toString("utf8"),
-          exitCode: result.exit_code,
-          timedOut: result.timed_out,
-          finalIcanon: result.final_icanon,
-        });
-      } catch (parseError) {
-        reject(parseError instanceof Error ? parseError : new Error(String(parseError)));
-      }
-    });
+    execFile(
+      "python3",
+      ["-B", helper, planFile],
+      { encoding: "utf8", timeout: (timeoutS + 5) * 1000 },
+      (error, stdout, stderr) => {
+        rmSync(planDir, { recursive: true, force: true });
+        if (error) {
+          reject(new Error(`pty-helper.py failed: ${error.message}\n${stderr}`));
+          return;
+        }
+        try {
+          const result = JSON.parse(stdout) as PtyResult;
+          resolve({
+            output: Buffer.from(result.output_b64, "base64").toString("utf8"),
+            exitCode: result.exit_code,
+            timedOut: result.timed_out,
+            finalIcanon: result.final_icanon,
+          });
+        } catch (parseError) {
+          reject(parseError instanceof Error ? parseError : new Error(String(parseError)));
+        }
+      },
+    );
   });
 }
 
@@ -106,7 +120,11 @@ function runPty(
  * captured correctly (survived Backspace edits / arrow-key noise / a fast paste) even though it
  * was never visible in the terminal output.
  */
-async function runLoginAgainstMockServer(actions: PtyAction[], kabooHome: string, timeoutS = 10): Promise<{ output: string; capturedAuth: string | null | undefined }> {
+async function runLoginAgainstMockServer(
+  actions: PtyAction[],
+  kabooHome: string,
+  timeoutS = 10,
+): Promise<{ output: string; capturedAuth: string | null | undefined }> {
   let capturedAuth: string | null | undefined;
   const server = http.createServer((req, res) => {
     capturedAuth = req.headers.authorization;
@@ -117,7 +135,12 @@ async function runLoginAgainstMockServer(actions: PtyAction[], kabooHome: string
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     const port = (server.address() as AddressInfo).port;
-    const { output } = await runPty(["login", "--server", `http://127.0.0.1:${port}`], actions, { CODEX_KABOO_HOME: kabooHome }, timeoutS);
+    const { output } = await runPty(
+      ["login", "--server", `http://127.0.0.1:${port}`],
+      actions,
+      { CODEX_KABOO_HOME: kabooHome },
+      timeoutS,
+    );
     return { output, capturedAuth };
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -297,14 +320,23 @@ describe("promptToken (non-TTY fallback)", () => {
       let stderr = "";
       let status: number | null = 0;
       try {
-        stdout = execFileSync(process.execPath, [distEntry, "login", "--server", "https://example.invalid", "--json"], {
-          input: "", // EOF immediately
-          encoding: "utf8",
-          env: { ...process.env, CODEX_KABOO_HOME: kabooHome },
-          timeout: 15_000,
-        });
+        stdout = execFileSync(
+          process.execPath,
+          [distEntry, "login", "--server", "https://example.invalid", "--json"],
+          {
+            input: "", // EOF immediately
+            encoding: "utf8",
+            env: { ...process.env, CODEX_KABOO_HOME: kabooHome },
+            timeout: 15_000,
+          },
+        );
       } catch (error) {
-        const e = error as { stdout?: string; stderr?: string; status?: number | null; signal?: string | null };
+        const e = error as {
+          stdout?: string;
+          stderr?: string;
+          status?: number | null;
+          signal?: string | null;
+        };
         stdout = e.stdout ?? "";
         stderr = e.stderr ?? "";
         status = e.status ?? null;

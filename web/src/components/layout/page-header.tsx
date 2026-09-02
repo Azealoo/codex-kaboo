@@ -1,6 +1,14 @@
 import type { ReactNode } from "react";
 
-export function PageHeader({ title, description, actions }: { title: ReactNode; description?: string; actions?: ReactNode }) {
+export function PageHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: ReactNode;
+  description?: string;
+  actions?: ReactNode;
+}) {
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div>

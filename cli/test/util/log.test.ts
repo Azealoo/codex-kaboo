@@ -9,7 +9,12 @@ describe("createLogger", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "ck-log-"));
     const file = path.join(dir, "nested", "sync.log");
     const lines: string[] = [];
-    const log = createLogger({ file, quiet: true, console: (l) => lines.push(l), now: () => Date.UTC(2026, 8, 1, 12) });
+    const log = createLogger({
+      file,
+      quiet: true,
+      console: (l) => lines.push(l),
+      now: () => Date.UTC(2026, 8, 1, 12),
+    });
     log.debug("d");
     log.info("i");
     log.warn("w");

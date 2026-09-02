@@ -25,7 +25,11 @@ export default defineConfig({
       },
       {
         resolve: { alias },
-        test: { name: "unit", environment: "node", include: ["src/**/*.test.ts", "scripts/**/*.test.ts"] },
+        test: {
+          name: "unit",
+          environment: "node",
+          include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
+        },
       },
       {
         plugins: [react()],

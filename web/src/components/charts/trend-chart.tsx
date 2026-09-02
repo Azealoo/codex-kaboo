@@ -19,18 +19,40 @@ export function TrendChart({
   variant?: TrendVariant;
   height?: number;
 }) {
-  const config = Object.fromEntries(stacked.series.map((s) => [s.key, { label: s.label, color: s.color }])) satisfies ChartConfig;
+  const config = Object.fromEntries(
+    stacked.series.map((s) => [s.key, { label: s.label, color: s.color }]),
+  ) satisfies ChartConfig;
   const rows =
     variant === "both"
-      ? stacked.rows.map((r) => ({ ...r, [TOTAL_KEY]: stacked.series.reduce((acc, s) => acc + Number(r[s.key] ?? 0), 0) }))
+      ? stacked.rows.map((r) => ({
+          ...r,
+          [TOTAL_KEY]: stacked.series.reduce((acc, s) => acc + Number(r[s.key] ?? 0), 0),
+        }))
       : stacked.rows;
   const last = stacked.series.length - 1;
   return (
     <ChartContainer config={config} className="w-full" style={{ height }}>
-      <ComposedChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barCategoryGap="20%">
+      <ComposedChart
+        data={rows}
+        margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+        barCategoryGap="20%"
+      >
         <CartesianGrid vertical={false} stroke="var(--grid-line)" strokeWidth={1} />
-        <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} fontSize={11} />
-        <YAxis width="auto" tickLine={false} axisLine={false} tickFormatter={format} fontSize={11} />
+        <XAxis
+          dataKey="label"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          minTickGap={24}
+          fontSize={11}
+        />
+        <YAxis
+          width="auto"
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={format}
+          fontSize={11}
+        />
         {variant === "area"
           ? stacked.series.map((s) => (
               <Area
@@ -81,6 +103,10 @@ export function TrendChart({
   );
 }
 
-export function StackedBarChart(props: { stacked: Stacked; format: (value: number) => string; height?: number }) {
+export function StackedBarChart(props: {
+  stacked: Stacked;
+  format: (value: number) => string;
+  height?: number;
+}) {
   return <TrendChart {...props} variant="bars" />;
 }

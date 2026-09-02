@@ -7,9 +7,12 @@ import AppError from "./error";
 // This only checks the component's own contract: a fixed message, and `reset` wired to the button.
 describe("app error boundary", () => {
   it("shows a fixed human message and never renders the raw error text", () => {
-    const error = Object.assign(new Error("ConvexError: {\"code\":\"range_too_large\",\"userId\":\"secret-id\"}"), {
-      digest: "abc123",
-    });
+    const error = Object.assign(
+      new Error('ConvexError: {"code":"range_too_large","userId":"secret-id"}'),
+      {
+        digest: "abc123",
+      },
+    );
     render(<AppError error={error} reset={() => {}} />);
     expect(screen.getByText(/could not load/i)).toBeInTheDocument();
     expect(screen.queryByText(/range_too_large/)).not.toBeInTheDocument();

@@ -6,9 +6,19 @@ export function QuotaGauge({ usedPercent }: { usedPercent: number }) {
   const label = `${Math.round(clamped)}%`;
   const color = quotaColor(usedPercent);
   return (
-    <div className="flex flex-col items-center" role="img" aria-label={`Weekly quota used: ${label}`}>
+    <div
+      className="flex flex-col items-center"
+      role="img"
+      aria-label={`Weekly quota used: ${label}`}
+    >
       <svg viewBox="0 0 200 110" className="w-full max-w-56" aria-hidden="true">
-        <path d="M 15 100 A 85 85 0 0 1 185 100" fill="none" stroke="var(--muted)" strokeWidth={14} strokeLinecap="round" />
+        <path
+          d="M 15 100 A 85 85 0 0 1 185 100"
+          fill="none"
+          stroke="var(--muted)"
+          strokeWidth={14}
+          strokeLinecap="round"
+        />
         <path
           data-testid="gauge-fill"
           d="M 15 100 A 85 85 0 0 1 185 100"

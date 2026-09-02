@@ -16,11 +16,20 @@ export interface InstallResult {
   sync: SyncReport | null;
 }
 
-export async function runInstall(opts: InstallOptions, deps: ScheduleDeps & { runSync: () => Promise<SyncReport> }): Promise<InstallResult> {
+export async function runInstall(
+  opts: InstallOptions,
+  deps: ScheduleDeps & { runSync: () => Promise<SyncReport> },
+): Promise<InstallResult> {
   const adapter = pickScheduler(deps.platform, { systemd: opts.systemd });
   const config = await readConfig(deps.paths);
   if (config === null) {
-    return { ok: false, exitCode: 2, scheduler: adapter.name, detail: "not logged in: run `codex-kaboo login` first", sync: null };
+    return {
+      ok: false,
+      exitCode: 2,
+      scheduler: adapter.name,
+      detail: "not logged in: run `codex-kaboo login` first",
+      sync: null,
+    };
   }
   const target = await buildScheduleTarget(deps);
   let detail: string;
@@ -33,5 +42,11 @@ export async function runInstall(opts: InstallOptions, deps: ScheduleDeps & { ru
   }
   deps.log.info(detail);
   const sync = await deps.runSync();
-  return { ok: sync.exitCode === 0, exitCode: sync.exitCode, scheduler: adapter.name, detail, sync };
+  return {
+    ok: sync.exitCode === 0,
+    exitCode: sync.exitCode,
+    scheduler: adapter.name,
+    detail,
+    sync,
+  };
 }

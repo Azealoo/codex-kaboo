@@ -1,26 +1,63 @@
 import { describe, expect, it } from "vitest";
 import { SessionSummary } from "@codex-kaboo/shared/sync";
 import {
-  asRecord, classifyParsedCmdType, clipString, detectSkills, isSubagentSource, mcpKeyFromFunctionName,
-  projectOf, sourceOf, toCount,
+  asRecord,
+  classifyParsedCmdType,
+  clipString,
+  detectSkills,
+  isSubagentSource,
+  mcpKeyFromFunctionName,
+  projectOf,
+  sourceOf,
+  toCount,
 } from "../../src/parser/classify";
 
 /** Smallest object that satisfies `SessionSummary`, for asserting a fix's output still validates on the wire. */
 function minimalSessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
   return {
-    sessionId: "s1", threadId: "s1", startedAt: Date.UTC(2026, 0, 15), endedAt: Date.UTC(2026, 0, 15),
-    wallMs: 0, day: "2026-01-15", project: "(unknown)", originator: "codex-tui", source: "cli",
-    isSubagent: false, model: "(unknown)", turns: 0, completedTurns: 0, userMessages: 0, agentMessages: 0,
+    sessionId: "s1",
+    threadId: "s1",
+    startedAt: Date.UTC(2026, 0, 15),
+    endedAt: Date.UTC(2026, 0, 15),
+    wallMs: 0,
+    day: "2026-01-15",
+    project: "(unknown)",
+    originator: "codex-tui",
+    source: "cli",
+    isSubagent: false,
+    model: "(unknown)",
+    turns: 0,
+    completedTurns: 0,
+    userMessages: 0,
+    agentMessages: 0,
     reasoningItems: 0,
     toolCounts: {
-      commandRead: 0, commandList: 0, commandSearch: 0, commandOther: 0, fileChange: 0,
-      webSearch: 0, imageView: 0, mcpTool: 0, other: 0,
+      commandRead: 0,
+      commandList: 0,
+      commandSearch: 0,
+      commandOther: 0,
+      fileChange: 0,
+      webSearch: 0,
+      imageView: 0,
+      mcpTool: 0,
+      other: 0,
     },
-    mcpTools: [], skills: [],
-    linesAdded: 0, linesRemoved: 0, filesChanged: 0, compactions: 0, activeMs: 0,
+    mcpTools: [],
+    skills: [],
+    linesAdded: 0,
+    linesRemoved: 0,
+    filesChanged: 0,
+    compactions: 0,
+    activeMs: 0,
     ttft: { count: 0, sumMs: 0, hist: Array(16).fill(0) },
     tokens: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0, reasoning: 0, total: 0 },
-    responses: 0, eventOrigin: "count", inProgress: false, lineCount: 0, generation: 0, parseErrors: 0, parserVersion: 1,
+    responses: 0,
+    eventOrigin: "count",
+    inProgress: false,
+    lineCount: 0,
+    generation: 0,
+    parseErrors: 0,
+    parserVersion: 1,
     summaryHash: "a".repeat(40),
     ...overrides,
   };
@@ -39,8 +76,12 @@ describe("classifyParsedCmdType", () => {
 
 describe("detectSkills", () => {
   it("extracts the parent directory of any SKILL.md path, with slashes or backslashes", () => {
-    expect(detectSkills(["/Users/x/.codex/skills/.system/openai-docs/SKILL.md"])).toEqual(["openai-docs"]);
-    expect(detectSkills(["C:\\Users\\x\\.codex\\skills\\skill-alpha\\SKILL.md"])).toEqual(["skill-alpha"]);
+    expect(detectSkills(["/Users/x/.codex/skills/.system/openai-docs/SKILL.md"])).toEqual([
+      "openai-docs",
+    ]);
+    expect(detectSkills(["C:\\Users\\x\\.codex\\skills\\skill-alpha\\SKILL.md"])).toEqual([
+      "skill-alpha",
+    ]);
     expect(detectSkills(["cat", "skills/foo/SKILL.md", 42, null])).toEqual(["foo"]);
     expect(detectSkills(['cat "a/b/SKILL.md" && cat c/d/SKILL.md'])).toEqual(["b", "d"]);
     expect(detectSkills(["SKILL.md", "notes/skill.txt"])).toEqual([]);
@@ -61,7 +102,9 @@ describe("detectSkills", () => {
 describe("mcpKeyFromFunctionName", () => {
   it("recognises mcp__server__tool and server__tool but not built-ins", () => {
     expect(mcpKeyFromFunctionName("mcp__context7__query-docs")).toBe("context7/query-docs");
-    expect(mcpKeyFromFunctionName("mcp__claude-in-chrome__tabs_context_mcp")).toBe("claude-in-chrome/tabs_context_mcp");
+    expect(mcpKeyFromFunctionName("mcp__claude-in-chrome__tabs_context_mcp")).toBe(
+      "claude-in-chrome/tabs_context_mcp",
+    );
     expect(mcpKeyFromFunctionName("github__list_issues")).toBe("github/list_issues");
     expect(mcpKeyFromFunctionName("exec")).toBeNull();
     expect(mcpKeyFromFunctionName("wait")).toBeNull();
@@ -92,7 +135,9 @@ describe("sourceOf / projectOf", () => {
     // A single-key object whose key is a path must not reach `source` as that key.
     expect(sourceOf({ "/Users/victim/CANARYSOURCEKEYAAA": true })).toBe("unknown");
     // Same guard on the subagent inner-key fallback, used when the inner value isn't a string.
-    expect(sourceOf({ subagent: { "/Users/victim/CANARYINNERKEYAAA": 123 } })).toBe("subagent:unknown");
+    expect(sourceOf({ subagent: { "/Users/victim/CANARYINNERKEYAAA": 123 } })).toBe(
+      "subagent:unknown",
+    );
     // The guard is a real bound, not just a charset check: an overlong token-shaped key also falls back.
     expect(sourceOf({ [`custom_${"a".repeat(40)}`]: 1 })).toBe("unknown");
   });

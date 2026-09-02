@@ -35,18 +35,29 @@ const INSTALL_NOTES: Record<InstallOs, string> = {
 };
 
 const SCHEDULE_NOTES: Record<InstallOs, string> = {
-  macos: "Registers a launchd agent (com.codex-kaboo.sync) that syncs every 15 minutes and runs one sync now.",
-  linux: "Adds a crontab block that syncs every 15 minutes (use `codex-kaboo install --systemd` for a user timer instead) and runs one sync now.",
-  windows: "Creates the scheduled task codex-kaboo-sync (every 15 minutes, hidden window) and runs one sync now.",
+  macos:
+    "Registers a launchd agent (com.codex-kaboo.sync) that syncs every 15 minutes and runs one sync now.",
+  linux:
+    "Adds a crontab block that syncs every 15 minutes (use `codex-kaboo install --systemd` for a user timer instead) and runs one sync now.",
+  windows:
+    "Creates the scheduled task codex-kaboo-sync (every 15 minutes, hidden window) and runs one sync now.",
 };
 
 export function installSteps(os: InstallOs, origin: string, token?: string): InstallStep[] {
   const c = installCommands(origin, token);
   return [
     { title: "Install the collector", command: c.install, note: INSTALL_NOTES[os] },
-    { title: "Log in with your sync token", command: c.login, note: "Create a token on the Settings page. Only metadata is uploaded, never prompts, commands or file paths." },
+    {
+      title: "Log in with your sync token",
+      command: c.login,
+      note: "Create a token on the Settings page. Only metadata is uploaded, never prompts, commands or file paths.",
+    },
     { title: "Schedule background sync", command: c.schedule, note: SCHEDULE_NOTES[os] },
-    { title: "Check the status", command: c.status, note: "Shows the resolved Codex home, the last sync result and whether the schedule is healthy." },
+    {
+      title: "Check the status",
+      command: c.status,
+      note: "Shows the resolved Codex home, the last sync result and whether the schedule is healthy.",
+    },
   ];
 }
 

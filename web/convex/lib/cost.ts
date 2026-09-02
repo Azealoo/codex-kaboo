@@ -1,5 +1,10 @@
 import { OTHER_KEY } from "../../../shared/src/constants";
-import { cacheSavings, costOf, type CostBreakdown, type ModelPrice } from "../../../shared/src/metrics";
+import {
+  cacheSavings,
+  costOf,
+  type CostBreakdown,
+  type ModelPrice,
+} from "../../../shared/src/metrics";
 import type { Tokens } from "../../../shared/src/sync";
 import type { QueryCtx } from "../_generated/server";
 import type { CostByKind } from "./types";

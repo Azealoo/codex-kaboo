@@ -1,6 +1,12 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { assertNoNewline, checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTarget } from "./index";
+import {
+  assertNoNewline,
+  checkTargetPaths,
+  scheduledArgs,
+  type SchedulerAdapter,
+  type ScheduleTarget,
+} from "./index";
 
 const UNIT = "codex-kaboo-sync";
 
@@ -84,9 +90,11 @@ export const systemdAdapter: SchedulerAdapter = {
     await fs.writeFile(path.join(dir, `${UNIT}.service`), renderService(target), "utf8");
     await fs.writeFile(path.join(dir, `${UNIT}.timer`), renderTimer(), "utf8");
     const reload = await spawner.run("systemctl", ["--user", "daemon-reload"]);
-    if (reload.code !== 0) throw new Error(`systemctl --user daemon-reload failed: ${reload.stderr.trim()}`);
+    if (reload.code !== 0)
+      throw new Error(`systemctl --user daemon-reload failed: ${reload.stderr.trim()}`);
     const enable = await spawner.run("systemctl", ["--user", "enable", "--now", `${UNIT}.timer`]);
-    if (enable.code !== 0) throw new Error(`systemctl --user enable failed: ${enable.stderr.trim()}`);
+    if (enable.code !== 0)
+      throw new Error(`systemctl --user enable failed: ${enable.stderr.trim()}`);
     return `systemd user timer ${UNIT}.timer enabled (every 15 minutes)`;
   },
   async uninstall(target, spawner) {
@@ -99,9 +107,19 @@ export const systemdAdapter: SchedulerAdapter = {
   },
   async status(target, spawner) {
     const active = await spawner.run("systemctl", ["--user", "is-active", `${UNIT}.timer`]);
-    if (active.code !== 0) return { installed: false, healthy: false, detail: `timer not active (${active.stdout.trim() || active.stderr.trim() || "unknown"})` };
+    if (active.code !== 0)
+      return {
+        installed: false,
+        healthy: false,
+        detail: `timer not active (${active.stdout.trim() || active.stderr.trim() || "unknown"})`,
+      };
     const missing = await checkTargetPaths(target);
-    if (missing.length > 0) return { installed: true, healthy: false, detail: `schedule broken: missing ${missing.join(", ")}; run \`codex-kaboo install --systemd\` again` };
+    if (missing.length > 0)
+      return {
+        installed: true,
+        healthy: false,
+        detail: `schedule broken: missing ${missing.join(", ")}; run \`codex-kaboo install --systemd\` again`,
+      };
     return { installed: true, healthy: true, detail: "timer active" };
   },
 };

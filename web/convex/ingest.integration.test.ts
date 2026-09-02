@@ -21,7 +21,10 @@ afterEach(() => vi.useRealTimers());
 
 function baseBatch() {
   return makeBatch({
-    sessions: [makeSession({ sessionId: "s1" }), makeSession({ sessionId: "s2", project: "project-b" })],
+    sessions: [
+      makeSession({ sessionId: "s1" }),
+      makeSession({ sessionId: "s2", project: "project-b" }),
+    ],
     tokenEvents: [
       makeEvent({ sessionId: "s1", seq: 3 }),
       makeEvent({ sessionId: "s1", seq: 7, hour: 10 }),
@@ -107,15 +110,26 @@ describe("sync idempotence", () => {
   it("patches inProgress and lineCount when the hash is unchanged", async () => {
     const t = setup();
     const { raw } = await userWithToken(t, "alice");
-    await postSync(t, raw, makeBatch({
-      sessions: [makeSession({ sessionId: "s1", inProgress: true, lineCount: 10 })],
-    }));
-    const res = await postSync(t, raw, makeBatch({
-      sessions: [makeSession({ sessionId: "s1", inProgress: false, lineCount: 12 })],
-    }));
+    await postSync(
+      t,
+      raw,
+      makeBatch({
+        sessions: [makeSession({ sessionId: "s1", inProgress: true, lineCount: 10 })],
+      }),
+    );
+    const res = await postSync(
+      t,
+      raw,
+      makeBatch({
+        sessions: [makeSession({ sessionId: "s1", inProgress: false, lineCount: 12 })],
+      }),
+    );
     expect(res.json.accepted.sessions).toEqual({ inserted: 0, updated: 0, unchanged: 1 });
     const s1 = await t.run(async (ctx) =>
-      ctx.db.query("sessions").withIndex("by_sessionId", (q) => q.eq("sessionId", "s1")).unique(),
+      ctx.db
+        .query("sessions")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", "s1"))
+        .unique(),
     );
     expect(s1).toMatchObject({ inProgress: false, lineCount: 12 });
   });
@@ -151,10 +165,16 @@ describe("cross-user isolation", () => {
 
     expect((await getRollup(t, alice.userId, "2026-08-31"))?.turns).toBe(4);
     const s1 = await t.run(async (ctx) =>
-      ctx.db.query("sessions").withIndex("by_sessionId", (q) => q.eq("sessionId", "s1")).unique(),
+      ctx.db
+        .query("sessions")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", "s1"))
+        .unique(),
     );
     expect(s1).toMatchObject({ userId: alice.userId, turns: 2 });
-    expect(await getRollup(t, bob.userId, "2026-08-31")).toMatchObject({ sessions: 1, responses: 1 });
+    expect(await getRollup(t, bob.userId, "2026-08-31")).toMatchObject({
+      sessions: 1,
+      responses: 1,
+    });
   });
 
   it("refuses a brand-new event whose parent session belongs to another user", async () => {
@@ -227,7 +247,9 @@ describe("machine bookkeeping", () => {
 
     vi.advanceTimersByTime(31_000);
     const third = await postSync(t, raw, makeBatch());
-    expect((await t.run(async (ctx) => ctx.db.get(tokenId)))?.lastUsedAt).toBe(third.json.serverTime);
+    expect((await t.run(async (ctx) => ctx.db.get(tokenId)))?.lastUsedAt).toBe(
+      third.json.serverTime,
+    );
   });
 
   it("keeps the last-received snapshot even when a fast clock dated the previous one in the future", async () => {
@@ -255,22 +277,32 @@ describe("machine bookkeeping", () => {
     const { raw } = await userWithToken(t, "alice");
     // The quota reading is incidental to a sync and must never fail one, so it is clamped, not
     // rejected — an unclamped 4000 would be echoed straight to the gauge.
-    const res = await postSync(t, raw, makeBatch({
-      rateLimit: { observedAt: T0, usedPercent: 4000, windowMinutes: 10080 },
-    }));
+    const res = await postSync(
+      t,
+      raw,
+      makeBatch({
+        rateLimit: { observedAt: T0, usedPercent: 4000, windowMinutes: 10080 },
+      }),
+    );
     expect(res.status).toBe(200);
     const machine = await t.run(async (ctx) => ctx.db.query("machines").first());
     expect(machine?.lastRateLimit?.usedPercent).toBe(100);
-    expect(await withUser(t, "alice").query(api.stats.quota, {})).toMatchObject({ usedPercent: 100 });
+    expect(await withUser(t, "alice").query(api.stats.quota, {})).toMatchObject({
+      usedPercent: 100,
+    });
   });
 
   it("stores the hostname only when sent and clears it on null", async () => {
     const t = setup();
     const { raw } = await userWithToken(t, "alice");
     await postSync(t, raw, makeBatch({ machine: makeMachine({ hostname: "mac.local" }) }));
-    expect((await t.run(async (ctx) => ctx.db.query("machines").first()))?.hostname).toBe("mac.local");
+    expect((await t.run(async (ctx) => ctx.db.query("machines").first()))?.hostname).toBe(
+      "mac.local",
+    );
     await postSync(t, raw, makeBatch({ machine: makeMachine({ hostname: null }) }));
-    expect((await t.run(async (ctx) => ctx.db.query("machines").first()))?.hostname).toBeUndefined();
+    expect(
+      (await t.run(async (ctx) => ctx.db.query("machines").first()))?.hostname,
+    ).toBeUndefined();
   });
 });
 
@@ -283,16 +315,35 @@ describe("machine bookkeeping", () => {
  * `token_usage_record` 320 at seq 5.
  */
 describe("token_usage_record supersedes token_count across parses", () => {
-  const COUNT_TOKENS = { input: 999, cachedInput: 0, cacheWrite: 0, output: 9, reasoning: 0, total: 1008 };
-  const RECORD_TOKENS = { input: 300, cachedInput: 100, cacheWrite: 0, output: 20, reasoning: 5, total: 320 };
+  const COUNT_TOKENS = {
+    input: 999,
+    cachedInput: 0,
+    cacheWrite: 0,
+    output: 9,
+    reasoning: 0,
+    total: 1008,
+  };
+  const RECORD_TOKENS = {
+    input: 300,
+    cachedInput: 100,
+    cacheWrite: 0,
+    output: 20,
+    reasoning: 5,
+    total: 320,
+  };
 
   /** Pass 1: the file ends at seq 4, so the summary and its one event are still `count`-derived. */
   const countPass = () =>
     makeBatch({
       sessions: [
         makeSession({
-          sessionId: "b3", eventOrigin: "count", tokens: COUNT_TOKENS, responses: 1,
-          inProgress: true, lineCount: 5, summaryHash: "c".repeat(40),
+          sessionId: "b3",
+          eventOrigin: "count",
+          tokens: COUNT_TOKENS,
+          responses: 1,
+          inProgress: true,
+          lineCount: 5,
+          summaryHash: "c".repeat(40),
         }),
       ],
       tokenEvents: [makeEvent({ sessionId: "b3", seq: 4, origin: "count", ...COUNT_TOKENS })],
@@ -304,8 +355,13 @@ describe("token_usage_record supersedes token_count across parses", () => {
       batchId: "batch-2",
       sessions: [
         makeSession({
-          sessionId: "b3", eventOrigin: "record", tokens: RECORD_TOKENS, responses: 1,
-          inProgress: false, lineCount: 11, summaryHash: "d".repeat(40),
+          sessionId: "b3",
+          eventOrigin: "record",
+          tokens: RECORD_TOKENS,
+          responses: 1,
+          inProgress: false,
+          lineCount: 11,
+          summaryHash: "d".repeat(40),
         }),
       ],
       tokenEvents: [makeEvent({ sessionId: "b3", seq: 5, origin: "record", ...RECORD_TOKENS })],
@@ -359,8 +415,19 @@ describe("token_usage_record supersedes token_count across parses", () => {
     grown.tokenEvents = [makeEvent({ sessionId: "b3", seq: 6, origin: "count", ...COUNT_TOKENS })];
     grown.sessions = [
       makeSession({
-        sessionId: "b3", eventOrigin: "count", responses: 2, inProgress: true, lineCount: 7,
-        tokens: { input: 1998, cachedInput: 0, cacheWrite: 0, output: 18, reasoning: 0, total: 2016 },
+        sessionId: "b3",
+        eventOrigin: "count",
+        responses: 2,
+        inProgress: true,
+        lineCount: 7,
+        tokens: {
+          input: 1998,
+          cachedInput: 0,
+          cacheWrite: 0,
+          output: 18,
+          reasoning: 0,
+          total: 2016,
+        },
         summaryHash: "e".repeat(40),
       }),
     ];

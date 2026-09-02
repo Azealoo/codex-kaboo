@@ -14,7 +14,9 @@ import { RangePicker } from "./range-picker";
 describe("RangePicker", () => {
   it("shows the current preset and pushes ?range=7D when a preset row is clicked", async () => {
     const onUrlUpdate = vi.fn<OnUrlUpdateFunction>();
-    render(<RangePicker />, { wrapper: withNuqsTestingAdapter({ searchParams: "?range=30D", onUrlUpdate }) });
+    render(<RangePicker />, {
+      wrapper: withNuqsTestingAdapter({ searchParams: "?range=30D", onUrlUpdate }),
+    });
     const trigger = screen.getByRole("button", { name: /Change date range/ });
     expect(trigger).toHaveTextContent("Last 30 days");
     await userEvent.click(trigger);
@@ -27,7 +29,9 @@ describe("RangePicker", () => {
 
   it("writes from/to for a custom range and drops the preset", async () => {
     const onUrlUpdate = vi.fn<OnUrlUpdateFunction>();
-    render(<RangePicker />, { wrapper: withNuqsTestingAdapter({ searchParams: "?range=30D", onUrlUpdate }) });
+    render(<RangePicker />, {
+      wrapper: withNuqsTestingAdapter({ searchParams: "?range=30D", onUrlUpdate }),
+    });
     await userEvent.click(screen.getByRole("button", { name: /Change date range/ }));
     await userEvent.click(screen.getByRole("button", { name: /September 3(rd)?, 2026/ }));
     await userEvent.click(screen.getByRole("button", { name: /September 10(th)?, 2026/ }));

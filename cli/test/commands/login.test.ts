@@ -14,13 +14,34 @@ function deps(overrides: Partial<LoginDeps> = {}): LoginDeps {
   const paths = kabooPaths(path.join(mkdtempSync(path.join(os.tmpdir(), "ck-login-")), "home"));
   let ids = 0;
   const client: SyncClient = {
-    async whoami() { return { ok: true, userId: "u1", name: "Ada", email: "ada@example.com", token: { name: "laptop", prefix: "ck_abc123" }, serverTime: 7 }; },
-    async sync() { throw new Error("unused"); },
-    async health() { return { ok: true, serverTime: 7 }; },
+    async whoami() {
+      return {
+        ok: true,
+        userId: "u1",
+        name: "Ada",
+        email: "ada@example.com",
+        token: { name: "laptop", prefix: "ck_abc123" },
+        serverTime: 7,
+      };
+    },
+    async sync() {
+      throw new Error("unused");
+    },
+    async health() {
+      return { ok: true, serverTime: 7 };
+    },
   };
   return {
-    paths, env: {}, bakedServer: "https://baked.convex.site", cliVersion: "0.1.0", prompt: async () => "ck_prompted",
-    createClient: () => client, newId: () => `machine-${++ids}`, now: () => 1234, log: silentLogger, ...overrides,
+    paths,
+    env: {},
+    bakedServer: "https://baked.convex.site",
+    cliVersion: "0.1.0",
+    prompt: async () => "ck_prompted",
+    createClient: () => client,
+    newId: () => `machine-${++ids}`,
+    now: () => 1234,
+    log: silentLogger,
+    ...overrides,
   };
 }
 // `hostname: undefined` means "neither --hostname nor --no-hostname was passed" — the tri-state
@@ -31,10 +52,26 @@ describe("runLogin", () => {
   it("writes a 0600 config with a fresh machine id and a random label, then keeps both", async () => {
     const d = deps();
     const first = await runLogin({ ...base, token: "ck_first" }, d);
-    expect(first).toMatchObject({ ok: true, exitCode: 0, server: "https://baked.convex.site", machineId: "machine-1", user: { userId: "u1", name: "Ada" }, token: { name: "laptop", prefix: "ck_abc123" } });
+    expect(first).toMatchObject({
+      ok: true,
+      exitCode: 0,
+      server: "https://baked.convex.site",
+      machineId: "machine-1",
+      user: { userId: "u1", name: "Ada" },
+      token: { name: "laptop", prefix: "ck_abc123" },
+    });
     expect(first.label).toMatch(/^[a-z]+-[a-z]+$/);
     const config = await readConfig(d.paths);
-    expect(config).toMatchObject({ server: "https://baked.convex.site", token: "ck_first", machineId: "machine-1", hostnameOptIn: false, userName: "Ada", userEmail: "ada@example.com", tokenName: "laptop", loggedInAt: 1234 });
+    expect(config).toMatchObject({
+      server: "https://baked.convex.site",
+      token: "ck_first",
+      machineId: "machine-1",
+      hostnameOptIn: false,
+      userName: "Ada",
+      userEmail: "ada@example.com",
+      tokenName: "laptop",
+      loggedInAt: 1234,
+    });
     if (process.platform !== "win32") expect(statSync(d.paths.config).mode & 0o777).toBe(0o600);
     const second = await runLogin({ ...base, token: "ck_second", hostname: true }, d);
     expect(second.machineId).toBe("machine-1");
@@ -69,7 +106,9 @@ describe("runLogin", () => {
     expect((await readConfig(d0.paths))?.token).toBe("ck_prompted");
     const d = deps({ env: { CODEX_KABOO_SERVER: "https://env.convex.site/" } });
     expect((await runLogin({ ...base, token: "ck_x" }, d)).server).toBe("https://env.convex.site");
-    expect((await runLogin({ ...base, token: "ck_x", server: "https://flag.convex.site" }, d)).server).toBe("https://flag.convex.site");
+    expect(
+      (await runLogin({ ...base, token: "ck_x", server: "https://flag.convex.site" }, d)).server,
+    ).toBe("https://flag.convex.site");
     const none = await runLogin({ ...base, token: "ck_x" }, deps({ bakedServer: undefined }));
     expect(none.exitCode).toBe(2);
     expect(none.error).toContain("--server");
@@ -82,7 +121,20 @@ describe("runLogin", () => {
     expect(bad.exitCode).toBe(2);
     expect(existsSync(d.paths.config)).toBe(false);
     await runLogin({ ...base, token: "ck_good" }, d);
-    const failing = deps({ paths: d.paths, createClient: () => ({ async whoami() { throw new Error("401 unauthorized"); }, async sync() { throw new Error("x"); }, async health() { return { ok: false, serverTime: null }; } }) });
+    const failing = deps({
+      paths: d.paths,
+      createClient: () => ({
+        async whoami() {
+          throw new Error("401 unauthorized");
+        },
+        async sync() {
+          throw new Error("x");
+        },
+        async health() {
+          return { ok: false, serverTime: null };
+        },
+      }),
+    });
     const rejected = await runLogin({ ...base, token: "ck_new" }, failing);
     expect(rejected.exitCode).toBe(2);
     expect(rejected.error).toContain("401");
@@ -95,7 +147,11 @@ describe("runLogout", () => {
     const d = deps();
     await runLogin({ ...base, token: "ck_good" }, d);
     await writeState(d.paths, emptyState());
-    expect(await runLogout({ paths: d.paths, log: silentLogger })).toEqual({ ok: true, exitCode: 0, removed: true });
+    expect(await runLogout({ paths: d.paths, log: silentLogger })).toEqual({
+      ok: true,
+      exitCode: 0,
+      removed: true,
+    });
     expect(existsSync(d.paths.config)).toBe(false);
     expect(existsSync(d.paths.state)).toBe(true);
     expect((await runLogout({ paths: d.paths, log: silentLogger })).removed).toBe(false);

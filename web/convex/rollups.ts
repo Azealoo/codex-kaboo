@@ -52,7 +52,12 @@ export async function recomputeDays(
   days: Iterable<string>,
   now: number,
 ): Promise<Record<RecomputeOutcome, number>> {
-  const outcomes: Record<RecomputeOutcome, number> = { inserted: 0, replaced: 0, deleted: 0, none: 0 };
+  const outcomes: Record<RecomputeOutcome, number> = {
+    inserted: 0,
+    replaced: 0,
+    deleted: 0,
+    none: 0,
+  };
   for (const day of [...new Set(days)].sort()) {
     outcomes[await recomputeDay(ctx, userId, day, now)] += 1;
   }

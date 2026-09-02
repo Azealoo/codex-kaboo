@@ -48,8 +48,12 @@ describe("DayHourHeatmap", () => {
     grid[4]![9] = 250_000;
     render(<DayHourHeatmap grid={grid} format={formatCompact} />);
     expect(screen.getAllByRole("gridcell")).toHaveLength(168);
-    expect(screen.getByLabelText("Mon 14:00: 1M tokens")).toHaveStyle({ backgroundColor: "#0d532b" });
-    expect(screen.getByLabelText("Fri 09:00: 250K tokens")).toHaveStyle({ backgroundColor: "#6cc482" });
+    expect(screen.getByLabelText("Mon 14:00: 1M tokens")).toHaveStyle({
+      backgroundColor: "#0d532b",
+    });
+    expect(screen.getByLabelText("Fri 09:00: 250K tokens")).toHaveStyle({
+      backgroundColor: "#6cc482",
+    });
   });
 
   it("exposes an ARIA grid with an accessible name and reachable gridcells", () => {
@@ -57,6 +61,8 @@ describe("DayHourHeatmap", () => {
     grid[0]![14] = 1_000_000;
     render(<DayHourHeatmap grid={grid} format={formatCompact} />);
     const gridEl = screen.getByRole("grid", { name: "Token usage heatmap by weekday and hour" });
-    expect(within(gridEl).getByRole("gridcell", { name: "Mon 14:00: 1M tokens" })).toBeInTheDocument();
+    expect(
+      within(gridEl).getByRole("gridcell", { name: "Mon 14:00: 1M tokens" }),
+    ).toBeInTheDocument();
   });
 });

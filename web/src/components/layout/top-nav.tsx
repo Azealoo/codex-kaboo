@@ -32,7 +32,9 @@ export function TopNav() {
               aria-current={l.active ? "page" : undefined}
               className={cn(
                 "rounded-md px-3 py-1.5 text-sm",
-                l.active ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:text-foreground",
+                l.active
+                  ? "bg-accent font-medium text-accent-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {l.label}

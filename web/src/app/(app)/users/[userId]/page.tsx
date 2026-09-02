@@ -22,7 +22,19 @@ import { TABS, tabParser, type Tab } from "@/lib/search-params";
 
 const TAB_OPTIONS = TABS.map((t) => ({ value: t, label: t[0]!.toUpperCase() + t.slice(1) }));
 
-function TabBody({ tab, range, userId, isMe, today }: { tab: Tab; range: ResolvedRange; userId: Id<"users">; isMe: boolean; today: string }) {
+function TabBody({
+  tab,
+  range,
+  userId,
+  isMe,
+  today,
+}: {
+  tab: Tab;
+  range: ResolvedRange;
+  userId: Id<"users">;
+  isMe: boolean;
+  today: string;
+}) {
   switch (tab) {
     case "overview":
       return <OverviewTab range={range} userId={userId} isMe={isMe} today={today} />;
@@ -49,12 +61,25 @@ export default function UserPage() {
   const [tab, setTab] = useQueryState("tab", tabParser);
   if (users === undefined || resolved === null || today === null) return <ShellSkeleton />;
   const user = users.find((u) => u.userId === userId);
-  if (!user) return <EmptyState title="User not found" description="This user has not signed in to the dashboard." />;
+  if (!user)
+    return (
+      <EmptyState
+        title="User not found"
+        description="This user has not signed in to the dashboard."
+      />
+    );
   const isMe = userId === me;
   return (
     <div className="flex flex-col gap-4">
       <UserHeader user={user} isMe={isMe} color={colorFor(colors, userId)} />
-      <SegmentedControl ariaLabel="Tab" options={TAB_OPTIONS} value={tab} onChange={(t) => void setTab(t)} size="default" className="self-start" />
+      <SegmentedControl
+        ariaLabel="Tab"
+        options={TAB_OPTIONS}
+        value={tab}
+        onChange={(t) => void setTab(t)}
+        size="default"
+        className="self-start"
+      />
       <TabBody tab={tab} range={resolved} userId={userId} isMe={isMe} today={today} />
     </div>
   );

@@ -1,6 +1,12 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { SCHEDULE_INTERVAL_SECONDS, checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTarget } from "./index";
+import {
+  SCHEDULE_INTERVAL_SECONDS,
+  checkTargetPaths,
+  scheduledArgs,
+  type SchedulerAdapter,
+  type ScheduleTarget,
+} from "./index";
 
 export const LAUNCHD_LABEL = "com.codex-kaboo.sync";
 
@@ -49,7 +55,10 @@ export function renderPlist(target: ScheduleTarget): string {
     `  <string>${xmlEscape(log)}</string>`,
     "  <key>EnvironmentVariables</key>",
     "  <dict>",
-    ...env.flatMap(([k, v]) => [`    <key>${xmlEscape(k)}</key>`, `    <string>${xmlEscape(v)}</string>`]),
+    ...env.flatMap(([k, v]) => [
+      `    <key>${xmlEscape(k)}</key>`,
+      `    <string>${xmlEscape(v)}</string>`,
+    ]),
     "  </dict>",
     "</dict>",
     "</plist>",
@@ -71,10 +80,18 @@ export const launchdAdapter: SchedulerAdapter = {
     const bootstrap = await spawner.run("launchctl", ["bootstrap", domain(target), file]);
     if (bootstrap.code !== 0) {
       const legacy = await spawner.run("launchctl", ["load", "-w", file]);
-      if (legacy.code !== 0) throw new Error(`launchctl bootstrap failed: ${bootstrap.stderr.trim() || legacy.stderr.trim()}`);
+      if (legacy.code !== 0)
+        throw new Error(
+          `launchctl bootstrap failed: ${bootstrap.stderr.trim() || legacy.stderr.trim()}`,
+        );
     }
-    const kickstart = await spawner.run("launchctl", ["kickstart", "-k", `${domain(target)}/${LAUNCHD_LABEL}`]);
-    if (kickstart.code !== 0) throw new Error(`launchctl kickstart failed: ${kickstart.stderr.trim()}`);
+    const kickstart = await spawner.run("launchctl", [
+      "kickstart",
+      "-k",
+      `${domain(target)}/${LAUNCHD_LABEL}`,
+    ]);
+    if (kickstart.code !== 0)
+      throw new Error(`launchctl kickstart failed: ${kickstart.stderr.trim()}`);
     return `launchd agent ${LAUNCHD_LABEL} installed (${file}), runs every 15 minutes`;
   },
   async uninstall(target, spawner) {
@@ -96,7 +113,19 @@ export const launchdAdapter: SchedulerAdapter = {
     const installed = print.code === 0 || hasPlist;
     const missing = await checkTargetPaths(target);
     if (!installed) return { installed: false, healthy: false, detail: "not installed" };
-    if (missing.length > 0) return { installed: true, healthy: false, detail: `schedule broken: missing ${missing.join(", ")}; run \`codex-kaboo install\` again` };
-    return { installed: true, healthy: print.code === 0, detail: print.code === 0 ? "loaded" : "plist present but not loaded (log in again or run `codex-kaboo install`)" };
+    if (missing.length > 0)
+      return {
+        installed: true,
+        healthy: false,
+        detail: `schedule broken: missing ${missing.join(", ")}; run \`codex-kaboo install\` again`,
+      };
+    return {
+      installed: true,
+      healthy: print.code === 0,
+      detail:
+        print.code === 0
+          ? "loaded"
+          : "plist present but not loaded (log in again or run `codex-kaboo install`)",
+    };
   },
 };

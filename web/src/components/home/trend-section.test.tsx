@@ -12,7 +12,14 @@ vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => useQueryMock(
 import { TrendSection } from "./trend-section";
 
 function makeRange(days: number): ResolvedRange {
-  return { kind: "custom", from: "2026-08-01", to: "2026-09-02", days, previous: true, label: `${days} days` };
+  return {
+    kind: "custom",
+    from: "2026-08-01",
+    to: "2026-09-02",
+    days,
+    previous: true,
+    label: `${days} days`,
+  };
 }
 
 describe("TrendSection", () => {
@@ -35,7 +42,8 @@ describe("TrendSection", () => {
     const range = makeRange(days);
     render(<TrendSection range={range} />);
     const trendsCalls = useQueryMock.mock.calls.filter(
-      ([, args]) => args !== undefined && args !== null && typeof args === "object" && "bucket" in args,
+      ([, args]) =>
+        args !== undefined && args !== null && typeof args === "object" && "bucket" in args,
     );
     expect(trendsCalls).toHaveLength(1);
     expect(trendsCalls[0]?.[1]).toEqual({ from: range.from, to: range.to, bucket });

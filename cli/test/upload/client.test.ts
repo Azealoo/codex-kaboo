@@ -1,19 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
 import { makeBatch } from "@codex-kaboo/shared/test-fixtures";
 import {
-  backoffMs, createClient, isAuthError, isBadRequest, isPayloadTooLarge, parseRetryAfter, RETRY_AFTER_MAX_MS, SyncHttpError, SyncNetworkError,
+  backoffMs,
+  createClient,
+  isAuthError,
+  isBadRequest,
+  isPayloadTooLarge,
+  parseRetryAfter,
+  RETRY_AFTER_MAX_MS,
+  SyncHttpError,
+  SyncNetworkError,
 } from "../../src/upload/client";
 
 const okBody = {
   ok: true,
-  accepted: { sessions: { inserted: 1, updated: 0, unchanged: 0 }, events: { inserted: 1, updated: 0, unchanged: 0 } },
+  accepted: {
+    sessions: { inserted: 1, updated: 0, unchanged: 0 },
+    events: { inserted: 1, updated: 0, unchanged: 0 },
+  },
   conflicts: { sessions: [], events: 0 },
   serverTime: 1,
   latestCliVersion: "0.2.0",
   limits: { maxBodyBytes: 8388608, maxSessions: 500, maxEvents: 5000 },
 };
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", ...headers },
+  });
 
 function stub(responses: (Response | Error)[]) {
   const calls: { url: string; init: RequestInit }[] = [];
@@ -26,8 +40,15 @@ function stub(responses: (Response | Error)[]) {
     return next;
   };
   const client = createClient({
-    server: "https://x.convex.site", token: "ck_abc", cliVersion: "0.1.0", fetch, sleep: async (ms) => { sleeps.push(ms); },
-    random: () => 0.5, now: () => 1_000_000,
+    server: "https://x.convex.site",
+    token: "ck_abc",
+    cliVersion: "0.1.0",
+    fetch,
+    sleep: async (ms) => {
+      sleeps.push(ms);
+    },
+    random: () => 0.5,
+    now: () => 1_000_000,
   });
   return { client, calls, sleeps };
 }
@@ -46,7 +67,11 @@ describe("createClient.sync", () => {
     expect(calls[0]?.init.signal).toBeInstanceOf(AbortSignal);
   });
   it("retries 5xx/429 with backoff and Retry-After, then succeeds", async () => {
-    const { client, calls, sleeps } = stub([json(503, { ok: false, error: "internal" }, { "Retry-After": "2" }), json(429, { ok: false, error: "x" }), json(200, okBody)]);
+    const { client, calls, sleeps } = stub([
+      json(503, { ok: false, error: "internal" }, { "Retry-After": "2" }),
+      json(429, { ok: false, error: "x" }),
+      json(200, okBody),
+    ]);
     await client.sync(makeBatch());
     expect(calls).toHaveLength(3);
     expect(sleeps).toEqual([2000, 2000]); // Retry-After 2 s, then attempt-2 backoff 2000 ms (jitter 0 with random 0.5)
@@ -59,17 +84,36 @@ describe("createClient.sync", () => {
     expect((e1 as SyncHttpError).code).toBe("token_revoked");
     expect(isAuthError(e1)).toBe(true);
     expect(u.calls).toHaveLength(1);
-    const p = stub([json(413, { ok: false, error: "too_many_items", limits: { maxBodyBytes: 1, maxSessions: 1, maxEvents: 100 } })]);
+    const p = stub([
+      json(413, {
+        ok: false,
+        error: "too_many_items",
+        limits: { maxBodyBytes: 1, maxSessions: 1, maxEvents: 100 },
+      }),
+    ]);
     const e2 = await p.client.sync(makeBatch()).catch((e: unknown) => e);
     expect(isPayloadTooLarge(e2)).toBe(true);
     expect((e2 as SyncHttpError).body?.limits?.maxEvents).toBe(100);
-    const b = stub([json(400, { ok: false, error: "invalid_batch", issues: [{ path: "sessions.0.day", message: "bad" }] })]);
+    const b = stub([
+      json(400, {
+        ok: false,
+        error: "invalid_batch",
+        issues: [{ path: "sessions.0.day", message: "bad" }],
+      }),
+    ]);
     const e3 = await b.client.sync(makeBatch()).catch((e: unknown) => e);
     expect(isBadRequest(e3)).toBe(true);
     expect((e3 as SyncHttpError).message).toContain("sessions.0.day");
   });
   it("gives up after six attempts (five retries)", async () => {
-    const { client, calls, sleeps } = stub([new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET")]);
+    const { client, calls, sleeps } = stub([
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+    ]);
     await expect(client.sync(makeBatch())).rejects.toBeInstanceOf(SyncNetworkError);
     expect(calls).toHaveLength(6);
     expect(sleeps).toEqual([1000, 2000, 4000, 8000, 16000]);
@@ -83,7 +127,17 @@ describe("createClient.sync", () => {
 
 describe("whoami / health", () => {
   it("parses whoami and health", async () => {
-    const { client, calls } = stub([json(200, { ok: true, userId: "u1", name: "Ada", email: null, token: { name: "mac", prefix: "ck_abc" }, serverTime: 5 }), json(200, { ok: true, serverTime: 6 })]);
+    const { client, calls } = stub([
+      json(200, {
+        ok: true,
+        userId: "u1",
+        name: "Ada",
+        email: null,
+        token: { name: "mac", prefix: "ck_abc" },
+        serverTime: 5,
+      }),
+      json(200, { ok: true, serverTime: 6 }),
+    ]);
     expect((await client.whoami()).userId).toBe("u1");
     expect(calls[0]?.url).toBe("https://x.convex.site/api/v1/whoami");
     expect(calls[0]?.init.method).toBe("GET");
@@ -152,7 +206,9 @@ describe("Retry-After edge cases", () => {
 
   it("reports the clamped delay on the error too, so retryAfterMs never promises a wait we would not take", async () => {
     // 400 is non-retryable, so the error surfaces on the first attempt with its parsed header.
-    const { client } = stub([json(400, { ok: false, error: "invalid_batch" }, { "Retry-After": "99999" })]);
+    const { client } = stub([
+      json(400, { ok: false, error: "invalid_batch" }, { "Retry-After": "99999" }),
+    ]);
     const error = await client.sync(makeBatch()).catch((e: unknown) => e);
     expect((error as SyncHttpError).retryAfterMs).toBe(RETRY_AFTER_MAX_MS);
   });
@@ -185,7 +241,12 @@ describe("token safety", () => {
   });
   it("never includes the token in a SyncNetworkError message", async () => {
     const { client } = stub([
-      new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
     ]);
     const e = await client.sync(makeBatch()).catch((x: unknown) => x);
     expect(e).toBeInstanceOf(SyncNetworkError);
@@ -204,8 +265,14 @@ describe("timeout wiring", () => {
       spy.mockClear();
       const fetch = async (): Promise<Response> => json(200, okBody);
       const custom = createClient({
-        server: "https://x.convex.site", token: "ck_abc", cliVersion: "0.1.0", fetch,
-        sleep: async () => {}, random: () => 0.5, now: () => 0, timeoutMs: 5000,
+        server: "https://x.convex.site",
+        token: "ck_abc",
+        cliVersion: "0.1.0",
+        fetch,
+        sleep: async () => {},
+        random: () => 0.5,
+        now: () => 0,
+        timeoutMs: 5000,
       });
       await custom.sync(makeBatch());
       expect(spy).toHaveBeenCalledWith(5000);

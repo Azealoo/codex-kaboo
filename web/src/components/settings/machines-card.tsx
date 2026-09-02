@@ -91,9 +91,17 @@ export function MachinesCard() {
   const now = useNow();
   const names = new Map((users ?? []).map((u) => [u.userId as string, u.name]));
   const columns: Column<MachineRow>[] = [
-    { key: "label", header: "Machine", render: (m) => (m.userId === me ? <RenameCell machine={m} /> : m.label) },
+    {
+      key: "label",
+      header: "Machine",
+      render: (m) => (m.userId === me ? <RenameCell machine={m} /> : m.label),
+    },
     { key: "owner", header: "Owner", render: (m) => names.get(m.userId as string) ?? EM_DASH },
-    { key: "platform", header: "Platform", render: (m) => `${m.platform}${m.arch ? ` · ${m.arch}` : ""}` },
+    {
+      key: "platform",
+      header: "Platform",
+      render: (m) => `${m.platform}${m.arch ? ` · ${m.arch}` : ""}`,
+    },
     {
       key: "codex",
       header: "Codex",

@@ -1,14 +1,38 @@
 import { describe, expect, it } from "vitest";
 import { SessionSummary } from "@codex-kaboo/shared/sync";
-import { createReducerState, finalize, reduceLine, type ReducerContext } from "../../src/parser/session";
+import {
+  createReducerState,
+  finalize,
+  reduceLine,
+  type ReducerContext,
+} from "../../src/parser/session";
 
 const TID = "0199a1b2-0000-7000-8000-000000000002";
 const T = (s: number): string => new Date(Date.UTC(2026, 7, 30, 17, 0, s)).toISOString();
-const line = (type: string, payload: unknown, ts: string): string => JSON.stringify({ timestamp: ts, type, payload });
-const item = (it: Record<string, unknown>, s: number): string => line("event_msg", { type: "item_completed", item: it }, T(s));
-const meta = line("session_meta", { id: TID, timestamp: T(0), cwd: "/redacted/project-b", originator: "codex-tui", source: "cli", cli_version: "0.150.1" }, T(0));
+const line = (type: string, payload: unknown, ts: string): string =>
+  JSON.stringify({ timestamp: ts, type, payload });
+const item = (it: Record<string, unknown>, s: number): string =>
+  line("event_msg", { type: "item_completed", item: it }, T(s));
+const meta = line(
+  "session_meta",
+  {
+    id: TID,
+    timestamp: T(0),
+    cwd: "/redacted/project-b",
+    originator: "codex-tui",
+    source: "cli",
+    cli_version: "0.150.1",
+  },
+  T(0),
+);
 
-const ctx: ReducerContext = { sessionId: TID, threadId: TID, rolloutId: null, fileTimestampMs: null, machineZone: "UTC" };
+const ctx: ReducerContext = {
+  sessionId: TID,
+  threadId: TID,
+  rolloutId: null,
+  fileTimestampMs: null,
+  machineZone: "UTC",
+};
 function run(lines: string[]) {
   const state = createReducerState(ctx);
   lines.forEach((text, seq) => reduceLine(state, seq, text));
@@ -31,46 +55,126 @@ describe("reducer: items", () => {
       item({ type: "Reasoning", id: "r2" }, 7),
       item({ type: "Reasoning", id: "r3" }, 8),
       item({ type: "Reasoning", id: "r4" }, 9),
-      item({
-        type: "CommandExecution", id: "c1", command: ["cat", SKILL_PATH], cwd: "/redacted/project-b", stdout: "SECRET", stderr: "", aggregated_output: "SECRET",
-        parsed_cmd: [{ type: "read", cmd: `cat ${SKILL_PATH}`, path: SKILL_PATH, name: "SKILL.md" }, { type: "search", cmd: "rg SECRET", query: "SECRET", path: "src" }, { type: "list_files", cmd: "ls", path: "." }, { type: "unknown", cmd: "SECRET command" }],
-      }, 10),
-      item({ type: "CommandExecution", id: "c2", command: ["true"], parsed_cmd: [] }, 11),
-      item({ type: "CommandExecution", id: "c3", command: ["type", "C:\\Users\\me\\.codex\\skills\\skill-alpha\\SKILL.md"], parsed_cmd: [{ type: "unknown", cmd: "SECRET" }] }, 12),
-      item({
-        type: "FileChange", id: "f1", status: "completed", stdout: "SECRET",
-        changes: {
-          "/redacted/project-b/src/a.ts": { type: "update", unified_diff: DIFF, move_path: null },
-          "/redacted/project-b/src/new.ts": { type: "add", content: "l1\nl2\nl3\n" },
-          "/redacted/project-b/src/old.ts": { type: "delete", content: "x\ny" },
+      item(
+        {
+          type: "CommandExecution",
+          id: "c1",
+          command: ["cat", SKILL_PATH],
+          cwd: "/redacted/project-b",
+          stdout: "SECRET",
+          stderr: "",
+          aggregated_output: "SECRET",
+          parsed_cmd: [
+            { type: "read", cmd: `cat ${SKILL_PATH}`, path: SKILL_PATH, name: "SKILL.md" },
+            { type: "search", cmd: "rg SECRET", query: "SECRET", path: "src" },
+            { type: "list_files", cmd: "ls", path: "." },
+            { type: "unknown", cmd: "SECRET command" },
+          ],
         },
-      }, 13),
-      item({ type: "Extension", id: "e1", kind: "web.search", query: "SECRET query", results: ["SECRET"] }, 14),
+        10,
+      ),
+      item({ type: "CommandExecution", id: "c2", command: ["true"], parsed_cmd: [] }, 11),
+      item(
+        {
+          type: "CommandExecution",
+          id: "c3",
+          command: ["type", "C:\\Users\\me\\.codex\\skills\\skill-alpha\\SKILL.md"],
+          parsed_cmd: [{ type: "unknown", cmd: "SECRET" }],
+        },
+        12,
+      ),
+      item(
+        {
+          type: "FileChange",
+          id: "f1",
+          status: "completed",
+          stdout: "SECRET",
+          changes: {
+            "/redacted/project-b/src/a.ts": { type: "update", unified_diff: DIFF, move_path: null },
+            "/redacted/project-b/src/new.ts": { type: "add", content: "l1\nl2\nl3\n" },
+            "/redacted/project-b/src/old.ts": { type: "delete", content: "x\ny" },
+          },
+        },
+        13,
+      ),
+      item(
+        {
+          type: "Extension",
+          id: "e1",
+          kind: "web.search",
+          query: "SECRET query",
+          results: ["SECRET"],
+        },
+        14,
+      ),
       item({ type: "Extension", id: "e2", kind: "web.search", query: "SECRET" }, 15),
       item({ type: "Extension", id: "e3", kind: "something.else" }, 16),
       item({ type: "WebSearch", id: "w1", query: "SECRET" }, 17),
       item({ type: "ImageView", id: "i1", path: "/redacted/shot.png" }, 18),
-      item({ type: "McpToolCall", id: "m1", server: "context7", tool: "query-docs", arguments: { q: "SECRET" } }, 19),
+      item(
+        {
+          type: "McpToolCall",
+          id: "m1",
+          server: "context7",
+          tool: "query-docs",
+          arguments: { q: "SECRET" },
+        },
+        19,
+      ),
       item({ type: "McpToolCall", id: "m2", server: "context7", tool: "query-docs" }, 20),
       item({ type: "ContextCompaction", id: "cc1" }, 21),
       item({ type: "Plan", id: "p1", text: "SECRET" }, 22),
-      line("compacted", { message: "SECRET", replacement_history: ["SECRET"], window_id: 1 }, T(23)),
+      line(
+        "compacted",
+        { message: "SECRET", replacement_history: ["SECRET"], window_id: 1 },
+        T(23),
+      ),
       line("compacted", { message: "SECRET", window_id: 2 }, T(24)),
-      line("response_item", { type: "function_call", name: "mcp__github__list_issues", arguments: "{\"SECRET\":1}", call_id: "x" }, T(25)),
+      line(
+        "response_item",
+        {
+          type: "function_call",
+          name: "mcp__github__list_issues",
+          arguments: '{"SECRET":1}',
+          call_id: "x",
+        },
+        T(25),
+      ),
       line("response_item", { type: "custom_tool_call", name: "exec", input: "SECRET" }, T(26)),
-      line("response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "SECRET" }] }, T(27)),
+      line(
+        "response_item",
+        { type: "message", role: "user", content: [{ type: "input_text", text: "SECRET" }] },
+        T(27),
+      ),
       line("event_msg", { type: "user_message", message: "SECRET legacy" }, T(28)),
       line("event_msg", { type: "agent_message", message: "SECRET legacy" }, T(29)),
     ]);
     const s = parsed.summary;
     expect(SessionSummary.safeParse(s).success).toBe(true);
     expect(s).toMatchObject({
-      userMessages: 2, agentMessages: 3, reasoningItems: 4, filesChanged: 3, linesAdded: 5, linesRemoved: 3, compactions: 2,
+      userMessages: 2,
+      agentMessages: 3,
+      reasoningItems: 4,
+      filesChanged: 3,
+      linesAdded: 5,
+      linesRemoved: 3,
+      compactions: 2,
       mcpTools: [{ key: "context7/query-docs", count: 2 }],
-      skills: [{ key: "openai-docs", count: 1 }, { key: "skill-alpha", count: 1 }],
+      skills: [
+        { key: "openai-docs", count: 1 },
+        { key: "skill-alpha", count: 1 },
+      ],
     });
     expect(s.toolCounts).toEqual({
-      commandRead: 1, commandList: 1, commandSearch: 1, commandOther: 3, fileChange: 1, webSearch: 3, imageView: 1, mcpTool: 2, other: 2,
+      commandRead: 1,
+      commandList: 1,
+      commandSearch: 1,
+      commandOther: 3,
+      fileChange: 1,
+      webSearch: 3,
+      imageView: 1,
+      mcpTool: 2,
+      other: 2,
     });
     expect(parsed.diagnostics.itemTypes).toMatchObject({ Plan: 1, McpToolCall: 2, Extension: 3 });
     expect(parsed.diagnostics.mcpFallbackUsed).toBe(false);
@@ -96,21 +200,63 @@ describe("reducer: items", () => {
   it("falls back to function_call names for MCP usage when no McpToolCall items exist", () => {
     const parsed = run([
       meta,
-      line("response_item", { type: "function_call", name: "mcp__github__list_issues", arguments: "{}" }, T(1)),
+      line(
+        "response_item",
+        { type: "function_call", name: "mcp__github__list_issues", arguments: "{}" },
+        T(1),
+      ),
       line("response_item", { type: "function_call", name: "wait", arguments: "{}" }, T(2)),
       line("response_item", { type: "function_call", name: "exec", arguments: "{}" }, T(3)),
-      line("response_item", { type: "function_call", name: "linear__create_issue", arguments: "{}" }, T(4)),
-      line("response_item", { type: "function_call", name: "mcp__github__list_issues", arguments: "{}" }, T(5)),
+      line(
+        "response_item",
+        { type: "function_call", name: "linear__create_issue", arguments: "{}" },
+        T(4),
+      ),
+      line(
+        "response_item",
+        { type: "function_call", name: "mcp__github__list_issues", arguments: "{}" },
+        T(5),
+      ),
     ]);
-    expect(parsed.summary.mcpTools).toEqual([{ key: "github/list_issues", count: 2 }, { key: "linear/create_issue", count: 1 }]);
+    expect(parsed.summary.mcpTools).toEqual([
+      { key: "github/list_issues", count: 2 },
+      { key: "linear/create_issue", count: 1 },
+    ]);
     expect(parsed.summary.toolCounts.mcpTool).toBe(3);
     expect(parsed.diagnostics.mcpFallbackUsed).toBe(true);
   });
   it("counts a skill once per command item and caps keyed arrays at 64", () => {
     const reads = Array.from({ length: 70 }, (_, i) =>
-      item({ type: "CommandExecution", id: `c${i}`, command: ["cat", `/skills/skill-${String(i).padStart(2, "0")}/SKILL.md`], parsed_cmd: [{ type: "read", cmd: "cat", path: `/skills/skill-${String(i).padStart(2, "0")}/SKILL.md`, name: "SKILL.md" }] }, i + 1),
+      item(
+        {
+          type: "CommandExecution",
+          id: `c${i}`,
+          command: ["cat", `/skills/skill-${String(i).padStart(2, "0")}/SKILL.md`],
+          parsed_cmd: [
+            {
+              type: "read",
+              cmd: "cat",
+              path: `/skills/skill-${String(i).padStart(2, "0")}/SKILL.md`,
+              name: "SKILL.md",
+            },
+          ],
+        },
+        i + 1,
+      ),
     );
-    const parsed = run([meta, ...reads, item({ type: "CommandExecution", id: "again", command: ["cat", "/skills/skill-00/SKILL.md"], parsed_cmd: [] }, 99)]);
+    const parsed = run([
+      meta,
+      ...reads,
+      item(
+        {
+          type: "CommandExecution",
+          id: "again",
+          command: ["cat", "/skills/skill-00/SKILL.md"],
+          parsed_cmd: [],
+        },
+        99,
+      ),
+    ]);
     expect(parsed.summary.skills).toHaveLength(64);
     expect(parsed.summary.skills.find((k) => k.key === "skill-00")?.count).toBe(2);
     expect(parsed.summary.skills.find((k) => k.key === "(other)")?.count).toBe(7);
@@ -121,10 +267,18 @@ describe("reducer: items", () => {
 describe("reducer: token_usage_record ruling", () => {
   it("does not let an all-zero token_usage_record line suppress token_count-derived events", () => {
     const zeroUsage = {
-      input_tokens: 0, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0,
+      input_tokens: 0,
+      cached_input_tokens: 0,
+      cache_write_input_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
     };
     const realUsage = {
-      input_tokens: 100, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 10, reasoning_output_tokens: 0,
+      input_tokens: 100,
+      cached_input_tokens: 0,
+      cache_write_input_tokens: 0,
+      output_tokens: 10,
+      reasoning_output_tokens: 0,
     };
     const parsed = run([
       meta,

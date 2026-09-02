@@ -31,7 +31,8 @@ export function StatCard({
   size = "md",
   className,
 }: StatCardProps) {
-  const rendered = typeof value === "number" || value === null ? formatMetricValue(kind, value) : value;
+  const rendered =
+    typeof value === "number" || value === null ? formatMetricValue(kind, value) : value;
   return (
     <Card className={cn("gap-1 rounded-lg border-border p-4 shadow-none", className)}>
       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -44,7 +45,9 @@ export function StatCard({
         ) : null}
       </div>
       <div className="flex items-end justify-between gap-2">
-        <span className={cn("font-semibold leading-none", size === "md" ? "text-2xl" : "text-lg")}>{rendered}</span>
+        <span className={cn("font-semibold leading-none", size === "md" ? "text-2xl" : "text-lg")}>
+          {rendered}
+        </span>
         <DeltaPill change={change} goodDirection={goodDirection} />
       </div>
       {footer ? <div className="text-xs text-muted-foreground">{footer}</div> : null}

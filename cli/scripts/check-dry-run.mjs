@@ -13,15 +13,34 @@ const report = JSON.parse(fs.readFileSync(dryPath, "utf8"));
 const raw = JSON.parse(fs.readFileSync(rawPath, "utf8"));
 const problems = [];
 const FORBIDDEN_KEYS = new Set([
-  "command", "cwd", "path", "stdout", "stderr", "aggregated_output", "formatted_output", "unified_diff", "content",
-  "message", "text", "query", "results", "arguments", "raw_content", "summary_text", "developer_instructions",
-  "last_agent_message", "repository_url", "replacement_history",
+  "command",
+  "cwd",
+  "path",
+  "stdout",
+  "stderr",
+  "aggregated_output",
+  "formatted_output",
+  "unified_diff",
+  "content",
+  "message",
+  "text",
+  "query",
+  "results",
+  "arguments",
+  "raw_content",
+  "summary_text",
+  "developer_instructions",
+  "last_agent_message",
+  "repository_url",
+  "replacement_history",
   // Raw-rollout privacy traps (spec): parsed_cmd[].cmd/.name are real shell text / file basenames;
   // git.commit_hash is a real commit hash. None of these three collides with any field name in
   // shared/src/sync.ts's TokenCounts, ToolCounts, KeyCount, Ttft, SessionSummary, TokenEvent,
   // RateLimitSnapshot, MachineInfo or SyncBatch — the only schemas `report.batches` can contain —
   // so adding them cannot flag a legitimate, allow-listed field.
-  "cmd", "name", "commit_hash",
+  "cmd",
+  "name",
+  "commit_hash",
 ]);
 const home = os.homedir();
 
@@ -29,8 +48,26 @@ const home = os.homedir();
 // (avoids flooding an audit with false positives for anyone whose OS account is a common word);
 // every other username at least 3 characters long is checked as a bare word below.
 const COMMON_WORDS = new Set([
-  "user", "users", "admin", "administrator", "test", "guest", "demo", "root", "home", "main",
-  "default", "local", "public", "shared", "team", "dev", "prod", "staging", "system", "owner",
+  "user",
+  "users",
+  "admin",
+  "administrator",
+  "test",
+  "guest",
+  "demo",
+  "root",
+  "home",
+  "main",
+  "default",
+  "local",
+  "public",
+  "shared",
+  "team",
+  "dev",
+  "prod",
+  "staging",
+  "system",
+  "owner",
 ]);
 let osUsername = "";
 try {
@@ -40,7 +77,10 @@ try {
 }
 const usernameRe =
   osUsername.length >= 3 && !COMMON_WORDS.has(osUsername.toLowerCase())
-    ? new RegExp(`(^|[^A-Za-z0-9])${osUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^A-Za-z0-9])`, "i")
+    ? new RegExp(
+        `(^|[^A-Za-z0-9])${osUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^A-Za-z0-9])`,
+        "i",
+      )
     : null;
 const URL_RE = /https?:\/\//i;
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/;
@@ -54,7 +94,8 @@ const WINDOWS_ABS_RE = /^[A-Za-z]:[\\/]/;
 // these trail keys from the username check specifically; every other check (paths, URLs, emails,
 // forbidden keys) still applies to them, and object KEYS and every other field's values still get
 // the full username check.
-const USERNAME_EXEMPT_TRAIL_RE = /(?:\.project|\.gitBranch|\.label|\.(?:mcpTools|skills)\[\d+\]\.key)$/;
+const USERNAME_EXEMPT_TRAIL_RE =
+  /(?:\.project|\.gitBranch|\.label|\.(?:mcpTools|skills)\[\d+\]\.key)$/;
 
 /** Short leak-category label for a leaky string, or null. Callers must never echo the string itself. */
 function leakKind(str, usernameExempt) {
@@ -97,10 +138,12 @@ const batches = report.batches ?? [];
 // single machine-only heartbeat batch and no session data — that heartbeat is exactly what a real
 // run would still POST, so it is the payload worth auditing, not an error. Only a report with no
 // payload at all means the run found nothing to look at.
-if (batches.length === 0) problems.push("no batches in the dry-run report (is the codex home right?)");
+if (batches.length === 0)
+  problems.push("no batches in the dry-run report (is the codex home right?)");
 batches.forEach((batch, i) => scan(batch, `batches[${i}]`));
 for (const batch of batches) {
-  if (batch.machine.hostname !== null && batch.machine.hostname !== undefined) problems.push("machine.hostname is set (only expected after `login --hostname`)");
+  if (batch.machine.hostname !== null && batch.machine.hostname !== undefined)
+    problems.push("machine.hostname is set (only expected after `login --hostname`)");
 }
 
 const sessions = new Map();
@@ -109,8 +152,10 @@ const eventCounts = new Map();
 for (const batch of batches) {
   for (const e of batch.tokenEvents) {
     eventCounts.set(e.sessionId, (eventCounts.get(e.sessionId) ?? 0) + 1);
-    if (e.total !== e.input + e.output) problems.push(`event ${e.sessionId}#${e.seq}: total != input + output`);
-    if (!sessions.has(e.sessionId)) problems.push(`event ${e.sessionId}#${e.seq}: no session summary in the batches`);
+    if (e.total !== e.input + e.output)
+      problems.push(`event ${e.sessionId}#${e.seq}: total != input + output`);
+    if (!sessions.has(e.sessionId))
+      problems.push(`event ${e.sessionId}#${e.seq}: no session summary in the batches`);
   }
 }
 
@@ -122,25 +167,50 @@ const heartbeatOnly = batches.length > 0 && sessions.size === 0 && eventCounts.s
 if (heartbeatOnly) {
   const rawCount = Object.keys(raw).length;
   console.log(`heartbeat-only dry run: ${batches.length} machine-only batch(es), no session data.`);
-  console.log(`totals reconciliation SKIPPED (${rawCount} session(s) in the raw logs, all already synced).`);
+  console.log(
+    `totals reconciliation SKIPPED (${rawCount} session(s) in the raw logs, all already synced).`,
+  );
   console.log("re-run with a fresh CODEX_KABOO_HOME to force a full re-parse and reconcile them.");
 }
 
 const rows = [];
-for (const [sessionId, expected] of (heartbeatOnly ? [] : Object.entries(raw))) {
+for (const [sessionId, expected] of heartbeatOnly ? [] : Object.entries(raw)) {
   const s = sessions.get(sessionId);
   if (!s) {
     problems.push(`session ${sessionId} missing from the dry run`);
     continue;
   }
-  const got = { input: s.tokens.input, cachedInput: s.tokens.cachedInput, cacheWrite: s.tokens.cacheWrite, output: s.tokens.output, reasoning: s.tokens.reasoning, events: s.responses, lines: s.lineCount };
+  const got = {
+    input: s.tokens.input,
+    cachedInput: s.tokens.cachedInput,
+    cacheWrite: s.tokens.cacheWrite,
+    output: s.tokens.output,
+    reasoning: s.tokens.reasoning,
+    events: s.responses,
+    lines: s.lineCount,
+  };
   for (const key of Object.keys(got)) {
-    if (got[key] !== expected[key]) problems.push(`${sessionId}: ${key} ${got[key]} != raw ${expected[key]}`);
+    if (got[key] !== expected[key])
+      problems.push(`${sessionId}: ${key} ${got[key]} != raw ${expected[key]}`);
   }
-  if ((eventCounts.get(sessionId) ?? 0) !== expected.events) problems.push(`${sessionId}: ${eventCounts.get(sessionId) ?? 0} events shipped != raw ${expected.events}`);
-  rows.push({ session: `…${sessionId.slice(-4)}`, lines: s.lineCount, events: s.responses, input: s.tokens.input, cached: s.tokens.cachedInput, output: s.tokens.output, model: s.model, project: s.project, subagent: s.isSubagent });
+  if ((eventCounts.get(sessionId) ?? 0) !== expected.events)
+    problems.push(
+      `${sessionId}: ${eventCounts.get(sessionId) ?? 0} events shipped != raw ${expected.events}`,
+    );
+  rows.push({
+    session: `…${sessionId.slice(-4)}`,
+    lines: s.lineCount,
+    events: s.responses,
+    input: s.tokens.input,
+    cached: s.tokens.cachedInput,
+    output: s.tokens.output,
+    model: s.model,
+    project: s.project,
+    subagent: s.isSubagent,
+  });
 }
-for (const sessionId of sessions.keys()) if (!raw[sessionId]) problems.push(`session ${sessionId} is not in the raw totals`);
+for (const sessionId of sessions.keys())
+  if (!raw[sessionId]) problems.push(`session ${sessionId} is not in the raw totals`);
 
 console.table(rows);
 const totalEvents = [...eventCounts.values()].reduce((a, b) => a + b, 0);

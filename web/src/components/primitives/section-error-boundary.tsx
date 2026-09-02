@@ -13,7 +13,8 @@ function describeError(error: Error): string {
     const data = error.data as { code?: string } | string;
     const code = typeof data === "string" ? data : data.code;
     if (code === "bad_range") return "The selected range is invalid.";
-    if (code === "unauthenticated" || code === "user_not_registered") return "Your session expired. Reload the page.";
+    if (code === "unauthenticated" || code === "user_not_registered")
+      return "Your session expired. Reload the page.";
     if (code === "forbidden") return "You are not allowed to do that.";
     return `Request failed (${code ?? "unknown"}).`;
   }

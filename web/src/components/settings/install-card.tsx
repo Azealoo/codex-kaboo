@@ -29,7 +29,9 @@ export function InstallCard() {
                 {step.note ? <p className="text-xs text-muted-foreground">{step.note}</p> : null}
               </div>
             ))}
-            <p className="text-xs text-muted-foreground">Re-running the install command upgrades the collector in place.</p>
+            <p className="text-xs text-muted-foreground">
+              Re-running the install command upgrades the collector in place.
+            </p>
           </TabsContent>
         ))}
       </Tabs>

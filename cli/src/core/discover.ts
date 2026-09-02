@@ -100,7 +100,10 @@ function preferredOf(a: DiscoveredFile, b: DiscoveredFile): DiscoveredFile {
  * `sessionId` and silently keeps only the last writer, so the stored `summaryHash` alternates
  * between the two and the session is re-uploaded on every run, forever.
  */
-export function dedupeBySession(files: DiscoveredFile[]): { files: DiscoveredFile[]; duplicates: DuplicateSession[] } {
+export function dedupeBySession(files: DiscoveredFile[]): {
+  files: DiscoveredFile[];
+  duplicates: DuplicateSession[];
+} {
   const groups = new Map<string, DiscoveredFile[]>();
   for (const file of files) {
     const group = groups.get(file.sessionId);
@@ -114,7 +117,8 @@ export function dedupeBySession(files: DiscoveredFile[]): { files: DiscoveredFil
     const winner = group.reduce(preferredOf);
     winners.add(winner);
     for (const file of group) {
-      if (file !== winner) duplicates.push({ sessionId: file.sessionId, kept: winner.path, dropped: file.path });
+      if (file !== winner)
+        duplicates.push({ sessionId: file.sessionId, kept: winner.path, dropped: file.path });
     }
   }
   return { files: files.filter((file) => winners.has(file)), duplicates };
@@ -141,7 +145,8 @@ export async function discoverRolloutFiles(
     const found: string[] = [];
     if (exists) {
       if (files.length < maxFiles) {
-        for (const sub of SUBDIRS) await walk(path.join(home, sub), found, maxFiles + 1 - files.length);
+        for (const sub of SUBDIRS)
+          await walk(path.join(home, sub), found, maxFiles + 1 - files.length);
       } else {
         truncated = true; // an existing home reached after the cap is already full is never examined
       }

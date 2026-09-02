@@ -4,8 +4,17 @@ import { countDiffLines, countLines } from "../../src/parser/diff";
 describe("countDiffLines", () => {
   it("counts + and - lines inside hunks only", () => {
     const diff = [
-      "--- a/file", "+++ b/file", "@@ -1,2 +1,3 @@", " context", "+added one", "-removed one",
-      "\\ No newline at end of file", "@@ -10 +11 @@", "+added two", "+added three", " more context",
+      "--- a/file",
+      "+++ b/file",
+      "@@ -1,2 +1,3 @@",
+      " context",
+      "+added one",
+      "-removed one",
+      "\\ No newline at end of file",
+      "@@ -10 +11 @@",
+      "+added two",
+      "+added three",
+      " more context",
     ].join("\n");
     expect(countDiffLines(diff)).toEqual({ added: 3, removed: 1 });
   });

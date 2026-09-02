@@ -25,7 +25,11 @@ export function BarCell({
   return (
     <div className="flex items-center justify-end gap-2">
       <div className="h-2 w-24 overflow-hidden rounded-sm bg-muted" aria-hidden="true">
-        <div data-testid="bar-fill" className="h-full rounded-sm" style={{ width: `${pct}%`, backgroundColor: color }} />
+        <div
+          data-testid="bar-fill"
+          className="h-full rounded-sm"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
       </div>
       <span className="tabular">{children}</span>
     </div>

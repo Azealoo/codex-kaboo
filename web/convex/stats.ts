@@ -1,6 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import { bucketStart, daysBetween, eachBucket, weekdayOf } from "../../shared/src/days";
-import { addTokens, emptyTokens, percentChange, ratio, ttftMean, ttftMedianApprox } from "../../shared/src/metrics";
+import {
+  addTokens,
+  emptyTokens,
+  percentChange,
+  ratio,
+  ttftMean,
+  ttftMedianApprox,
+} from "../../shared/src/metrics";
 import type { Tokens } from "../../shared/src/sync";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
@@ -29,11 +36,33 @@ import type {
 import { displayName } from "./users";
 
 export const METRIC_KEYS: MetricKey[] = [
-  "totalTokens", "inputTokens", "cachedInputTokens", "outputTokens", "reasoningTokens",
-  "subagentTokens", "costUsd", "linesAdded", "linesRemoved", "filesChanged",
-  "sessions", "turns", "responses", "messages", "userMessages", "agentMessages",
-  "cacheHitRate", "tokensPerTurn", "tokensPerLine", "avgSessionActiveMs", "activeRate",
-  "activeMs", "wallMs", "ttftAvgMs", "ttftP50Ms", "compactions", "activeDays",
+  "totalTokens",
+  "inputTokens",
+  "cachedInputTokens",
+  "outputTokens",
+  "reasoningTokens",
+  "subagentTokens",
+  "costUsd",
+  "linesAdded",
+  "linesRemoved",
+  "filesChanged",
+  "sessions",
+  "turns",
+  "responses",
+  "messages",
+  "userMessages",
+  "agentMessages",
+  "cacheHitRate",
+  "tokensPerTurn",
+  "tokensPerLine",
+  "avgSessionActiveMs",
+  "activeRate",
+  "activeMs",
+  "wallMs",
+  "ttftAvgMs",
+  "ttftP50Ms",
+  "compactions",
+  "activeDays",
 ];
 
 // ---------- shared helpers (also used by Tasks 14–15) ----------
@@ -149,7 +178,10 @@ export function cmpKey(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-export function byTotalThenName(a: { total: number; name: string }, b: { total: number; name: string }): number {
+export function byTotalThenName(
+  a: { total: number; name: string },
+  b: { total: number; name: string },
+): number {
   return b.total - a.total || cmpKey(a.name, b.name);
 }
 
@@ -209,7 +241,9 @@ export const leaderboard = authedQuery({
         total: mergeRollups(docs).tokens.total,
       }));
       prevRows.sort(byTotalThenName);
-      prevRows.forEach((row, index) => previousRanks.set(row.userId, { rank: index + 1, total: row.total }));
+      prevRows.forEach((row, index) =>
+        previousRanks.set(row.userId, { rank: index + 1, total: row.total }),
+      );
     }
 
     const rows: LeaderboardRow[] = [...current].map(([userId, docs]) => {
@@ -316,7 +350,14 @@ export const trends = authedQuery({
         peak = { bucket: point.bucket, total: point.total };
       }
     }
-    return { bucket: args.bucket, points, users, models, peak, unpricedModels: [...unpriced].sort() };
+    return {
+      bucket: args.bucket,
+      points,
+      users,
+      models,
+      peak,
+      unpricedModels: [...unpriced].sort(),
+    };
   },
 });
 
@@ -339,7 +380,9 @@ export const breakdowns = authedQuery({
     const countDesc = <T extends { key: string; count: number }>(a: T, b: T) =>
       b.count - a.count || cmpKey(a.key, b.key);
     const modelRowsDesc = (a: ModelRow, b: ModelRow) =>
-      b.tokens.total - a.tokens.total || cmpKey(a.key, b.key) || cmpKey(a.effort ?? "", b.effort ?? "");
+      b.tokens.total - a.tokens.total ||
+      cmpKey(a.key, b.key) ||
+      cmpKey(a.effort ?? "", b.effort ?? "");
 
     const byModelEffort: ModelRow[] = agg.byModel
       .map((m) => ({
@@ -376,7 +419,12 @@ export const breakdowns = authedQuery({
       }))
       .sort(modelRowsDesc);
     const byEffort = [...efforts]
-      .map(([key, e]) => ({ key, tokens: e.tokens, responses: e.responses, share: share(e.tokens) }))
+      .map(([key, e]) => ({
+        key,
+        tokens: e.tokens,
+        responses: e.responses,
+        share: share(e.tokens),
+      }))
       .sort(tokensDesc);
 
     const toolCalls = agg.byTool.reduce((sum, t) => sum + t.count, 0);

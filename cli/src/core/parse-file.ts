@@ -22,7 +22,10 @@ export class InvalidSummaryError extends Error {
 }
 
 /** One streaming pass from byte 0: reader → reducer → finalize → schema check. */
-export async function parseRolloutFile(file: DiscoveredFile, opts: ParseFileOptions): Promise<ParseFileResult> {
+export async function parseRolloutFile(
+  file: DiscoveredFile,
+  opts: ParseFileOptions,
+): Promise<ParseFileResult> {
   const state = createReducerState({
     sessionId: file.sessionId,
     threadId: file.threadId,
@@ -30,13 +33,19 @@ export async function parseRolloutFile(file: DiscoveredFile, opts: ParseFileOpti
     fileTimestampMs: file.fileTimestampMs,
     machineZone: opts.machineZone,
   });
-  const read = await readJsonlLines(file.path, (record) => reduceLine(state, record.seq, record.text), {
-    compressed: file.compressed,
-  });
+  const read = await readJsonlLines(
+    file.path,
+    (record) => reduceLine(state, record.seq, record.text),
+    {
+      compressed: file.compressed,
+    },
+  );
   const parsed = finalize(state, { now: opts.now, generation: opts.generation });
   const check = SessionSummary.safeParse(parsed.summary);
   if (!check.success) {
-    throw new InvalidSummaryError(check.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));
+    throw new InvalidSummaryError(
+      check.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
+    );
   }
   return { parsed, read };
 }

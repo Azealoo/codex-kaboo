@@ -18,14 +18,14 @@ Codex CLI ──writes──▶ ~/.codex/sessions/**/rollout-*.jsonl
 
 Uploaded, grouped so it's easier to check against your own threat model than a flat list would be:
 
-| Group | Fields |
-|---|---|
-| Identifiers | machine label (yours to choose), machine ID (random UUID minted at login), session/thread/turn IDs (`sessionId`, `threadId`, `parentThreadId`, `turnId`) |
-| Token counts | input / cached-input / cache-write / output / reasoning / total tokens per model response and per session; per-response context window size; which Codex log mechanism produced each number (a `"count"`/`"record"` tag — bookkeeping, not content) |
-| Timing | start/end timestamps, wall-clock and active durations, the session's day and its **IANA time zone** (e.g. `America/Los_Angeles`), time-to-first-token stats |
-| Activity counts | turns, completed turns, user/agent messages, reasoning items, token events, compactions, lines added/removed, files changed, tool-kind counts, **MCP tool identifiers** (`server/tool`), **skill names** |
-| Environment | how the session started (`cli`, `exec`, `subagent:<kind>`, …) and, separately, its `originator` (the wrapper that set it, e.g. `codex-tui`); the **project folder's basename**; **git branch name**; platform/arch; Node, Codex and collector versions; parser bookkeeping (line counts, parse-error counts, parser/generation version numbers, whether the session was still open when uploaded) |
-| Rate limit | your weekly usage percentage, **your OpenAI plan tier** (e.g. `"pro"`), the limit window in minutes, when it resets and was last observed, and an opaque limit ID |
+| Group           | Fields                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identifiers     | machine label (yours to choose), machine ID (random UUID minted at login), session/thread/turn IDs (`sessionId`, `threadId`, `parentThreadId`, `turnId`)                                                                                                                                                                                                                                          |
+| Token counts    | input / cached-input / cache-write / output / reasoning / total tokens per model response and per session; per-response context window size; which Codex log mechanism produced each number (a `"count"`/`"record"` tag — bookkeeping, not content)                                                                                                                                               |
+| Timing          | start/end timestamps, wall-clock and active durations, the session's day and its **IANA time zone** (e.g. `America/Los_Angeles`), time-to-first-token stats                                                                                                                                                                                                                                       |
+| Activity counts | turns, completed turns, user/agent messages, reasoning items, token events, compactions, lines added/removed, files changed, tool-kind counts, **MCP tool identifiers** (`server/tool`), **skill names**                                                                                                                                                                                          |
+| Environment     | how the session started (`cli`, `exec`, `subagent:<kind>`, …) and, separately, its `originator` (the wrapper that set it, e.g. `codex-tui`); the **project folder's basename**; **git branch name**; platform/arch; Node, Codex and collector versions; parser bookkeeping (line counts, parse-error counts, parser/generation version numbers, whether the session was still open when uploaded) |
+| Rate limit      | your weekly usage percentage, **your OpenAI plan tier** (e.g. `"pro"`), the limit window in minutes, when it resets and was last observed, and an opaque limit ID                                                                                                                                                                                                                                 |
 
 `rateLimit.planType` deserves its own callout, not just a place in the table: it reports your
 OpenAI subscription tier verbatim from the log (e.g. `"pro"`) — more than "your weekly rate-limit
@@ -44,7 +44,7 @@ dashboard as typed — decide what to call things with that in mind.
 
 Run `codex-kaboo sync --dry-run --json` any time to see the exact payload before you trust it — it
 parses your logs and prints what a real sync would send, with no network call and no state
-written. The `batches` array *is* that payload; every field in the table above lives inside it.
+written. The `batches` array _is_ that payload; every field in the table above lives inside it.
 Everything else the report prints is a **local-only diagnostic** — never uploaded, but often
 holding an absolute path from your filesystem: `homes[].path`, `errors[]` and `files[].reason` in
 that same dry-run report; both the top-level and the per-file `lastError` in
@@ -77,12 +77,14 @@ Requires Node 20 or newer (22.15+ recommended: it reads Codex's `.jsonl.zst` arc
 Re-running `npm install -g …` upgrades the collector in place.
 
 ### macOS
+
 `codex-kaboo install` registers a launchd agent (`com.codex-kaboo.sync`) that runs every 15
 minutes and runs one sync immediately. Check it with `launchctl list | grep codex-kaboo`; its
 log is `~/.codex-kaboo/launchd.log`. If you upgrade Node with nvm/fnm, run `codex-kaboo install`
 again — see Troubleshooting below.
 
 ### Linux
+
 `codex-kaboo install` adds a crontab block (`# BEGIN codex-kaboo` … `# END codex-kaboo`); its
 output goes to `~/.codex-kaboo/cron.log`. `codex-kaboo install --systemd` uses a user timer
 instead (`systemctl --user status codex-kaboo-sync.timer`). If `npm install -g` fails with
@@ -91,39 +93,42 @@ instead (`systemctl --user status codex-kaboo-sync.timer`). If `npm install -g` 
 covered by unit tests only.
 
 ### Windows
+
 `codex-kaboo install` creates the scheduled task `codex-kaboo-sync` (every 15 minutes, hidden
 window, no password prompt). Make sure `%AppData%\npm` is on `PATH`, and in PowerShell allow npm
 scripts with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. Please run `codex-kaboo
 doctor` and report anything red — Windows is covered by unit tests only.
 
 ### Commands
-| Command | What it does |
-|---|---|
+
+| Command                                                                                            | What it does                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `codex-kaboo login [--token T] [--server URL] [--machine-name NAME] [--hostname \| --no-hostname]` | Stores the token in `~/.codex-kaboo/config.json` (mode 0600) after checking it with `/api/v1/whoami`; `--hostname` turns the hostname opt-in on, `--no-hostname` turns it off, and a bare `login` keeps whatever was set before |
-| `codex-kaboo sync [--full] [--dry-run] [--scheduled] [--codex-home PATH]` | Parses changed rollout files and uploads new data; `--dry-run --json` prints the payload without any network call |
-| `codex-kaboo install [--systemd]` / `codex-kaboo uninstall [--systemd]` | Registers / removes the 15-minute schedule (`--systemd`: a systemd user timer on Linux instead of cron) |
-| `codex-kaboo status [--codex-home PATH] [--systemd]` | Login state, Codex homes found, last sync, tracked/parked files, scheduler health, weekly quota |
-| `codex-kaboo doctor [--codex-home PATH] [--systemd]` | Checks Node version, Codex home, login, token validity, scheduler and local state |
-| `codex-kaboo logout` | Removes the token (`state.json` sync progress is kept, so logging back in resumes where it left off) |
+| `codex-kaboo sync [--full] [--dry-run] [--scheduled] [--codex-home PATH]`                          | Parses changed rollout files and uploads new data; `--dry-run --json` prints the payload without any network call                                                                                                               |
+| `codex-kaboo install [--systemd]` / `codex-kaboo uninstall [--systemd]`                            | Registers / removes the 15-minute schedule (`--systemd`: a systemd user timer on Linux instead of cron)                                                                                                                         |
+| `codex-kaboo status [--codex-home PATH] [--systemd]`                                               | Login state, Codex homes found, last sync, tracked/parked files, scheduler health, weekly quota                                                                                                                                 |
+| `codex-kaboo doctor [--codex-home PATH] [--systemd]`                                               | Checks Node version, Codex home, login, token validity, scheduler and local state                                                                                                                                               |
+| `codex-kaboo logout`                                                                               | Removes the token (`state.json` sync progress is kept, so logging back in resumes where it left off)                                                                                                                            |
 
 Every command also accepts `--json` (machine-readable output on stdout) and `--verbose` (debug
 logging on stderr). Exit codes are command-specific — check the table below rather than assuming
 one scheme covers all of them:
 
-| Command | Exit codes |
-|---|---|
-| `sync` | `0` ok · `1` partial failure (see the message) · `2` not logged in or the token was rejected |
-| `login` | `0` ok · `2` failed (bad/missing token, unreachable or unconfigured server) |
-| `install` | `0` ok · `1` the sync it runs right after installing had a partial failure · `2` not logged in |
-| `uninstall` | `0` ok · `1` failed to remove the schedule |
-| `doctor` | `0` all checks passed · `1` any check failed, including not being logged in |
-| `logout` | `0` always |
-| `status` | never sets an exit code (always exits `0`) — read the printed state instead |
+| Command     | Exit codes                                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------------- |
+| `sync`      | `0` ok · `1` partial failure (see the message) · `2` not logged in or the token was rejected   |
+| `login`     | `0` ok · `2` failed (bad/missing token, unreachable or unconfigured server)                    |
+| `install`   | `0` ok · `1` the sync it runs right after installing had a partial failure · `2` not logged in |
+| `uninstall` | `0` ok · `1` failed to remove the schedule                                                     |
+| `doctor`    | `0` all checks passed · `1` any check failed, including not being logged in                    |
+| `logout`    | `0` always                                                                                     |
+| `status`    | never sets an exit code (always exits `0`) — read the printed state instead                    |
 
 State lives in `~/.codex-kaboo/` (`CODEX_KABOO_HOME` overrides it); the Codex home is
 `CODEX_HOME` or `~/.codex`.
 
 ### Troubleshooting
+
 `codex-kaboo doctor` runs six checks — Node version, Codex home found, logged in, token still
 valid, scheduler installed and healthy, local state uncorrupted — and prints `ok`/`FAIL` next to
 each. `codex-kaboo status` is the quieter view: login, machine label, each Codex home with its

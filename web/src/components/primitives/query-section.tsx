@@ -28,7 +28,11 @@ export function QuerySection<T>({
   children: (data: T) => ReactNode;
 }) {
   const resolvedDescription =
-    typeof description === "function" ? (data === undefined ? undefined : description(data)) : description;
+    typeof description === "function"
+      ? data === undefined
+        ? undefined
+        : description(data)
+      : description;
   return (
     <SectionCard
       title={title}

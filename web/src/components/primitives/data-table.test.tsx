@@ -11,7 +11,13 @@ const rows: Row[] = [
 ];
 const columns: Column<Row>[] = [
   { key: "name", header: "Name", render: (r) => r.name },
-  { key: "tokens", header: "Tokens", align: "right", render: (r) => String(r.tokens), bar: (r) => r.tokens },
+  {
+    key: "tokens",
+    header: "Tokens",
+    align: "right",
+    render: (r) => String(r.tokens),
+    bar: (r) => r.tokens,
+  },
 ];
 
 describe("barWidth", () => {
@@ -33,7 +39,14 @@ describe("DataTable", () => {
     expect(bars[1]).toHaveStyle({ width: "1%" });
   });
   it("shows the empty label when there are no rows", () => {
-    render(<DataTable columns={columns} rows={[]} rowKey={(r) => r.id} emptyLabel="No data in this range" />);
+    render(
+      <DataTable
+        columns={columns}
+        rows={[]}
+        rowKey={(r) => r.id}
+        emptyLabel="No data in this range"
+      />,
+    );
     expect(screen.getByText("No data in this range")).toBeInTheDocument();
   });
 });

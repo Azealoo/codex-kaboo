@@ -32,10 +32,18 @@ export function sha256Hex(text: string): string {
 // generation, syncedAt. `syncedAt` is not a field of the shared `SessionSummary` type (it is
 // added by the Convex `sessions` table) but is listed here too so this stays correct if a wider
 // record (e.g. one round-tripped through storage) is ever passed in.
-const EXCLUDED_FROM_HASH = ["summaryHash", "inProgress", "lineCount", "generation", "syncedAt"] as const;
+const EXCLUDED_FROM_HASH = [
+  "summaryHash",
+  "inProgress",
+  "lineCount",
+  "generation",
+  "syncedAt",
+] as const;
 
 /** Contracts §6: sha1 of the canonical JSON of the summary minus volatile fields. */
-export function summaryHashOf(summary: Omit<SessionSummary, "summaryHash"> | SessionSummary): string {
+export function summaryHashOf(
+  summary: Omit<SessionSummary, "summaryHash"> | SessionSummary,
+): string {
   const clone: Record<string, unknown> = { ...summary };
   for (const key of EXCLUDED_FROM_HASH) delete clone[key];
   return sha1Hex(canonicalJson(clone));

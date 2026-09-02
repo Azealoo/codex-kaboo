@@ -1,21 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { CLI_BATCH_MAX_BYTES, CLI_BATCH_MAX_EVENTS, MAX_SESSIONS_PER_REQUEST } from "@codex-kaboo/shared/constants";
+import {
+  CLI_BATCH_MAX_BYTES,
+  CLI_BATCH_MAX_EVENTS,
+  MAX_SESSIONS_PER_REQUEST,
+} from "@codex-kaboo/shared/constants";
 import { SyncBatch } from "@codex-kaboo/shared/sync";
 import { makeEvent, makeMachine, makeSummary } from "@codex-kaboo/shared/test-fixtures";
-import { applyAck, buildBatches, DEFAULT_BATCH_LIMITS, eventBytes, type Batch, type FileUpload } from "../../src/upload/batch";
+import {
+  applyAck,
+  buildBatches,
+  DEFAULT_BATCH_LIMITS,
+  eventBytes,
+  type Batch,
+  type FileUpload,
+} from "../../src/upload/batch";
 
 function upload(sessionId: string, seqs: number[], summaryChanged = true): FileUpload {
-  return { sessionId, summary: makeSummary({ sessionId, threadId: sessionId }), events: seqs.map((seq) => makeEvent({ sessionId, seq })), summaryChanged };
+  return {
+    sessionId,
+    summary: makeSummary({ sessionId, threadId: sessionId }),
+    events: seqs.map((seq) => makeEvent({ sessionId, seq })),
+    summaryChanged,
+  };
 }
 const LIMITS = { maxEvents: 1000, maxBytes: 3_500_000, maxSessions: 500 };
 
 describe("buildBatches", () => {
   it("coalesces small files into one batch with final entries", () => {
-    const batches = buildBatches([upload("a", [3, 1, 2]), upload("b", [7]), upload("c", [], true), upload("d", [], false)], LIMITS);
+    const batches = buildBatches(
+      [upload("a", [3, 1, 2]), upload("b", [7]), upload("c", [], true), upload("d", [], false)],
+      LIMITS,
+    );
     expect(batches).toHaveLength(1);
     const b = batches[0]!;
     expect(b.sessions.map((s) => s.sessionId)).toEqual(["a", "b", "c"]);
-    expect(b.tokenEvents.map((e) => `${e.sessionId}:${e.seq}`)).toEqual(["a:1", "a:2", "a:3", "b:7"]);
+    expect(b.tokenEvents.map((e) => `${e.sessionId}:${e.seq}`)).toEqual([
+      "a:1",
+      "a:2",
+      "a:3",
+      "b:7",
+    ]);
     expect(b.files).toEqual([
       { sessionId: "a", lastSeq: 3, final: true },
       { sessionId: "b", lastSeq: 7, final: true },
@@ -38,11 +62,26 @@ describe("buildBatches", () => {
   it("splits by bytes and never loops on an oversize event", () => {
     const events = [0, 1, 2, 3].map((seq) => makeEvent({ sessionId: "x", seq }));
     const perEvent = eventBytes(events[0]!);
-    const batches = buildBatches([{ sessionId: "x", summary: makeSummary({ sessionId: "x" }), events, summaryChanged: true }], { maxEvents: 1000, maxBytes: perEvent * 2 + 10, maxSessions: 500 });
+    const batches = buildBatches(
+      [{ sessionId: "x", summary: makeSummary({ sessionId: "x" }), events, summaryChanged: true }],
+      { maxEvents: 1000, maxBytes: perEvent * 2 + 10, maxSessions: 500 },
+    );
     expect(batches.length).toBeGreaterThanOrEqual(2);
     expect(batches.flatMap((b) => b.tokenEvents.map((e) => e.seq))).toEqual([0, 1, 2, 3]);
-    expect(batches[batches.length - 1]!.files.some((f) => f.sessionId === "x" && f.final)).toBe(true);
-    const single = buildBatches([{ sessionId: "y", summary: makeSummary({ sessionId: "y" }), events: [makeEvent({ sessionId: "y", seq: 0 })], summaryChanged: true }], { maxEvents: 1000, maxBytes: 10, maxSessions: 500 });
+    expect(batches[batches.length - 1]!.files.some((f) => f.sessionId === "x" && f.final)).toBe(
+      true,
+    );
+    const single = buildBatches(
+      [
+        {
+          sessionId: "y",
+          summary: makeSummary({ sessionId: "y" }),
+          events: [makeEvent({ sessionId: "y", seq: 0 })],
+          summaryChanged: true,
+        },
+      ],
+      { maxEvents: 1000, maxBytes: 10, maxSessions: 500 },
+    );
     expect(single.flatMap((b) => b.tokenEvents)).toHaveLength(1);
   });
   it("respects maxSessions", () => {
@@ -55,7 +94,14 @@ describe("buildBatches", () => {
 describe("applyAck", () => {
   it("drops finished files and trims acknowledged events", () => {
     const uploads = [upload("a", [0, 1, 2]), upload("b", [5, 6])];
-    const remaining = applyAck(uploads, { sessions: [], tokenEvents: [], files: [{ sessionId: "a", lastSeq: 1, final: false }, { sessionId: "b", lastSeq: 6, final: true }] });
+    const remaining = applyAck(uploads, {
+      sessions: [],
+      tokenEvents: [],
+      files: [
+        { sessionId: "a", lastSeq: 1, final: false },
+        { sessionId: "b", lastSeq: 6, final: true },
+      ],
+    });
     expect(remaining.map((u) => [u.sessionId, u.events.map((e) => e.seq)])).toEqual([["a", [2]]]);
   });
 });
@@ -91,9 +137,15 @@ describe("SyncBatch validity", () => {
   it("every produced batch validates against the shared SyncBatch schema once wrapped in an envelope", () => {
     const seqs = Array.from({ length: 2500 }, (_, i) => i);
     const scenarios: Batch[] = [
-      ...buildBatches([upload("a", [3, 1, 2]), upload("b", [7]), upload("c", [], true), upload("d", [], false)], LIMITS),
+      ...buildBatches(
+        [upload("a", [3, 1, 2]), upload("b", [7]), upload("c", [], true), upload("d", [], false)],
+        LIMITS,
+      ),
       ...buildBatches([upload("big", seqs), upload("tiny", [0])], LIMITS),
-      ...buildBatches(Array.from({ length: 3 }, (_, i) => upload(`s${i}`, [0])), { maxEvents: 1000, maxBytes: 3_500_000, maxSessions: 2 }),
+      ...buildBatches(
+        Array.from({ length: 3 }, (_, i) => upload(`s${i}`, [0])),
+        { maxEvents: 1000, maxBytes: 3_500_000, maxSessions: 2 },
+      ),
     ];
     expect(scenarios.length).toBeGreaterThan(0);
     for (const batch of scenarios) {
@@ -112,7 +164,11 @@ describe("heartbeat", () => {
     const emptyBatch: Batch = { sessions: [], tokenEvents: [], files: [] };
     expect(SyncBatch.safeParse(toSyncBatch(emptyBatch)).success).toBe(true);
     const withRateLimit = SyncBatch.safeParse(
-      toSyncBatch(emptyBatch, { observedAt: Date.UTC(2026, 7, 30), usedPercent: 12.5, windowMinutes: 10080 }),
+      toSyncBatch(emptyBatch, {
+        observedAt: Date.UTC(2026, 7, 30),
+        usedPercent: 12.5,
+        windowMinutes: 10080,
+      }),
     );
     expect(withRateLimit.success).toBe(true);
   });

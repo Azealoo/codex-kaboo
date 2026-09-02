@@ -30,15 +30,33 @@ export function ModelsSection({ range, userId }: { range: ResolvedRange; userId?
   const modelColumns = modelTableColumns({ responses: true });
   const effortColumns: Column<EffortRow>[] = [
     { key: "effort", header: "Effort", render: (r) => r.key },
-    { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
+    {
+      key: "tokens",
+      header: "Tokens",
+      align: "right",
+      bar: (r) => r.tokens,
+      render: (r) => formatCompact(r.tokens),
+    },
     { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },
-    { key: "responses", header: "Responses", align: "right", render: (r) => formatInt(r.responses) },
+    {
+      key: "responses",
+      header: "Responses",
+      align: "right",
+      render: (r) => formatInt(r.responses),
+    },
   ];
   return (
     <QuerySection
       title="Models"
       info="Tokens per model (and per reasoning effort) for the range. Cost uses the price table on the Settings page."
-      actions={<SegmentedControl ariaLabel="Model grain" options={GRAINS} value={grain} onChange={setGrain} />}
+      actions={
+        <SegmentedControl
+          ariaLabel="Model grain"
+          options={GRAINS}
+          value={grain}
+          onChange={setGrain}
+        />
+      }
       data={data}
       isStale={isStale}
       bodyClassName="flex flex-col gap-4"
@@ -49,8 +67,17 @@ export function ModelsSection({ range, userId }: { range: ResolvedRange; userId?
             <EmptyState title="No model usage in this range" />
           ) : grain === "model" ? (
             <>
-              <StackedShareBar segments={modelSegments(b.byModel, colors)} format={formatCompact} showLegend={false} />
-              <DataTable columns={modelColumns} rows={modelTableRows(b.byModel)} rowKey={(r) => r.model} barColor={(r) => colorFor(colors, r.model)} />
+              <StackedShareBar
+                segments={modelSegments(b.byModel, colors)}
+                format={formatCompact}
+                showLegend={false}
+              />
+              <DataTable
+                columns={modelColumns}
+                rows={modelTableRows(b.byModel)}
+                rowKey={(r) => r.model}
+                barColor={(r) => colorFor(colors, r.model)}
+              />
             </>
           ) : (
             <DataTable columns={effortColumns} rows={b.byEffort} rowKey={(r) => r.key} />
@@ -61,7 +88,9 @@ export function ModelsSection({ range, userId }: { range: ResolvedRange; userId?
               <StackedShareBar segments={sourceSegments(b.bySource)} format={formatCompact} />
             </div>
           ) : null}
-          <p className="text-xs text-muted-foreground">{formatNullable(b.totalTokens, formatCompact)} tokens in total</p>
+          <p className="text-xs text-muted-foreground">
+            {formatNullable(b.totalTokens, formatCompact)} tokens in total
+          </p>
         </>
       )}
     </QuerySection>

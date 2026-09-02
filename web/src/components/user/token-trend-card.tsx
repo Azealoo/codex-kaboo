@@ -38,13 +38,34 @@ export function TokenTrendCard({ range, userId }: { range: ResolvedRange; userId
   const [variant, setVariant] = useState<TrendVariant>("area");
   const [bucket, setBucket] = useState<Bucket | null>(null);
   const effectiveBucket = bucket ?? bucketFor(range.days);
-  const { data } = useStableQuery(api.stats.trends, { from: range.from, to: range.to, bucket: effectiveBucket, userId });
-  const format = metric === "cost" ? formatUsd : metric === "hours" ? formatHoursValue : formatCompact;
+  const { data } = useStableQuery(api.stats.trends, {
+    from: range.from,
+    to: range.to,
+    bucket: effectiveBucket,
+    userId,
+  });
+  const format =
+    metric === "cost" ? formatUsd : metric === "hours" ? formatHoursValue : formatCompact;
   const actions = (
     <>
-      <SegmentedControl ariaLabel="Trend metric" options={METRICS} value={metric} onChange={setMetric} />
-      <SegmentedControl ariaLabel="Chart style" options={VARIANTS} value={variant} onChange={setVariant} />
-      <SegmentedControl ariaLabel="Granularity" options={BUCKETS} value={effectiveBucket} onChange={setBucket} />
+      <SegmentedControl
+        ariaLabel="Trend metric"
+        options={METRICS}
+        value={metric}
+        onChange={setMetric}
+      />
+      <SegmentedControl
+        ariaLabel="Chart style"
+        options={VARIANTS}
+        value={variant}
+        onChange={setVariant}
+      />
+      <SegmentedControl
+        ariaLabel="Granularity"
+        options={BUCKETS}
+        value={effectiveBucket}
+        onChange={setBucket}
+      />
     </>
   );
   if (!data) {
@@ -56,9 +77,18 @@ export function TokenTrendCard({ range, userId }: { range: ResolvedRange; userId
   }
   const stacked = trendSingle(data, metric, CATEGORICAL[0]);
   const footerText = unpricedFooter(metric, data.unpricedModels);
-  const footer = footerText ? <p className="text-xs text-muted-foreground">{footerText}</p> : undefined;
+  const footer = footerText ? (
+    <p className="text-xs text-muted-foreground">{footerText}</p>
+  ) : undefined;
   return (
-    <ChartCard title="Token trend" stacked={stacked} format={format} actions={actions} legendShape="line" footer={footer}>
+    <ChartCard
+      title="Token trend"
+      stacked={stacked}
+      format={format}
+      actions={actions}
+      legendShape="line"
+      footer={footer}
+    >
       <TrendChart stacked={stacked} format={format} variant={variant} />
     </ChartCard>
   );

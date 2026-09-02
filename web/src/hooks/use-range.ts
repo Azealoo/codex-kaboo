@@ -4,7 +4,13 @@ import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useQueryStates } from "nuqs";
 import { useCallback, useMemo } from "react";
-import { isCustom, resolveRange, type Preset, type RangeParams, type ResolvedRange } from "@/lib/range";
+import {
+  isCustom,
+  resolveRange,
+  type Preset,
+  type RangeParams,
+  type ResolvedRange,
+} from "@/lib/range";
 import { rangeHref, rangeParsers } from "@/lib/search-params";
 import { useToday } from "./use-today";
 
@@ -22,7 +28,10 @@ export function useRange(): {
   const needBounds = !isCustom(params) && params.range === "ALL" && today !== null;
   const bounds = useQuery(api.stats.bounds, needBounds ? {} : "skip");
   const resolved = useMemo(
-    () => (today === null ? null : resolveRange(params, today, needBounds ? (bounds ?? null) : undefined)),
+    () =>
+      today === null
+        ? null
+        : resolveRange(params, today, needBounds ? (bounds ?? null) : undefined),
     [params, today, needBounds, bounds],
   );
   const setPreset = useCallback(

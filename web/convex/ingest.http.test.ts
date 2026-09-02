@@ -38,7 +38,9 @@ describe("authentication", () => {
     expect(unknown.status).toBe(401);
     expect(unknown.json.error).toBe("unauthorized");
 
-    const whoamiUnknown = await t.fetch("/api/v1/whoami", { headers: { authorization: "Basic abc" } });
+    const whoamiUnknown = await t.fetch("/api/v1/whoami", {
+      headers: { authorization: "Basic abc" },
+    });
     expect(whoamiUnknown.status).toBe(401);
 
     await withUser(t, "alice").mutation(api.syncTokens.revoke, { tokenId: alice.tokenId });
@@ -88,10 +90,16 @@ describe("POST /api/v1/sync validation", () => {
   it("rejects more than 5,000 events with too_many_items", async () => {
     const t = setup();
     const { raw } = await userWithToken(t, "alice");
-    const tokenEvents = Array.from({ length: 5001 }, (_, i) => makeEvent({ sessionId: "s", seq: i }));
+    const tokenEvents = Array.from({ length: 5001 }, (_, i) =>
+      makeEvent({ sessionId: "s", seq: i }),
+    );
     const res = await postSync(t, raw, makeBatch({ tokenEvents }));
     expect(res.status).toBe(413);
-    expect(res.json).toMatchObject({ ok: false, error: "too_many_items", limits: { maxEvents: 5000 } });
+    expect(res.json).toMatchObject({
+      ok: false,
+      error: "too_many_items",
+      limits: { maxEvents: 5000 },
+    });
   });
 
   it("rejects malformed JSON", async () => {
@@ -121,11 +129,23 @@ describe("POST /api/v1/sync validation", () => {
   it("rejects a batch whose token counts break the parser's invariants, naming each field", async () => {
     const t = setup();
     const { raw } = await userWithToken(t, "alice");
-    const res = await postSync(t, raw, makeBatch({
-      tokenEvents: [
-        makeEvent({ sessionId: "s1", seq: 0, input: 500, cachedInput: 900, output: 100, reasoning: 400, total: 6_000_000 }),
-      ],
-    }));
+    const res = await postSync(
+      t,
+      raw,
+      makeBatch({
+        tokenEvents: [
+          makeEvent({
+            sessionId: "s1",
+            seq: 0,
+            input: 500,
+            cachedInput: 900,
+            output: 100,
+            reasoning: 400,
+            total: 6_000_000,
+          }),
+        ],
+      }),
+    );
     expect(res.status).toBe(400);
     expect(res.json.error).toBe("invalid_batch");
     const issues = res.json.issues as { path: string; message: string }[];
@@ -144,7 +164,11 @@ describe("POST /api/v1/sync validation", () => {
     const alice = await userWithToken(t, "alice");
     const bob = await userWithToken(t, "bob");
     expect((await postSync(t, bob.raw, makeBatch())).status).toBe(200);
-    const res = await postSync(t, alice.raw, makeBatch({ sessions: [makeSession({ sessionId: "s1" })] }));
+    const res = await postSync(
+      t,
+      alice.raw,
+      makeBatch({ sessions: [makeSession({ sessionId: "s1" })] }),
+    );
     expect(res.status).toBe(409);
     expect(res.json).toEqual({ ok: false, error: "machine_conflict", message: expect.any(String) });
     expect(await t.run(async (ctx) => ctx.db.query("sessions").collect())).toHaveLength(0);
@@ -164,7 +188,11 @@ describe("POST /api/v1/sync validation", () => {
         });
       }
     });
-    const res = await postSync(t, raw, makeBatch({ sessions: [makeSession({ sessionId: "dup" })] }));
+    const res = await postSync(
+      t,
+      raw,
+      makeBatch({ sessions: [makeSession({ sessionId: "dup" })] }),
+    );
     expect(res.status).toBe(503);
     expect(res.headers.get("retry-after")).toBe("5");
     expect(res.json).toEqual({ ok: false, error: "internal", message: expect.any(String) });
@@ -192,7 +220,11 @@ describe("POST /api/v1/sync validation", () => {
         });
       }
     });
-    const failed = await postSync(t, raw, makeBatch({ sessions: [makeSession({ sessionId: "dup" })] }));
+    const failed = await postSync(
+      t,
+      raw,
+      makeBatch({ sessions: [makeSession({ sessionId: "dup" })] }),
+    );
     expect(failed.status).toBe(503);
     const afterFailure = await t.run(async (ctx) => ctx.db.query("machines").first());
     expect(afterFailure?.lastSyncAt).toBe(firstSyncAt);
@@ -212,13 +244,21 @@ describe("POST /api/v1/sync happy path", () => {
     const { userId, raw, tokenId } = await userWithToken(t, "alice");
     const batch = makeBatch({
       machine: makeMachine({ hostname: null }),
-      sessions: [makeSession({ sessionId: "s1" }), makeSession({ sessionId: "s2", project: "project-b" })],
+      sessions: [
+        makeSession({ sessionId: "s1" }),
+        makeSession({ sessionId: "s2", project: "project-b" }),
+      ],
       tokenEvents: [
         makeEvent({ sessionId: "s1", seq: 3 }),
         makeEvent({ sessionId: "s1", seq: 7, hour: 10 }),
         makeEvent({ sessionId: "s2", seq: 2, project: "project-b" }),
       ],
-      rateLimit: { observedAt: T0, usedPercent: 42, windowMinutes: 10080, resetsAt: T0 + 86_400_000 },
+      rateLimit: {
+        observedAt: T0,
+        usedPercent: 42,
+        windowMinutes: 10080,
+        resetsAt: T0 + 86_400_000,
+      },
     });
     const res = await postSync(t, raw, batch);
     expect(res.status).toBe(200);

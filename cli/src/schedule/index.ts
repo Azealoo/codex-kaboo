@@ -24,7 +24,11 @@ export interface SpawnResult {
 }
 
 export interface Spawner {
-  run(command: string, args: string[], opts?: { input?: string; timeoutMs?: number }): Promise<SpawnResult>;
+  run(
+    command: string,
+    args: string[],
+    opts?: { input?: string; timeoutMs?: number },
+  ): Promise<SpawnResult>;
 }
 
 export interface ScheduleStatus {

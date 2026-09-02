@@ -118,7 +118,10 @@ export const list = authedQuery({
 /** Generates a token in the action runtime (Web Crypto) and stores only its sha256. */
 export const create = action({
   args: { name: v.string() },
-  handler: async (ctx, { name }): Promise<{ id: Id<"syncTokens">; token: string; prefix: string }> => {
+  handler: async (
+    ctx,
+    { name },
+  ): Promise<{ id: Id<"syncTokens">; token: string; prefix: string }> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError({ code: "unauthenticated" });
     const trimmed = name.trim();
@@ -150,7 +153,10 @@ export const revoke = authedMutation({
  * The raw token is printed once by the CLI command output and never stored. */
 export const mint = internalAction({
   args: { email: v.string(), name: v.optional(v.string()) },
-  handler: async (ctx, { email, name }): Promise<{ token: string; prefix: string; userId: Id<"users"> }> => {
+  handler: async (
+    ctx,
+    { email, name },
+  ): Promise<{ token: string; prefix: string; userId: Id<"users"> }> => {
     const token = generateRawToken();
     const prefix = tokenPrefix(token);
     const result = await ctx.runMutation(internal.syncTokens.insertForEmail, {

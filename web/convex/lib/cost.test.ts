@@ -38,7 +38,10 @@ describe("sumCost", () => {
       [
         { key: "gpt-5.6-sol", tokens },
         { key: "codex-auto-review", tokens: { ...tokens, total: 5 } },
-        { key: "gpt-5.6-luna", tokens: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0, reasoning: 0, total: 0 } },
+        {
+          key: "gpt-5.6-luna",
+          tokens: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0, reasoning: 0, total: 0 },
+        },
       ],
       prices,
     );

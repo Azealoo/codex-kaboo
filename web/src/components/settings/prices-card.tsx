@@ -13,7 +13,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useAsyncAction } from "@/hooks/use-async-action";
 import { useStableQuery } from "@/hooks/use-stable-query";
 import { useToday } from "@/hooks/use-today";
@@ -41,7 +48,8 @@ function PriceEditor({
   const input = parsePrice(draft.input);
   const cached = parsePrice(draft.cached);
   const output = parsePrice(draft.output);
-  const valid = draft.model.trim().length > 0 && input !== null && cached !== null && output !== null;
+  const valid =
+    draft.model.trim().length > 0 && input !== null && cached !== null && output !== null;
   const field = (key: "input" | "cached" | "output", label: string) => (
     <TableCell className="text-right">
       <Input
@@ -180,7 +188,9 @@ export function PricesCard() {
   // is a summary over the widest legal window, not the far heavier `stats.breakdowns`.
   const { data: seen } = useStableQuery(
     api.stats.summary,
-    today ? { from: addDays(today, -(MAX_QUERY_RANGE_DAYS - 1)), to: today, previous: false } : "skip",
+    today
+      ? { from: addDays(today, -(MAX_QUERY_RANGE_DAYS - 1)), to: today, previous: false }
+      : "skip",
   );
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [added, setAdded] = useState<Draft | null>(null);
@@ -228,7 +238,10 @@ export function PricesCard() {
       {prices === undefined ? (
         <Skeleton className="h-40" />
       ) : prices.length === 0 && added === null ? (
-        <EmptyState title="No prices yet" description="Run `npx convex run prices:seed` or add models here." />
+        <EmptyState
+          title="No prices yet"
+          description="Run `npx convex run prices:seed` or add models here."
+        />
       ) : (
         <div className="overflow-x-auto">
           <Table>

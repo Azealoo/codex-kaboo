@@ -24,7 +24,11 @@ export function DataSyncCard({ userId, isMe }: { userId: Id<"users">; isMe: bool
   const c = installCommands(origin ?? "https://<this dashboard>");
   const columns: Column<MachineRow>[] = [
     { key: "label", header: "Machine", render: (m) => m.label },
-    { key: "platform", header: "Platform", render: (m) => `${m.platform}${m.arch ? ` · ${m.arch}` : ""}` },
+    {
+      key: "platform",
+      header: "Platform",
+      render: (m) => `${m.platform}${m.arch ? ` · ${m.arch}` : ""}`,
+    },
     {
       key: "codex",
       header: "Codex",
@@ -32,7 +36,11 @@ export function DataSyncCard({ userId, isMe }: { userId: Id<"users">; isMe: bool
         <span className="inline-flex items-center gap-1.5">
           {m.codexVersion ?? "—"}
           {isNewerThanTested(m.codexVersion) ? (
-            <Badge variant="outline" className="rounded-full text-[10px]" title={`Newer than the parser was tested with (${TESTED_CODEX_VERSION})`}>
+            <Badge
+              variant="outline"
+              className="rounded-full text-[10px]"
+              title={`Newer than the parser was tested with (${TESTED_CODEX_VERSION})`}
+            >
               untested version
             </Badge>
           ) : null}
@@ -40,12 +48,21 @@ export function DataSyncCard({ userId, isMe }: { userId: Id<"users">; isMe: bool
       ),
     },
     { key: "cli", header: "Collector", render: (m) => m.cliVersion },
-    { key: "sync", header: "Last sync", align: "right", render: (m) => (now === null ? "—" : formatRelative(m.lastSyncAt, now)) },
+    {
+      key: "sync",
+      header: "Last sync",
+      align: "right",
+      render: (m) => (now === null ? "—" : formatRelative(m.lastSyncAt, now)),
+    },
   ];
   return (
     <SectionCard
       title="Data Sync"
-      description={isMe ? "Machines syncing for your account, and how to add one." : "Machines syncing for this account."}
+      description={
+        isMe
+          ? "Machines syncing for your account, and how to add one."
+          : "Machines syncing for this account."
+      }
       actions={
         isMe ? (
           <Button asChild variant="outline" size="sm">
@@ -58,7 +75,14 @@ export function DataSyncCard({ userId, isMe }: { userId: Id<"users">; isMe: bool
       {machines === undefined ? (
         <Skeleton className="h-24" />
       ) : machines.length === 0 ? (
-        <EmptyState title="No machines yet" description={isMe ? "Run the commands below on a machine where you use Codex." : "This user has not synced yet."} />
+        <EmptyState
+          title="No machines yet"
+          description={
+            isMe
+              ? "Run the commands below on a machine where you use Codex."
+              : "This user has not synced yet."
+          }
+        />
       ) : (
         <DataTable columns={columns} rows={machines} rowKey={(m) => m.machineId} />
       )}

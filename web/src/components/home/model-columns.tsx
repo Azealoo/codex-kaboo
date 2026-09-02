@@ -9,14 +9,30 @@ export function modelTableColumns(
 ): Column<ModelTableRow>[] {
   const columns: Column<ModelTableRow>[] = [
     { key: "model", header: "Model", render: (r) => r.model },
-    { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
+    {
+      key: "tokens",
+      header: "Tokens",
+      align: "right",
+      bar: (r) => r.tokens,
+      render: (r) => formatCompact(r.tokens),
+    },
     { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },
   ];
   if (options.responses) {
-    columns.push({ key: "responses", header: "Responses", align: "right", render: (r) => formatInt(r.responses) });
+    columns.push({
+      key: "responses",
+      header: "Responses",
+      align: "right",
+      render: (r) => formatInt(r.responses),
+    });
   }
   columns.push(
-    { key: "cache", header: "Cache hit", align: "right", render: (r) => formatPercent(r.cacheHitRate) },
+    {
+      key: "cache",
+      header: "Cache hit",
+      align: "right",
+      render: (r) => formatPercent(r.cacheHitRate),
+    },
     {
       key: "cost",
       header: "Est. cost",

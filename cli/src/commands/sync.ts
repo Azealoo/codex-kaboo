@@ -1,8 +1,25 @@
-import { CLI_LOCK_STALE_MS, CLI_MIN_BATCH_EVENTS, CLI_RUN_BUDGET_MS, HEARTBEAT_INTERVAL_MS } from "@codex-kaboo/shared/constants";
-import type { RateLimitSnapshot, SyncBatch, SyncResponse, UpsertCounts } from "@codex-kaboo/shared/sync";
+import {
+  CLI_LOCK_STALE_MS,
+  CLI_MIN_BATCH_EVENTS,
+  CLI_RUN_BUDGET_MS,
+  HEARTBEAT_INTERVAL_MS,
+} from "@codex-kaboo/shared/constants";
+import type {
+  RateLimitSnapshot,
+  SyncBatch,
+  SyncResponse,
+  UpsertCounts,
+} from "@codex-kaboo/shared/sync";
 import { readConfig } from "../core/config";
 import { resolveCodexHomes, type KabooPaths } from "../core/paths";
-import { clearFailure, emptyFileState, readState, recordFailure, resetAllFiles, writeState } from "../core/state";
+import {
+  clearFailure,
+  emptyFileState,
+  readState,
+  recordFailure,
+  resetAllFiles,
+  writeState,
+} from "../core/state";
 import type { Config, SyncState } from "../types";
 import { applyAck, buildBatches, DEFAULT_BATCH_LIMITS, type BatchLimits } from "../upload/batch";
 import { isAuthError, isBadRequest, isPayloadTooLarge, type SyncClient } from "../upload/client";
@@ -10,7 +27,11 @@ import { acquireLock, releaseLock } from "../util/lock";
 import type { Logger } from "../util/log";
 import { compareVersions } from "../util/version";
 import {
-  buildMachineInfo, planSync, toSyncBatch, type FileAction, type SyncPlan,
+  buildMachineInfo,
+  planSync,
+  toSyncBatch,
+  type FileAction,
+  type SyncPlan,
 } from "./sync-plan";
 
 export interface SyncOptions {
@@ -95,9 +116,21 @@ export function summaryLine(report: SyncReport): string {
 export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncReport> {
   const start = deps.now();
   const report: SyncReport = {
-    ok: true, exitCode: 0, dryRun: opts.dryRun, loggedIn: false, durationMs: 0, homes: [], files: [],
-    uploads: { sessions: 0, events: 0, requests: 0 }, accepted: null, conflicts: null, heartbeat: false,
-    latestCliVersion: null, rateLimit: null, warnings: [], errors: [],
+    ok: true,
+    exitCode: 0,
+    dryRun: opts.dryRun,
+    loggedIn: false,
+    durationMs: 0,
+    homes: [],
+    files: [],
+    uploads: { sessions: 0, events: 0, requests: 0 },
+    accepted: null,
+    conflicts: null,
+    heartbeat: false,
+    latestCliVersion: null,
+    rateLimit: null,
+    warnings: [],
+    errors: [],
   };
   const finish = (): SyncReport => {
     report.durationMs = deps.now() - start;
@@ -122,9 +155,15 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
 
   let lockHeld = false;
   if (!opts.dryRun) {
-    const lock = await acquireLock(deps.paths.lock, { now: deps.now(), staleMs: CLI_LOCK_STALE_MS, pid: deps.pid });
+    const lock = await acquireLock(deps.paths.lock, {
+      now: deps.now(),
+      staleMs: CLI_LOCK_STALE_MS,
+      pid: deps.pid,
+    });
     if (!lock.acquired) {
-      report.warnings.push(`another sync is running (pid ${lock.holder?.pid ?? "unknown"}); skipped`);
+      report.warnings.push(
+        `another sync is running (pid ${lock.holder?.pid ?? "unknown"}); skipped`,
+      );
       report.exitCode = opts.scheduled ? 0 : 1;
       return finish();
     }
@@ -133,13 +172,27 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
 
   try {
     const loaded = await readState(deps.paths);
-    if (loaded.corrupt) report.warnings.push("state.json was unreadable; starting from an empty state");
+    if (loaded.corrupt)
+      report.warnings.push("state.json was unreadable; starting from an empty state");
     const state: SyncState = opts.full ? resetAllFiles(loaded.state) : loaded.state;
-    const homes = resolveCodexHomes({ override: opts.codexHome, env: deps.env, configured: config?.codexHomes });
-    const plan = await planSync(state, homes, { full: opts.full, codexHome: opts.codexHome }, {
-      env: deps.env, now: deps.now, log: deps.log,
-      machineZone: deps.machineZone, budgetMs: deps.budgetMs, startedAt: start,
+    const homes = resolveCodexHomes({
+      override: opts.codexHome,
+      env: deps.env,
+      configured: config?.codexHomes,
     });
+    const plan = await planSync(
+      state,
+      homes,
+      { full: opts.full, codexHome: opts.codexHome },
+      {
+        env: deps.env,
+        now: deps.now,
+        log: deps.log,
+        machineZone: deps.machineZone,
+        budgetMs: deps.budgetMs,
+        startedAt: start,
+      },
+    );
     report.homes = plan.homes;
     report.warnings.push(...plan.warnings);
     report.errors.push(...plan.errors);
@@ -154,13 +207,22 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
     }));
     state.codexVersion = plan.codexVersion;
     const machine = buildMachineInfo({
-      config, platform: deps.platform, arch: deps.arch, nodeVersion: deps.nodeVersion, hostname: deps.hostname,
-      machineZone: deps.machineZone, codexVersion: plan.codexVersion, codexLatestVersion: plan.codexLatestVersion,
+      config,
+      platform: deps.platform,
+      arch: deps.arch,
+      nodeVersion: deps.nodeVersion,
+      hostname: deps.hostname,
+      machineZone: deps.machineZone,
+      codexVersion: plan.codexVersion,
+      codexLatestVersion: plan.codexLatestVersion,
     });
     const limits: BatchLimits = { ...(deps.batchLimits ?? DEFAULT_BATCH_LIMITS) };
     const plannedById = new Map(plan.files.map((f) => [f.file.sessionId, f]));
     for (const planned of plan.files) {
-      if (planned.upload === null && (planned.action === "unchanged" || planned.action === "error")) {
+      if (
+        planned.upload === null &&
+        (planned.action === "unchanged" || planned.action === "error")
+      ) {
         state.files[planned.file.sessionId] = planned.next;
       }
     }
@@ -186,8 +248,14 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
       // :305-331 exactly — same due-or-rate-limit-changed test, same batch shape — but report the
       // payload instead of sending it (a dry run makes no network call and writes no state, so
       // `state.lastHeartbeatAt` is left alone and the real run stays due).
-      const heartbeatDue = state.lastHeartbeatAt === null || deps.now() - state.lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS;
-      if (report.batches.length === 0 && report.exitCode !== 2 && (heartbeatDue || plan.rateLimitChanged)) {
+      const heartbeatDue =
+        state.lastHeartbeatAt === null ||
+        deps.now() - state.lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS;
+      if (
+        report.batches.length === 0 &&
+        report.exitCode !== 2 &&
+        (heartbeatDue || plan.rateLimitChanged)
+      ) {
         report.batches.push(
           toSyncBatch({ sessions: [], tokenEvents: [], files: [] }, machine, {
             cliVersion: deps.cliVersion,
@@ -231,13 +299,21 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
       const planned = plannedById.get(sessionId);
       // A rejected file must keep whatever cursor it had before this run (or none at all), never
       // the fully-advanced `planned.next` — see the non-final-ack comment below for why that matters.
-      const current = state.files[sessionId] ?? planned?.prev ?? (planned ? emptyFileState(planned.file.path) : undefined);
+      const current =
+        state.files[sessionId] ??
+        planned?.prev ??
+        (planned ? emptyFileState(planned.file.path) : undefined);
       if (!current) return;
       // The size/mtime stamped on the failure are the FILE's, not the cursor's: because a rejected
       // file keeps its pre-run cursor (often a zeroed one, for a file seen for the first time),
       // the cursor's own size/mtime could never match the file on the next run and the counter
       // would restart forever.
-      state.files[sessionId] = recordFailure(current, message, planned?.file.size ?? current.size, planned?.file.mtimeMs ?? current.mtimeMs);
+      state.files[sessionId] = recordFailure(
+        current,
+        message,
+        planned?.file.size ?? current.size,
+        planned?.file.mtimeMs ?? current.mtimeMs,
+      );
     };
 
     const deadline = start + (deps.budgetMs ?? CLI_RUN_BUDGET_MS);
@@ -252,7 +328,13 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
       const batch = buildBatches(pending, limits)[0];
       if (!batch) break;
       const rateLimitChanged = rateLimitToSend !== null;
-      const payload = toSyncBatch(batch, machine, { cliVersion: deps.cliVersion, batchId: deps.newId(), sentAt: deps.now(), rateLimit: rateLimitToSend, rateLimitChanged });
+      const payload = toSyncBatch(batch, machine, {
+        cliVersion: deps.cliVersion,
+        batchId: deps.newId(),
+        sentAt: deps.now(),
+        rateLimit: rateLimitToSend,
+        rateLimitChanged,
+      });
       let response: SyncResponse;
       try {
         response = await client.sync(payload);
@@ -262,17 +344,23 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
           if (limits.maxEvents <= CLI_MIN_BATCH_EVENTS) {
             for (const id of inBatch) failFile(id, "server rejected the batch as too large");
             pending = pending.filter((u) => !inBatch.has(u.sessionId));
-            report.errors.push(`server rejected ${inBatch.size} file(s) as too large even at ${CLI_MIN_BATCH_EVENTS} events per batch`);
+            report.errors.push(
+              `server rejected ${inBatch.size} file(s) as too large even at ${CLI_MIN_BATCH_EVENTS} events per batch`,
+            );
             report.exitCode = 1;
             continue;
           }
           limits.maxEvents = Math.max(CLI_MIN_BATCH_EVENTS, Math.floor(limits.maxEvents / 2));
           limits.maxBytes = Math.max(64 * 1024, Math.floor(limits.maxBytes / 2));
-          report.warnings.push(`payload too large; retrying with batches of ${limits.maxEvents} events`);
+          report.warnings.push(
+            `payload too large; retrying with batches of ${limits.maxEvents} events`,
+          );
           continue;
         }
         if (isAuthError(error)) {
-          report.errors.push(`authentication failed (${errorMessage(error)}); run \`codex-kaboo login\``);
+          report.errors.push(
+            `authentication failed (${errorMessage(error)}); run \`codex-kaboo login\``,
+          );
           report.exitCode = 2;
           stopped = true;
           break;
@@ -302,7 +390,11 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
           const current = state.files[entry.sessionId] ?? planned.next;
           state.files[entry.sessionId] = clearFailure({
             ...planned.next,
-            lastUploadedSeq: Math.max(current.lastUploadedSeq, planned.next.lastUploadedSeq, entry.lastSeq),
+            lastUploadedSeq: Math.max(
+              current.lastUploadedSeq,
+              planned.next.lastUploadedSeq,
+              entry.lastSeq,
+            ),
             summaryHash: planned.summaryHash,
             lastError: null,
           });
@@ -314,7 +406,8 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
           // cursor is already on record (this run's own earlier write, else the state this run
           // started with, else "nothing read yet") so the file is re-parsed next run and the events
           // still unacked (seq > the raised lastUploadedSeq) are correctly re-derived and re-offered.
-          const current = state.files[entry.sessionId] ?? planned.prev ?? emptyFileState(planned.file.path);
+          const current =
+            state.files[entry.sessionId] ?? planned.prev ?? emptyFileState(planned.file.path);
           state.files[entry.sessionId] = clearFailure({
             ...current,
             lastUploadedSeq: Math.max(current.lastUploadedSeq, entry.lastSeq),
@@ -327,7 +420,9 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
     }
 
     if (conflicts.sessions.length > 0) {
-      report.warnings.push(`${conflicts.sessions.length} session(s) belong to another user and were not merged: ${conflicts.sessions.join(", ")}`);
+      report.warnings.push(
+        `${conflicts.sessions.length} session(s) belong to another user and were not merged: ${conflicts.sessions.join(", ")}`,
+      );
     }
     report.accepted = accepted;
     report.conflicts = conflicts;
@@ -335,23 +430,29 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
     if (report.uploads.requests > 0) {
       state.lastHeartbeatAt = deps.now();
     } else if (!stopped && report.exitCode !== 2) {
-      const due = state.lastHeartbeatAt === null || deps.now() - state.lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS;
+      const due =
+        state.lastHeartbeatAt === null ||
+        deps.now() - state.lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS;
       if (due || rateLimitToSend !== null) {
         try {
           const heartbeatRateLimitChanged = rateLimitToSend !== null;
           const res = await client.sync(
-            toSyncBatch(
-              { sessions: [], tokenEvents: [], files: [] },
-              machine,
-              { cliVersion: deps.cliVersion, batchId: deps.newId(), sentAt: deps.now(), rateLimit: rateLimitToSend, rateLimitChanged: heartbeatRateLimitChanged },
-            ),
+            toSyncBatch({ sessions: [], tokenEvents: [], files: [] }, machine, {
+              cliVersion: deps.cliVersion,
+              batchId: deps.newId(),
+              sentAt: deps.now(),
+              rateLimit: rateLimitToSend,
+              rateLimitChanged: heartbeatRateLimitChanged,
+            }),
           );
           applyResponse(res);
           state.lastHeartbeatAt = deps.now();
           report.heartbeat = true;
         } catch (error) {
           if (isAuthError(error)) {
-            report.errors.push(`authentication failed (${errorMessage(error)}); run \`codex-kaboo login\``);
+            report.errors.push(
+              `authentication failed (${errorMessage(error)}); run \`codex-kaboo login\``,
+            );
             report.exitCode = 2;
           } else {
             report.warnings.push(`heartbeat failed: ${errorMessage(error)}`);
@@ -361,7 +462,10 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
     }
 
     report.rateLimit = state.rateLimit;
-    if (report.latestCliVersion !== null && compareVersions(report.latestCliVersion, deps.cliVersion) > 0) {
+    if (
+      report.latestCliVersion !== null &&
+      compareVersions(report.latestCliVersion, deps.cliVersion) > 0
+    ) {
       report.warnings.push(upgradeHint(report.latestCliVersion, deps.webOrigin));
     }
     state.lastSyncAt = deps.now();

@@ -18,7 +18,11 @@ export function peakHour(byHour: number[]): number | null {
 
 export type TimeRow = { label: string; value: string; help: string };
 
-export function timeAnalysisRows(summary: SummaryResult, byHour: number[], heatmap: DayHourHeatmapResult): TimeRow[] {
+export function timeAnalysisRows(
+  summary: SummaryResult,
+  byHour: number[],
+  heatmap: DayHourHeatmapResult,
+): TimeRow[] {
   const m = summary.metrics;
   // messages/sessions are counts (never null in practice), but Metric.current is typed
   // `number | null` for every key; narrow before handing them to ratio(), which takes `number`.
@@ -27,12 +31,40 @@ export function timeAnalysisRows(summary: SummaryResult, byHour: number[], heatm
   const perSession = messages === null || sessions === null ? null : ratio(messages, sessions);
   const hour = heatmap.peakHour ?? peakHour(byHour);
   return [
-    { label: "Total hours", value: formatMetricValue("hours", m.wallMs.current), help: "Sum of session spans (first to last event)." },
-    { label: "Active hours", value: formatMetricValue("hours", m.activeMs.current), help: "Sum of turn durations while the model was working." },
-    { label: "Active rate", value: formatMetricValue("percent", m.activeRate.current), help: "Active hours divided by total hours." },
-    { label: "Avg session", value: formatMetricValue("duration", m.avgSessionActiveMs.current), help: "Active time per session." },
-    { label: "Messages / session", value: perSession === null ? "—" : perSession.toFixed(1), help: "User plus agent messages per session." },
-    { label: "Peak hour", value: hour === null ? "—" : `${hourLabel(hour)}:00`, help: "Hour of day with the most tokens (machine time zone)." },
-    { label: "Most active day", value: heatmap.peakWeekday === null ? "—" : WEEKDAY_LABELS[heatmap.peakWeekday]!, help: "Weekday with the most tokens." },
+    {
+      label: "Total hours",
+      value: formatMetricValue("hours", m.wallMs.current),
+      help: "Sum of session spans (first to last event).",
+    },
+    {
+      label: "Active hours",
+      value: formatMetricValue("hours", m.activeMs.current),
+      help: "Sum of turn durations while the model was working.",
+    },
+    {
+      label: "Active rate",
+      value: formatMetricValue("percent", m.activeRate.current),
+      help: "Active hours divided by total hours.",
+    },
+    {
+      label: "Avg session",
+      value: formatMetricValue("duration", m.avgSessionActiveMs.current),
+      help: "Active time per session.",
+    },
+    {
+      label: "Messages / session",
+      value: perSession === null ? "—" : perSession.toFixed(1),
+      help: "User plus agent messages per session.",
+    },
+    {
+      label: "Peak hour",
+      value: hour === null ? "—" : `${hourLabel(hour)}:00`,
+      help: "Hour of day with the most tokens (machine time zone).",
+    },
+    {
+      label: "Most active day",
+      value: heatmap.peakWeekday === null ? "—" : WEEKDAY_LABELS[heatmap.peakWeekday]!,
+      help: "Weekday with the most tokens.",
+    },
   ];
 }

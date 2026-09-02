@@ -10,7 +10,11 @@ export function InfoTooltip({ text }: { text: string }) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="How to read this data">
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="How to read this data"
+          >
             <Info className="size-3.5" aria-hidden="true" />
           </button>
         </TooltipTrigger>

@@ -47,9 +47,12 @@ export function ChartCard({
   const keys = stacked.series.map((s) => s.key);
   const columns: Column<ChartRow>[] = [
     { key: "x", header: "Period", render: (r) => r.label },
-    ...stacked.series.map(
-      (s): Column<ChartRow> => ({ key: s.key, header: s.label, align: "right", render: (r) => format(Number(r[s.key] ?? 0)) }),
-    ),
+    ...stacked.series.map((s): Column<ChartRow> => ({
+      key: s.key,
+      header: s.label,
+      align: "right",
+      render: (r) => format(Number(r[s.key] ?? 0)),
+    })),
     { key: "total", header: "Total", align: "right", render: (r) => format(rowTotal(r, keys)) },
   ];
   return (

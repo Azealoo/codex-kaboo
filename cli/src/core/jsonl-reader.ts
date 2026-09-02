@@ -114,7 +114,13 @@ export async function readJsonlLines(
     source.on("error", (err) => decompressor.destroy(err));
     source.pipe(decompressor);
     for await (const chunk of decompressor) splitter.push(chunk as Buffer);
-    return { consumed: splitter.consumed, lines: splitter.seq, tail: "", partial: splitter.partial, bytes: splitter.bytes };
+    return {
+      consumed: splitter.consumed,
+      lines: splitter.seq,
+      tail: "",
+      partial: splitter.partial,
+      bytes: splitter.bytes,
+    };
   }
   const chunkSize = opts.chunkSize ?? 256 * 1024;
   const handle = await fs.open(filePath, "r");
@@ -128,7 +134,13 @@ export async function readJsonlLines(
       position += bytesRead;
     }
     const tail = await readTail(handle, splitter.consumed);
-    return { consumed: splitter.consumed, lines: splitter.seq, tail, partial: splitter.partial, bytes: position };
+    return {
+      consumed: splitter.consumed,
+      lines: splitter.seq,
+      tail,
+      partial: splitter.partial,
+      bytes: position,
+    };
   } finally {
     await handle.close();
   }

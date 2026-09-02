@@ -16,9 +16,18 @@ describe("paths", () => {
   });
   it("resolves codex homes by precedence: override > CODEX_HOME > configured > ~/.codex", () => {
     expect(resolveCodexHomes({ env: {} })).toEqual([defaultCodexHome()]);
-    expect(resolveCodexHomes({ env: { CODEX_HOME: "/x/codex" }, configured: ["/y"] })).toEqual([path.resolve("/x/codex")]);
-    expect(resolveCodexHomes({ env: {}, configured: ["/y", "/y", "/z"] })).toEqual([path.resolve("/y"), path.resolve("/z")]);
-    expect(resolveCodexHomes({ override: "/o", env: { CODEX_HOME: "/x" } })).toEqual([path.resolve("/o")]);
-    expect(resolveCodexHomes({ env: {}, configured: ["~/.codex-alt"] })).toEqual([path.join(os.homedir(), ".codex-alt")]);
+    expect(resolveCodexHomes({ env: { CODEX_HOME: "/x/codex" }, configured: ["/y"] })).toEqual([
+      path.resolve("/x/codex"),
+    ]);
+    expect(resolveCodexHomes({ env: {}, configured: ["/y", "/y", "/z"] })).toEqual([
+      path.resolve("/y"),
+      path.resolve("/z"),
+    ]);
+    expect(resolveCodexHomes({ override: "/o", env: { CODEX_HOME: "/x" } })).toEqual([
+      path.resolve("/o"),
+    ]);
+    expect(resolveCodexHomes({ env: {}, configured: ["~/.codex-alt"] })).toEqual([
+      path.join(os.homedir(), ".codex-alt"),
+    ]);
   });
 });

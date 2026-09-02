@@ -35,7 +35,11 @@ describe("ChartCard", () => {
   });
   it("renders an empty state when there are no rows", () => {
     render(
-      <ChartCard title="Empty" stacked={{ ...stacked, rows: [], peak: null, total: 0 }} format={formatCompact}>
+      <ChartCard
+        title="Empty"
+        stacked={{ ...stacked, rows: [], peak: null, total: 0 }}
+        format={formatCompact}
+      >
         <div data-testid="chart" />
       </ChartCard>,
     );
@@ -46,7 +50,12 @@ describe("ChartCard", () => {
     // The token trend card's "Unpriced: …" caveat must stay visible when the viewer switches to
     // the table — the dollar figures it qualifies are shown there too.
     render(
-      <ChartCard title="Token trend" stacked={stacked} format={formatCompact} footer={<p>Unpriced: codex-auto-review</p>}>
+      <ChartCard
+        title="Token trend"
+        stacked={stacked}
+        format={formatCompact}
+        footer={<p>Unpriced: codex-auto-review</p>}
+      >
         <div data-testid="chart" />
       </ChartCard>,
     );

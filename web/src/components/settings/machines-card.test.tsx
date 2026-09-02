@@ -9,7 +9,9 @@ vi.mock("convex/react", () => ({
   useQuery: (...args: unknown[]) => useQueryMock(...args),
   useMutation: () => renameMock,
 }));
-vi.mock("@/components/layout/current-user", () => ({ useCurrentUserId: () => "u1" as Id<"users"> }));
+vi.mock("@/components/layout/current-user", () => ({
+  useCurrentUserId: () => "u1" as Id<"users">,
+}));
 vi.mock("@/hooks/use-now", () => ({ useNow: () => 1_756_800_000_000 }));
 
 import { MachinesCard } from "./machines-card";

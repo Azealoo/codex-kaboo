@@ -1,10 +1,25 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cpSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  statSync,
+  truncateSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CLI_MAX_FILE_BYTES } from "@codex-kaboo/shared/constants";
 import type { RateLimitSnapshot } from "@codex-kaboo/shared/sync";
-import { buildMachineInfo, planSync, readCodexLatestVersion, toSyncBatch } from "../../src/commands/sync-plan";
+import {
+  buildMachineInfo,
+  planSync,
+  readCodexLatestVersion,
+  toSyncBatch,
+} from "../../src/commands/sync-plan";
 import { emptyFileState, emptyState } from "../../src/core/state";
 import { discoverRolloutFiles } from "../../src/core/discover";
 import { zstdSupported } from "../../src/core/jsonl-reader";
@@ -31,7 +46,10 @@ function copyFixtures(): string {
   const home = mkdtempSync(path.join(os.tmpdir(), "ck-plan-"));
   tmpDirs.push(home);
   cpSync(FIXTURE_HOME, home, { recursive: true });
-  writeFileSync(path.join(home, "version.json"), JSON.stringify({ latest_version: "0.151.0", last_checked_at: "x" }));
+  writeFileSync(
+    path.join(home, "version.json"),
+    JSON.stringify({ latest_version: "0.151.0", last_checked_at: "x" }),
+  );
   return home;
 }
 
@@ -52,7 +70,14 @@ describe("planSync", () => {
     expect(plan.codexVersion).toBe("0.150.1");
     expect(plan.codexLatestVersion).toBe("0.151.0");
     const next = plan.files.find((f) => f.file.sessionId === FX.paginatedSmall)!.next;
-    expect(next).toMatchObject({ lines: 159, lastUploadedSeq: -1, summaryHash: null, generation: 0, complete: false, lastError: null });
+    expect(next).toMatchObject({
+      lines: 159,
+      lastUploadedSeq: -1,
+      summaryHash: null,
+      generation: 0,
+      complete: false,
+      lastError: null,
+    });
     expect(next.offset).toBe(statSync(next.path).size);
     expect(next.tail.length).toBeGreaterThan(0);
   });
@@ -61,12 +86,32 @@ describe("planSync", () => {
     const { files } = await discoverRolloutFiles([home]);
     const state: SyncState = emptyState();
     for (const f of files) {
-      state.files[f.sessionId] = { ...emptyFileState(f.path), offset: f.size, size: f.size, mtimeMs: f.mtimeMs, lastUploadedSeq: 10_000, summaryHash: "x".repeat(40) };
+      state.files[f.sessionId] = {
+        ...emptyFileState(f.path),
+        offset: f.size,
+        size: f.size,
+        mtimeMs: f.mtimeMs,
+        lastUploadedSeq: 10_000,
+        summaryHash: "x".repeat(40),
+      };
     }
     const plan = await planSync(state, [home], { full: false }, deps);
     expect(plan.files.every((f) => f.action === "unchanged")).toBe(true);
     expect(plan.uploads).toEqual([]);
-    const full = await planSync({ ...state, files: Object.fromEntries(Object.entries(state.files).map(([k, v]) => [k, { ...v, offset: 0, size: 0, mtimeMs: 0, lastUploadedSeq: -1, summaryHash: null }])) }, [home], { full: true }, deps);
+    const full = await planSync(
+      {
+        ...state,
+        files: Object.fromEntries(
+          Object.entries(state.files).map(([k, v]) => [
+            k,
+            { ...v, offset: 0, size: 0, mtimeMs: 0, lastUploadedSeq: -1, summaryHash: null },
+          ]),
+        ),
+      },
+      [home],
+      { full: true },
+      deps,
+    );
     expect(full.uploads.length).toBeGreaterThanOrEqual(8);
   });
   it("re-parses a grown file but reports unchanged when the acknowledged hash matches", async () => {
@@ -74,7 +119,12 @@ describe("planSync", () => {
     const first = await planSync(emptyState(), [home], { full: false }, deps);
     const planned = first.files.find((f) => f.file.sessionId === FX.paginatedSmall)!;
     const state = emptyState();
-    state.files[FX.paginatedSmall] = { ...planned.next, mtimeMs: planned.next.mtimeMs + 1, lastUploadedSeq: 158, summaryHash: planned.summaryHash };
+    state.files[FX.paginatedSmall] = {
+      ...planned.next,
+      mtimeMs: planned.next.mtimeMs + 1,
+      lastUploadedSeq: 158,
+      summaryHash: planned.summaryHash,
+    };
     const second = await planSync(state, [home], { full: false }, deps);
     const again = second.files.find((f) => f.file.sessionId === FX.paginatedSmall)!;
     expect(again.action).toBe("unchanged");
@@ -86,7 +136,12 @@ describe("planSync", () => {
     const first = await planSync(emptyState(), [home], { full: false }, deps);
     const planned = first.files.find((f) => f.file.sessionId === FX.corrupt)!;
     const state = emptyState();
-    state.files[FX.corrupt] = { ...planned.next, lastUploadedSeq: 5, summaryHash: planned.summaryHash, generation: 2 };
+    state.files[FX.corrupt] = {
+      ...planned.next,
+      lastUploadedSeq: 5,
+      summaryHash: planned.summaryHash,
+      generation: 2,
+    };
     truncateSync(planned.file.path, planned.next.offset - 10);
     const plan = await planSync(state, [home], { full: false }, deps);
     const reset = plan.files.find((f) => f.file.sessionId === FX.corrupt)!;
@@ -100,13 +155,30 @@ describe("planSync", () => {
   it("stops when the budget is exhausted and records parse errors instead of throwing", async () => {
     const home = copyFixtures();
     let calls = 0;
-    const budgeted = await planSync(emptyState(), [home], { full: false }, { ...deps, now: () => NOW + (calls++ > 2 ? 10_000 : 0), budgetMs: 5000, startedAt: NOW });
+    const budgeted = await planSync(
+      emptyState(),
+      [home],
+      { full: false },
+      { ...deps, now: () => NOW + (calls++ > 2 ? 10_000 : 0), budgetMs: 5000, startedAt: NOW },
+    );
     expect(budgeted.budgetExhausted).toBe(true);
     expect(budgeted.files.length).toBeLessThan(8);
-    const bad = path.join(home, "sessions", "2026", "08", "30", "rollout-2026-08-30T23-00-00-0199f1c0-0000-7000-8000-0000000000e1.jsonl");
-    writeFileSync(bad, `${JSON.stringify({ timestamp: "2026-08-30T23:00:00.000Z", type: "session_meta", payload: { id: "0199f1c0-0000-7000-8000-0000000000e1", timestamp: "1999-01-01T00:00:00.000Z" } })}\n`);
+    const bad = path.join(
+      home,
+      "sessions",
+      "2026",
+      "08",
+      "30",
+      "rollout-2026-08-30T23-00-00-0199f1c0-0000-7000-8000-0000000000e1.jsonl",
+    );
+    writeFileSync(
+      bad,
+      `${JSON.stringify({ timestamp: "2026-08-30T23:00:00.000Z", type: "session_meta", payload: { id: "0199f1c0-0000-7000-8000-0000000000e1", timestamp: "1999-01-01T00:00:00.000Z" } })}\n`,
+    );
     const plan = await planSync(emptyState(), [home], { full: false }, deps);
-    const broken = plan.files.find((f) => f.file.sessionId === "0199f1c0-0000-7000-8000-0000000000e1")!;
+    const broken = plan.files.find(
+      (f) => f.file.sessionId === "0199f1c0-0000-7000-8000-0000000000e1",
+    )!;
     expect(broken.action).toBe("error");
     expect(broken.next.lastError).toMatch(/startedAt/);
     expect(plan.errors).toHaveLength(1);
@@ -116,11 +188,45 @@ describe("planSync", () => {
 describe("machine info and batches", () => {
   it("builds the machine block and a schema-valid SyncBatch", async () => {
     const machine = buildMachineInfo({
-      config: { server: "s", token: "t", machineId: "m1", label: "brisk-otter", hostnameOptIn: true, codexHomes: [] },
-      platform: "darwin", arch: "arm64", nodeVersion: "24.17.0", hostname: () => "my-mac", machineZone: "UTC", codexVersion: "0.150.1", codexLatestVersion: "0.151.0",
+      config: {
+        server: "s",
+        token: "t",
+        machineId: "m1",
+        label: "brisk-otter",
+        hostnameOptIn: true,
+        codexHomes: [],
+      },
+      platform: "darwin",
+      arch: "arm64",
+      nodeVersion: "24.17.0",
+      hostname: () => "my-mac",
+      machineZone: "UTC",
+      codexVersion: "0.150.1",
+      codexLatestVersion: "0.151.0",
     });
-    expect(machine).toEqual({ machineId: "m1", label: "brisk-otter", platform: "darwin", arch: "arm64", nodeVersion: "24.17.0", codexVersion: "0.150.1", codexLatestVersion: "0.151.0", hostname: "my-mac", tz: "UTC" });
-    expect(buildMachineInfo({ config: null, platform: "linux", arch: "x64", nodeVersion: "20.0.0", hostname: () => "h", machineZone: undefined, codexVersion: null, codexLatestVersion: undefined })).toMatchObject({ machineId: "dry-run", label: "dry-run", hostname: null });
+    expect(machine).toEqual({
+      machineId: "m1",
+      label: "brisk-otter",
+      platform: "darwin",
+      arch: "arm64",
+      nodeVersion: "24.17.0",
+      codexVersion: "0.150.1",
+      codexLatestVersion: "0.151.0",
+      hostname: "my-mac",
+      tz: "UTC",
+    });
+    expect(
+      buildMachineInfo({
+        config: null,
+        platform: "linux",
+        arch: "x64",
+        nodeVersion: "20.0.0",
+        hostname: () => "h",
+        machineZone: undefined,
+        codexVersion: null,
+        codexLatestVersion: undefined,
+      }),
+    ).toMatchObject({ machineId: "dry-run", label: "dry-run", hostname: null });
     const home = copyFixtures();
     const plan = await planSync(emptyState(), [home], { full: false }, deps);
     const [batch] = buildBatches(plan.uploads);
@@ -150,7 +256,11 @@ describe("relocated files, oversize skip and .zst fast path (carry-over coverage
     const first = await planSync(emptyState(), [home], { full: false }, deps);
     const planned = first.files.find((f) => f.file.sessionId === FX.paginatedSmall)!;
     const state = emptyState();
-    state.files[FX.paginatedSmall] = { ...planned.next, lastUploadedSeq: 158, summaryHash: planned.summaryHash };
+    state.files[FX.paginatedSmall] = {
+      ...planned.next,
+      lastUploadedSeq: 158,
+      summaryHash: planned.summaryHash,
+    };
 
     // Move the file into archived_sessions/ under a new directory, same filename (same threadId,
     // so the same sessionId) — this is the "moved file" case: archival or on-disk relocation.
@@ -193,7 +303,10 @@ describe("relocated files, oversize skip and .zst fast path (carry-over coverage
     tmpDirs.push(home);
     const day = path.join(home, "sessions", "2026", "08", "30");
     mkdirSync(day, { recursive: true });
-    const big = path.join(day, "rollout-2026-08-30T09-00-00-0199f1c0-0000-7000-8000-0000000000f1.jsonl");
+    const big = path.join(
+      day,
+      "rollout-2026-08-30T09-00-00-0199f1c0-0000-7000-8000-0000000000f1.jsonl",
+    );
     writeFileSync(big, ""); // truncate to a sparse file: instant, no real 256 MB of I/O
     truncateSync(big, CLI_MAX_FILE_BYTES + 1);
 
@@ -258,7 +371,11 @@ describe("rate limit: seeded from state, changed only when newer than stored", (
         summaryHash: "x".repeat(40),
       };
     }
-    const stored: RateLimitSnapshot = { observedAt: Date.UTC(2026, 7, 30), usedPercent: 12.5, windowMinutes: 10080 };
+    const stored: RateLimitSnapshot = {
+      observedAt: Date.UTC(2026, 7, 30),
+      usedPercent: 12.5,
+      windowMinutes: 10080,
+    };
     state.rateLimit = stored;
 
     const plan = await planSync(state, [home], { full: false }, deps);
@@ -269,7 +386,11 @@ describe("rate limit: seeded from state, changed only when newer than stored", (
 
   it("adopts a freshly parsed snapshot newer than the stored one", async () => {
     const home = copyFixtures();
-    const stale: RateLimitSnapshot = { observedAt: Date.UTC(2020, 0, 1), usedPercent: 1, windowMinutes: 10080 };
+    const stale: RateLimitSnapshot = {
+      observedAt: Date.UTC(2020, 0, 1),
+      usedPercent: 1,
+      windowMinutes: 10080,
+    };
     const state = emptyState();
     state.rateLimit = stale;
 
@@ -282,7 +403,11 @@ describe("rate limit: seeded from state, changed only when newer than stored", (
 
   it("keeps a stored snapshot newer than anything parsed this run", async () => {
     const home = copyFixtures();
-    const future: RateLimitSnapshot = { observedAt: Date.UTC(2030, 0, 1), usedPercent: 50, windowMinutes: 10080 };
+    const future: RateLimitSnapshot = {
+      observedAt: Date.UTC(2030, 0, 1),
+      usedPercent: 50,
+      windowMinutes: 10080,
+    };
     const state = emptyState();
     state.rateLimit = future;
 

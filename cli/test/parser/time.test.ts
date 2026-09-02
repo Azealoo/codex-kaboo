@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { dayHour, isValidZone, machineZone, parseLineTimestamp, resolveZone, secondsToMs } from "../../src/parser/time";
+import {
+  dayHour,
+  isValidZone,
+  machineZone,
+  parseLineTimestamp,
+  resolveZone,
+  secondsToMs,
+} from "../../src/parser/time";
 
 describe("timestamps", () => {
   it("parses ISO strings and numeric seconds/ms", () => {

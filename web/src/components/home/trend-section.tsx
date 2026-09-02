@@ -15,7 +15,11 @@ import { cn } from "@/lib/utils";
 
 export function TrendSection({ range }: { range: ResolvedRange }) {
   const bucket = bucketFor(range.days);
-  const { data, isStale } = useStableQuery(api.stats.trends, { from: range.from, to: range.to, bucket });
+  const { data, isStale } = useStableQuery(api.stats.trends, {
+    from: range.from,
+    to: range.to,
+    bucket,
+  });
   const userColors = useUserColors();
   const modelColors = useModelColors(data ? data.models : []);
   if (!data) {

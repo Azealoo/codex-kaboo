@@ -46,7 +46,10 @@ export const list = authedQuery({
         : await ctx.db.query("machines").collect();
     return docs
       .map(toMachineRow)
-      .sort((a, b) => b.lastSyncAt - a.lastSyncAt || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
+      .sort(
+        (a, b) =>
+          b.lastSyncAt - a.lastSyncAt || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0),
+      );
   },
 });
 

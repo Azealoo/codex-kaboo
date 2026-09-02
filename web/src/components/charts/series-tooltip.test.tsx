@@ -11,8 +11,14 @@ const series: SeriesDef[] = [
   { key: "s2", label: "Cara", color: "#eb6834", entity: "u3" },
 ];
 
-function payloadFor(values: Record<string, number>): TooltipContentProps<number, string>["payload"] {
-  return Object.entries(values).map(([dataKey, value]) => ({ dataKey, value, graphicalItemId: dataKey }));
+function payloadFor(
+  values: Record<string, number>,
+): TooltipContentProps<number, string>["payload"] {
+  return Object.entries(values).map(([dataKey, value]) => ({
+    dataKey,
+    value,
+    graphicalItemId: dataKey,
+  }));
 }
 
 describe("SeriesTooltip", () => {

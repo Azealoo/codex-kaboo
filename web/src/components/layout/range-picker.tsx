@@ -46,7 +46,12 @@ export function RangePicker() {
       }}
     >
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="rounded-full font-medium" aria-label="Change date range">
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-full font-medium"
+          aria-label="Change date range"
+        >
           <CalendarIcon className="size-3.5" aria-hidden="true" />
           <span>{label}</span>
           <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden="true" />
@@ -77,7 +82,9 @@ export function RangePicker() {
             })}
           </ul>
           <div className="flex flex-col gap-2 p-2">
-            <p className="px-1 text-xs font-medium text-muted-foreground">Custom range (up to 400 days)</p>
+            <p className="px-1 text-xs font-medium text-muted-foreground">
+              Custom range (up to 400 days)
+            </p>
             <Calendar
               mode="range"
               numberOfMonths={2}

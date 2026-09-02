@@ -11,7 +11,13 @@ import { Button } from "@/components/ui/button";
  * `error.message` or `error.stack` verbatim — a ConvexError payload can carry field values. Show
  * a fixed sentence; surface only `error.digest`, which identifies the error without describing it.
  */
-export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
   useEffect(() => {
     console.error("route error", error);
   }, [error]);

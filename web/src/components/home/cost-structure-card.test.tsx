@@ -19,7 +19,14 @@ describe("CostStructureCard", () => {
   });
 
   it("shows no unpriced disclosure when the list is empty", () => {
-    render(<CostStructureCard costByKind={costByKind} costUsd={37} cacheSavingsUsd={4} unpricedModels={[]} />);
+    render(
+      <CostStructureCard
+        costByKind={costByKind}
+        costUsd={37}
+        cacheSavingsUsd={4}
+        unpricedModels={[]}
+      />,
+    );
     expect(screen.queryByText(/Unpriced/)).not.toBeInTheDocument();
   });
 });

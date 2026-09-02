@@ -8,7 +8,17 @@ import { DataSyncCard } from "./data-sync-card";
 import { OverviewStats } from "./overview-stats";
 import { TokenTrendCard } from "./token-trend-card";
 
-export function OverviewTab({ range, userId, isMe, today }: { range: ResolvedRange; userId: Id<"users">; isMe: boolean; today: string }) {
+export function OverviewTab({
+  range,
+  userId,
+  isMe,
+  today,
+}: {
+  range: ResolvedRange;
+  userId: Id<"users">;
+  isMe: boolean;
+  today: string;
+}) {
   return (
     <div className="flex flex-col gap-4">
       <SectionErrorBoundary title="Stats could not load">

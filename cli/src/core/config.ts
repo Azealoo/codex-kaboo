@@ -7,7 +7,10 @@ import type { KabooPaths } from "./paths";
 export async function writeJsonAtomic(file: string, value: unknown, mode?: number): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   const tmp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: mode ?? 0o644 });
+  await fs.writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: mode ?? 0o644,
+  });
   if (mode !== undefined) {
     try {
       await fs.chmod(tmp, mode);
@@ -32,7 +35,11 @@ export async function readConfig(paths: KabooPaths): Promise<Config | null> {
   } catch {
     throw new Error(`${paths.config} is not valid JSON; run \`codex-kaboo login\` again`);
   }
-  if (typeof raw.server !== "string" || typeof raw.token !== "string" || typeof raw.machineId !== "string") {
+  if (
+    typeof raw.server !== "string" ||
+    typeof raw.token !== "string" ||
+    typeof raw.machineId !== "string"
+  ) {
     return null;
   }
   return {
@@ -41,7 +48,9 @@ export async function readConfig(paths: KabooPaths): Promise<Config | null> {
     machineId: raw.machineId,
     label: typeof raw.label === "string" && raw.label.length > 0 ? raw.label : "unnamed-machine",
     hostnameOptIn: raw.hostnameOptIn === true,
-    codexHomes: Array.isArray(raw.codexHomes) ? raw.codexHomes.filter((x): x is string => typeof x === "string") : [],
+    codexHomes: Array.isArray(raw.codexHomes)
+      ? raw.codexHomes.filter((x): x is string => typeof x === "string")
+      : [],
     ...(raw.userId !== undefined ? { userId: raw.userId } : {}),
     ...(raw.userName !== undefined ? { userName: raw.userName } : {}),
     ...(raw.userEmail !== undefined ? { userEmail: raw.userEmail } : {}),

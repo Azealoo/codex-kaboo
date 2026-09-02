@@ -41,7 +41,21 @@ export const MAX_STRING_LENGTH = 256;
 export const MAX_PRICE_USD_PER_MTOK = 10000;
 
 export const TTFT_BUCKETS_MS = [
-  250, 500, 750, 1000, 1500, 2000, 3000, 4000, 6000, 8000, 12000, 16000, 24000, 32000, 60000,
+  250,
+  500,
+  750,
+  1000,
+  1500,
+  2000,
+  3000,
+  4000,
+  6000,
+  8000,
+  12000,
+  16000,
+  24000,
+  32000,
+  60000,
   Number.POSITIVE_INFINITY,
 ] as const;
 export const TTFT_BUCKET_COUNT = 16;

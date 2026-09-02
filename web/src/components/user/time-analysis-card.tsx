@@ -18,7 +18,11 @@ export function TimeAnalysisCard({ range, userId }: { range: ResolvedRange; user
   const { data: breakdowns } = useBreakdowns(range, userId);
   const { data: heatmap } = useStableQuery(api.stats.dayHourHeatmap, args);
   return (
-    <SectionCard title="Time analysis" help="When and how long this user works with Codex, in the machines' local time." bodyClassName="flex flex-col gap-4">
+    <SectionCard
+      title="Time analysis"
+      help="When and how long this user works with Codex, in the machines' local time."
+      bodyClassName="flex flex-col gap-4"
+    >
       {!summary || !breakdowns || !heatmap ? (
         <Skeleton className="h-48" />
       ) : (

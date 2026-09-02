@@ -18,7 +18,13 @@ export function ToolsSection({ range, userId }: { range: ResolvedRange; userId?:
   const { data, isStale } = useBreakdowns(range, userId);
   const mcpColumns: Column<McpRow>[] = [
     { key: "tool", header: "MCP tool (server/tool)", render: (r) => r.key },
-    { key: "count", header: "Calls", align: "right", bar: (r) => r.count, render: (r) => formatInt(r.count) },
+    {
+      key: "count",
+      header: "Calls",
+      align: "right",
+      bar: (r) => r.count,
+      render: (r) => formatInt(r.count),
+    },
   ];
   return (
     <QuerySection
@@ -38,10 +44,19 @@ export function ToolsSection({ range, userId }: { range: ResolvedRange; userId?:
             <StackedShareBar segments={segments} format={formatInt} showLegend={false} />
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
               {segments.map((s) => (
-                <StatCard key={s.key} label={s.label} value={s.value} kind="count" size="sm" footer={formatPercent(s.share)} />
+                <StatCard
+                  key={s.key}
+                  label={s.label}
+                  value={s.value}
+                  kind="count"
+                  size="sm"
+                  footer={formatPercent(s.share)}
+                />
               ))}
             </div>
-            {b.byMcpTool.length > 0 ? <DataTable columns={mcpColumns} rows={b.byMcpTool} rowKey={(r) => r.key} /> : null}
+            {b.byMcpTool.length > 0 ? (
+              <DataTable columns={mcpColumns} rows={b.byMcpTool} rowKey={(r) => r.key} />
+            ) : null}
           </>
         );
       }}

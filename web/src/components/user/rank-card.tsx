@@ -26,7 +26,11 @@ export function rankSummary(
 }
 
 export function RankCard({ range, userId }: { range: ResolvedRange; userId: Id<"users"> }) {
-  const { data } = useStableQuery(api.stats.leaderboard, { from: range.from, to: range.to, previous: range.previous });
+  const { data } = useStableQuery(api.stats.leaderboard, {
+    from: range.from,
+    to: range.to,
+    previous: range.previous,
+  });
   if (!data) return <Skeleton className="h-28 rounded-lg" />;
   const summary = rankSummary(data.rows, userId);
   if (!summary) {
@@ -40,7 +44,9 @@ export function RankCard({ range, userId }: { range: ResolvedRange; userId: Id<"
         <span className="inline-flex items-baseline gap-2">
           #{summary.rank}
           <span className="text-base font-normal text-muted-foreground">/ {summary.total}</span>
-          {range.previous ? <RankMovement rank={summary.rank} previousRank={summary.previousRank} /> : null}
+          {range.previous ? (
+            <RankMovement rank={summary.rank} previousRank={summary.previousRank} />
+          ) : null}
         </span>
       }
       footer={summary.share === null ? undefined : `${formatPercent(summary.share)} of team tokens`}

@@ -15,7 +15,13 @@ export function MachinesTable({ range, userId }: { range: ResolvedRange; userId:
   const { data, isStale } = useBreakdowns(range, userId);
   const columns: Column<MachineRow>[] = [
     { key: "machine", header: "Machine", render: (r) => r.label },
-    { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
+    {
+      key: "tokens",
+      header: "Tokens",
+      align: "right",
+      bar: (r) => r.tokens,
+      render: (r) => formatCompact(r.tokens),
+    },
     { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },
     { key: "sessions", header: "Sessions", align: "right", render: (r) => formatInt(r.sessions) },
   ];
@@ -27,7 +33,13 @@ export function MachinesTable({ range, userId }: { range: ResolvedRange; userId:
       isStale={isStale}
       skeletonClassName="h-32"
     >
-      {(b) => (b.byMachine.length === 0 ? <EmptyState title="No machine data in this range" /> : <DataTable columns={columns} rows={b.byMachine} rowKey={(r) => r.key} />)}
+      {(b) =>
+        b.byMachine.length === 0 ? (
+          <EmptyState title="No machine data in this range" />
+        ) : (
+          <DataTable columns={columns} rows={b.byMachine} rowKey={(r) => r.key} />
+        )
+      }
     </QuerySection>
   );
 }

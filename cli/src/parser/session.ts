@@ -1,14 +1,38 @@
 import {
-  MAX_KEYED_ENTRIES_PER_SESSION, MAX_STRING_LENGTH, OTHER_KEY, PARSER_VERSION,
+  MAX_KEYED_ENTRIES_PER_SESSION,
+  MAX_STRING_LENGTH,
+  OTHER_KEY,
+  PARSER_VERSION,
 } from "@codex-kaboo/shared/constants";
-import { addTokens, emptyTokens, emptyToolCounts, emptyTtft, mergeKeyCounts, ttftBucketIndex } from "@codex-kaboo/shared/metrics";
+import {
+  addTokens,
+  emptyTokens,
+  emptyToolCounts,
+  emptyTtft,
+  mergeKeyCounts,
+  ttftBucketIndex,
+} from "@codex-kaboo/shared/metrics";
 import type {
-  KeyCount, RateLimitSnapshot, SessionSummary, TokenEvent, TokenEventOrigin, ToolCounts, Ttft,
+  KeyCount,
+  RateLimitSnapshot,
+  SessionSummary,
+  TokenEvent,
+  TokenEventOrigin,
+  ToolCounts,
+  Ttft,
 } from "@codex-kaboo/shared/sync";
 import { parseJsonLine } from "../core/jsonl-reader";
 import { summaryHashOf } from "../util/hash";
 import {
-  asRecord, classifyParsedCmdType, clipString, detectSkills, isSubagentSource, mcpKeyFromFunctionName, projectOf, sourceOf, toCount,
+  asRecord,
+  classifyParsedCmdType,
+  clipString,
+  detectSkills,
+  isSubagentSource,
+  mcpKeyFromFunctionName,
+  projectOf,
+  sourceOf,
+  toCount,
 } from "./classify";
 import { countDiffLines, countLines } from "./diff";
 import { dayHour, isValidZone, parseLineTimestamp, resolveZone, secondsToMs } from "./time";
@@ -123,9 +147,21 @@ export function createReducerState(ctx: ReducerContext): ReducerState {
     turns: new Map(),
     openTurn: false,
     counts: {
-      turns: 0, completedTurns: 0, userMessages: 0, agentMessages: 0, reasoningItems: 0,
-      legacyUserMessages: 0, legacyAgentMessages: 0, compactedLines: 0, contextCompactionItems: 0,
-      linesAdded: 0, linesRemoved: 0, filesChanged: 0, activeMs: 0, lineCount: 0, parseErrors: 0,
+      turns: 0,
+      completedTurns: 0,
+      userMessages: 0,
+      agentMessages: 0,
+      reasoningItems: 0,
+      legacyUserMessages: 0,
+      legacyAgentMessages: 0,
+      compactedLines: 0,
+      contextCompactionItems: 0,
+      linesAdded: 0,
+      linesRemoved: 0,
+      filesChanged: 0,
+      activeMs: 0,
+      lineCount: 0,
+      parseErrors: 0,
     },
     toolCounts: emptyToolCounts(),
     mcpTools: new Map(),
@@ -203,7 +239,11 @@ export function reduce(state: ReducerState, seq: number, line: Record<string, un
   }
 }
 
-function handleSessionMeta(state: ReducerState, payload: Record<string, unknown>, lineTs: number | null): void {
+function handleSessionMeta(
+  state: ReducerState,
+  payload: Record<string, unknown>,
+  lineTs: number | null,
+): void {
   state.metaSeen = true;
   const id = clipString(payload.id);
   if (id) state.threadId = id;
@@ -258,13 +298,26 @@ function pendingEventFrom(
   const reasoning = toCount(usage.reasoning_output_tokens);
   if (input + cachedInput + cacheWrite + output + reasoning === 0) return null;
   const contextWindow = toCount(info?.model_context_window) || state.contextWindow;
-  const event: PendingEvent = { seq, ts, origin, input, cachedInput, cacheWrite, output, reasoning };
+  const event: PendingEvent = {
+    seq,
+    ts,
+    origin,
+    input,
+    cachedInput,
+    cacheWrite,
+    output,
+    reasoning,
+  };
   if (state.currentTurnId) event.turnId = state.currentTurnId;
   if (contextWindow) event.contextWindow = contextWindow;
   return event;
 }
 
-function considerRateLimit(state: ReducerState, rateLimits: Record<string, unknown>, ts: number): void {
+function considerRateLimit(
+  state: ReducerState,
+  rateLimits: Record<string, unknown>,
+  ts: number,
+): void {
   const primary = asRecord(rateLimits.primary);
   if (primary === null) return;
   const used = primary.used_percent;
@@ -280,10 +333,16 @@ function considerRateLimit(state: ReducerState, rateLimits: Record<string, unkno
   if (planType) snapshot.planType = planType;
   const limitId = clipString(rateLimits.limit_id);
   if (limitId) snapshot.limitId = limitId;
-  if (state.rateLimit === null || snapshot.observedAt >= state.rateLimit.observedAt) state.rateLimit = snapshot;
+  if (state.rateLimit === null || snapshot.observedAt >= state.rateLimit.observedAt)
+    state.rateLimit = snapshot;
 }
 
-function handleEventMsg(state: ReducerState, seq: number, payload: Record<string, unknown>, ts: number | null): void {
+function handleEventMsg(
+  state: ReducerState,
+  seq: number,
+  payload: Record<string, unknown>,
+  ts: number | null,
+): void {
   const c = state.counts;
   switch (payload.type) {
     case "task_started": {
@@ -304,7 +363,8 @@ function handleEventMsg(state: ReducerState, seq: number, payload: Record<string
       } else {
         const started = secondsToMs(payload.started_at);
         const completed = secondsToMs(payload.completed_at);
-        if (started !== null && completed !== null && completed >= started) c.activeMs += completed - started;
+        if (started !== null && completed !== null && completed >= started)
+          c.activeMs += completed - started;
       }
       const ttft = payload.time_to_first_token_ms;
       if (typeof ttft === "number" && Number.isFinite(ttft) && ttft >= 0) {
@@ -336,14 +396,24 @@ function handleEventMsg(state: ReducerState, seq: number, payload: Record<string
       c.legacyAgentMessages += 1;
       break;
     default:
-      bump(state.unknownTypes, `event_msg/${typeof payload.type === "string" ? payload.type : "(none)"}`);
+      bump(
+        state.unknownTypes,
+        `event_msg/${typeof payload.type === "string" ? payload.type : "(none)"}`,
+      );
   }
 }
 
-function handleUsageRecord(state: ReducerState, seq: number, payload: Record<string, unknown>, ts: number | null): void {
+function handleUsageRecord(
+  state: ReducerState,
+  seq: number,
+  payload: Record<string, unknown>,
+  ts: number | null,
+): void {
   const info = asRecord(payload.info);
   const usage =
-    asRecord(payload.usage) ?? asRecord(info?.last_token_usage) ?? (typeof payload.input_tokens === "number" ? payload : null);
+    asRecord(payload.usage) ??
+    asRecord(info?.last_token_usage) ??
+    (typeof payload.input_tokens === "number" ? payload : null);
   if (usage === null) {
     bump(state.unknownTypes, "token_usage_record/unrecognised");
     return;
@@ -431,7 +501,9 @@ function handleFileChange(state: ReducerState, item: Record<string, unknown>): v
     const record = asRecord(change);
     if (record === null) continue;
     if (record.type === "update") {
-      const { added, removed } = countDiffLines(typeof record.unified_diff === "string" ? record.unified_diff : "");
+      const { added, removed } = countDiffLines(
+        typeof record.unified_diff === "string" ? record.unified_diff : "",
+      );
       c.linesAdded += added;
       c.linesRemoved += removed;
     } else if (record.type === "add") {
@@ -496,7 +568,8 @@ export function finalize(state: ReducerState, opts: FinalizeOptions): ParsedSess
   const mcpFallbackUsed = state.mcpTools.size === 0 && state.mcpFallback.size > 0;
   const mcpSource = mcpFallbackUsed ? state.mcpFallback : state.mcpTools;
   const toolCounts: ToolCounts = { ...state.toolCounts };
-  if (mcpFallbackUsed) toolCounts.mcpTool = [...state.mcpFallback.values()].reduce((a, b) => a + b, 0);
+  if (mcpFallbackUsed)
+    toolCounts.mcpTool = [...state.mcpFallback.values()].reduce((a, b) => a + b, 0);
   const base: Omit<SessionSummary, "summaryHash"> = {
     sessionId: state.ctx.sessionId,
     threadId: state.threadId,
@@ -516,7 +589,11 @@ export function finalize(state: ReducerState, opts: FinalizeOptions): ParsedSess
     reasoningItems: c.reasoningItems,
     toolCounts,
     mcpTools: mergeKeyCounts([mapToKeyCounts(mcpSource)], MAX_KEYED_ENTRIES_PER_SESSION, OTHER_KEY),
-    skills: mergeKeyCounts([mapToKeyCounts(state.skills)], MAX_KEYED_ENTRIES_PER_SESSION, OTHER_KEY),
+    skills: mergeKeyCounts(
+      [mapToKeyCounts(state.skills)],
+      MAX_KEYED_ENTRIES_PER_SESSION,
+      OTHER_KEY,
+    ),
     linesAdded: c.linesAdded,
     linesRemoved: c.linesRemoved,
     filesChanged: c.filesChanged,

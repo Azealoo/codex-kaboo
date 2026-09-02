@@ -52,7 +52,10 @@ function comparePriced(a: string, b: string): number {
 }
 
 /** Priced models newest-first (by `gpt-<version>`), then unpriced seen models alphabetically. */
-export function modelRegistryOrder(pricedModels: readonly string[], seenModels: readonly string[]): string[] {
+export function modelRegistryOrder(
+  pricedModels: readonly string[],
+  seenModels: readonly string[],
+): string[] {
   const priced = [...new Set(pricedModels)].sort(comparePriced);
   const pricedSet = new Set(priced);
   const extras = [...new Set(seenModels)]
@@ -61,7 +64,10 @@ export function modelRegistryOrder(pricedModels: readonly string[], seenModels: 
   return [...priced, ...extras];
 }
 
-export function modelColorMap(pricedModels: readonly string[], seenModels: readonly string[]): Map<string, string> {
+export function modelColorMap(
+  pricedModels: readonly string[],
+  seenModels: readonly string[],
+): Map<string, string> {
   return assignSlots(modelRegistryOrder(pricedModels, seenModels));
 }
 

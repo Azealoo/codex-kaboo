@@ -22,7 +22,9 @@ export function CopyBox({ value, label }: { value: string; label?: string }) {
     <div className="flex flex-col gap-1">
       {label ? <span className="text-xs text-muted-foreground">{label}</span> : null}
       <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2">
-        <code className="min-w-0 flex-1 overflow-x-auto whitespace-pre font-mono text-xs">{value}</code>
+        <code className="min-w-0 flex-1 overflow-x-auto whitespace-pre font-mono text-xs">
+          {value}
+        </code>
         <Button
           type="button"
           variant="ghost"
@@ -31,7 +33,11 @@ export function CopyBox({ value, label }: { value: string; label?: string }) {
           aria-label={copied ? "Copied" : "Copy"}
           onClick={() => void copy.run()}
         >
-          {copied ? <Check className="size-3.5" aria-hidden="true" /> : <Copy className="size-3.5" aria-hidden="true" />}
+          {copied ? (
+            <Check className="size-3.5" aria-hidden="true" />
+          ) : (
+            <Copy className="size-3.5" aria-hidden="true" />
+          )}
         </Button>
       </div>
       <InlineError message={copy.error} />

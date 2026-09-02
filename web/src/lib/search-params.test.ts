@@ -36,9 +36,15 @@ describe("rangeHref", () => {
     );
   });
   it("carries only the range keys, never anything else", () => {
-    const preset = new URL(rangeHref("/", { range: "90D", from: null, to: null }), "https://x.test");
+    const preset = new URL(
+      rangeHref("/", { range: "90D", from: null, to: null }),
+      "https://x.test",
+    );
     expect([...preset.searchParams.keys()]).toEqual(["range"]);
-    const custom = new URL(rangeHref("/", customParams("2026-08-01", "2026-08-15")), "https://x.test");
+    const custom = new URL(
+      rangeHref("/", customParams("2026-08-01", "2026-08-15")),
+      "https://x.test",
+    );
     expect([...custom.searchParams.keys()].sort()).toEqual(["from", "to"]);
   });
 });

@@ -39,7 +39,10 @@ describe("resolveRange ALL", () => {
     expect(resolveRange(preset("ALL"), "2026-09-01", null)).toBeNull();
   });
   it("uses the first data day and hides deltas", () => {
-    const r = resolveRange(preset("ALL"), "2026-09-01", { firstDay: "2026-07-10", lastDay: "2026-09-01" });
+    const r = resolveRange(preset("ALL"), "2026-09-01", {
+      firstDay: "2026-07-10",
+      lastDay: "2026-09-01",
+    });
     expect(r).toEqual({
       kind: "ALL",
       from: "2026-07-10",
@@ -55,7 +58,10 @@ describe("resolveRange ALL", () => {
     expect(r?.previous).toBe(false);
   });
   it("clamps to the server's 1100-day cap", () => {
-    const r = resolveRange(preset("ALL"), "2026-09-01", { firstDay: "2020-01-01", lastDay: "2026-09-01" });
+    const r = resolveRange(preset("ALL"), "2026-09-01", {
+      firstDay: "2020-01-01",
+      lastDay: "2026-09-01",
+    });
     expect(r?.days).toBe(1100);
     expect(r?.from).toBe("2023-08-29");
   });
@@ -65,7 +71,10 @@ describe("resolveRange ALL", () => {
     // after `to` (today), and the server's assertRange throws `bad_range` for every query on the
     // page. `from` must never be pushed past `today`, and `to` must extend to cover a day that is
     // genuinely ahead of the viewer rather than silently dropping it.
-    const r = resolveRange(preset("ALL"), "2026-09-02", { firstDay: "2026-09-03", lastDay: "2026-09-03" });
+    const r = resolveRange(preset("ALL"), "2026-09-02", {
+      firstDay: "2026-09-03",
+      lastDay: "2026-09-03",
+    });
     expect(r).toEqual({
       kind: "ALL",
       from: "2026-09-02",
@@ -77,7 +86,10 @@ describe("resolveRange ALL", () => {
     expect(r!.from <= r!.to).toBe(true);
   });
   it("leaves the ordinary case where firstDay is before today unchanged", () => {
-    const r = resolveRange(preset("ALL"), "2026-09-02", { firstDay: "2026-08-01", lastDay: "2026-09-01" });
+    const r = resolveRange(preset("ALL"), "2026-09-02", {
+      firstDay: "2026-08-01",
+      lastDay: "2026-09-01",
+    });
     expect(r).toEqual({
       kind: "ALL",
       from: "2026-08-01",
@@ -91,7 +103,10 @@ describe("resolveRange ALL", () => {
 
 describe("resolveRange custom", () => {
   it("uses from/to when both are valid", () => {
-    const r = resolveRange({ range: DEFAULT_PRESET, from: "2026-08-01", to: "2026-08-15" }, "2026-09-01");
+    const r = resolveRange(
+      { range: DEFAULT_PRESET, from: "2026-08-01", to: "2026-08-15" },
+      "2026-09-01",
+    );
     expect(r).toEqual({
       kind: "custom",
       from: "2026-08-01",
@@ -102,18 +117,30 @@ describe("resolveRange custom", () => {
     });
   });
   it("clamps `to` to today", () => {
-    const r = resolveRange({ range: DEFAULT_PRESET, from: "2026-08-20", to: "2026-12-31" }, "2026-09-01");
+    const r = resolveRange(
+      { range: DEFAULT_PRESET, from: "2026-08-20", to: "2026-12-31" },
+      "2026-09-01",
+    );
     expect(r?.to).toBe("2026-09-01");
     expect(r?.kind).toBe("custom");
   });
   it("falls back to 30D when the span exceeds 400 days", () => {
-    const r = resolveRange({ range: DEFAULT_PRESET, from: "2024-01-01", to: "2026-09-01" }, "2026-09-01");
+    const r = resolveRange(
+      { range: DEFAULT_PRESET, from: "2024-01-01", to: "2026-09-01" },
+      "2026-09-01",
+    );
     expect(r?.kind).toBe("30D");
   });
   it("falls back to 30D for invalid days or from > to", () => {
-    expect(resolveRange({ range: "7D", from: "2026-02-30", to: "2026-03-01" }, "2026-09-01")?.kind).toBe("30D");
-    expect(resolveRange({ range: "7D", from: "2026-03-05", to: "2026-03-01" }, "2026-09-01")?.kind).toBe("30D");
-    expect(resolveRange({ range: "7D", from: "2026-09-05", to: "2026-09-06" }, "2026-09-01")?.kind).toBe("30D");
+    expect(
+      resolveRange({ range: "7D", from: "2026-02-30", to: "2026-03-01" }, "2026-09-01")?.kind,
+    ).toBe("30D");
+    expect(
+      resolveRange({ range: "7D", from: "2026-03-05", to: "2026-03-01" }, "2026-09-01")?.kind,
+    ).toBe("30D");
+    expect(
+      resolveRange({ range: "7D", from: "2026-09-05", to: "2026-09-06" }, "2026-09-01")?.kind,
+    ).toBe("30D");
   });
   it("isCustom requires both ends", () => {
     expect(isCustom({ range: "7D", from: "2026-08-01", to: null })).toBe(false);

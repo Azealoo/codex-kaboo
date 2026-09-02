@@ -6,7 +6,9 @@ import { installCommands } from "@/lib/install";
 
 const useQueryMock = vi.fn();
 vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => useQueryMock(...args) }));
-vi.mock("@/components/layout/current-user", () => ({ useCurrentUserId: () => "u1" as Id<"users"> }));
+vi.mock("@/components/layout/current-user", () => ({
+  useCurrentUserId: () => "u1" as Id<"users">,
+}));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: ComponentProps<"a">) => (
     <a href={href} {...rest}>
@@ -43,6 +45,9 @@ describe("OnboardingCard", () => {
     expect(screen.getByText(c.schedule)).toBeInTheDocument();
     expect(screen.getByText("4. Check")).toBeInTheDocument();
     expect(screen.getByText(c.status)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Create a sync token" })).toHaveAttribute("href", "/settings");
+    expect(screen.getByRole("link", { name: "Create a sync token" })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
   });
 });

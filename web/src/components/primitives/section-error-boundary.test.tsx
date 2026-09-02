@@ -15,12 +15,16 @@ describe("SectionErrorBoundary", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     render(
       <SectionErrorBoundary title="Widget could not load">
-        <Throw error={new Error("ENOENT: no such file or directory, open '/Users/alice/secret.txt'")} />
+        <Throw
+          error={new Error("ENOENT: no such file or directory, open '/Users/alice/secret.txt'")}
+        />
       </SectionErrorBoundary>,
     );
     expect(screen.queryByText(/secret\.txt/)).not.toBeInTheDocument();
     expect(screen.queryByText(/ENOENT/)).not.toBeInTheDocument();
-    expect(screen.getByText("Something went wrong. Try again, or come back later.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Something went wrong. Try again, or come back later."),
+    ).toBeInTheDocument();
     spy.mockRestore();
   });
 

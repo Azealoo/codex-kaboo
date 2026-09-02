@@ -1,11 +1,24 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { CLI_MAX_FILE_BYTES, CLI_MAX_FILES, CLI_RUN_BUDGET_MS, PARSER_VERSION, SCHEMA_VERSION } from "@codex-kaboo/shared/constants";
+import {
+  CLI_MAX_FILE_BYTES,
+  CLI_MAX_FILES,
+  CLI_RUN_BUDGET_MS,
+  PARSER_VERSION,
+  SCHEMA_VERSION,
+} from "@codex-kaboo/shared/constants";
 import type { MachineInfo, RateLimitSnapshot, SyncBatch } from "@codex-kaboo/shared/sync";
 import { discoverRolloutFiles, type DiscoveredFile } from "../core/discover";
 import { zstdSupported } from "../core/jsonl-reader";
 import { parseRolloutFile } from "../core/parse-file";
-import { detectReset, emptyFileState, isPermanentlyFailing, isUnchanged, recordFailure, resetFileState } from "../core/state";
+import {
+  detectReset,
+  emptyFileState,
+  isPermanentlyFailing,
+  isUnchanged,
+  recordFailure,
+  resetFileState,
+} from "../core/state";
 import type { ParsedSession } from "../parser/session";
 import type { Config, FileState, SyncState } from "../types";
 import type { Batch, FileUpload } from "../upload/batch";
@@ -61,8 +74,11 @@ export interface PlanDeps {
 export async function readCodexLatestVersion(homes: string[]): Promise<string | undefined> {
   for (const home of homes) {
     try {
-      const raw = JSON.parse(await fs.readFile(path.join(home, "version.json"), "utf8")) as { latest_version?: unknown };
-      if (typeof raw.latest_version === "string" && raw.latest_version.length > 0) return raw.latest_version;
+      const raw = JSON.parse(await fs.readFile(path.join(home, "version.json"), "utf8")) as {
+        latest_version?: unknown;
+      };
+      if (typeof raw.latest_version === "string" && raw.latest_version.length > 0)
+        return raw.latest_version;
     } catch {
       // no version.json here
     }
@@ -74,7 +90,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function planSync(state: SyncState, homes: string[], opts: PlanOptions, deps: PlanDeps): Promise<SyncPlan> {
+export async function planSync(
+  state: SyncState,
+  homes: string[],
+  opts: PlanOptions,
+  deps: PlanDeps,
+): Promise<SyncPlan> {
   const start = deps.startedAt ?? deps.now();
   const budgetMs = deps.budgetMs ?? CLI_RUN_BUDGET_MS;
   const discovered = await discoverRolloutFiles(homes);
@@ -92,13 +113,17 @@ export async function planSync(state: SyncState, homes: string[], opts: PlanOpti
     budgetExhausted: false,
   };
   if (discovered.truncated) {
-    plan.warnings.push(`more than ${CLI_MAX_FILES} rollout files found; only the first ${CLI_MAX_FILES} are processed`);
+    plan.warnings.push(
+      `more than ${CLI_MAX_FILES} rollout files found; only the first ${CLI_MAX_FILES} are processed`,
+    );
   }
   for (const duplicate of discovered.duplicates) {
     // Expected during Codex's compress-then-delete window, so this is a warning and not an error:
     // the two files are the same session and progress is keyed by sessionId, so whichever copy
     // survives picks up exactly where this one left off.
-    plan.warnings.push(`${duplicate.dropped}: same session as ${duplicate.kept}; only the latter is processed`);
+    plan.warnings.push(
+      `${duplicate.dropped}: same session as ${duplicate.kept}; only the latter is processed`,
+    );
   }
   let zstdWarned = false;
 
@@ -174,7 +199,9 @@ export async function planSync(state: SyncState, homes: string[], opts: PlanOpti
     let result;
     try {
       result = await parseRolloutFile(file, {
-        machineZone: deps.machineZone, now: deps.now(), generation: prev?.generation ?? 0,
+        machineZone: deps.machineZone,
+        now: deps.now(),
+        generation: prev?.generation ?? 0,
       });
     } catch (error) {
       const message = errorMessage(error);
@@ -213,25 +240,37 @@ export async function planSync(state: SyncState, homes: string[], opts: PlanOpti
     };
     if (summaryChanged || newEvents.length > 0) {
       if (planned.action !== "reset") planned.action = "parsed";
-      planned.upload = { sessionId: file.sessionId, summary: parsed.summary, events: newEvents, summaryChanged };
+      planned.upload = {
+        sessionId: file.sessionId,
+        summary: parsed.summary,
+        events: newEvents,
+        summaryChanged,
+      };
       plan.uploads.push(planned.upload);
     } else if (planned.action !== "reset") {
       planned.action = "unchanged";
     }
     plan.files.push(planned);
-    if (parsed.rateLimit && (plan.rateLimit === null || parsed.rateLimit.observedAt > plan.rateLimit.observedAt)) {
+    if (
+      parsed.rateLimit &&
+      (plan.rateLimit === null || parsed.rateLimit.observedAt > plan.rateLimit.observedAt)
+    ) {
       plan.rateLimit = parsed.rateLimit;
     }
-    plan.codexVersion = newestVersion([plan.codexVersion, parsed.summary.cliVersion]) ?? plan.codexVersion;
+    plan.codexVersion =
+      newestVersion([plan.codexVersion, parsed.summary.cliVersion]) ?? plan.codexVersion;
     if (Object.keys(parsed.diagnostics.unknownTypes).length > 0) {
-      deps.log.debug(`${file.name}: unknown line types ${JSON.stringify(parsed.diagnostics.unknownTypes)}`);
+      deps.log.debug(
+        `${file.name}: unknown line types ${JSON.stringify(parsed.diagnostics.unknownTypes)}`,
+      );
     }
   }
   // plan.rateLimit is now the newest of {state.rateLimit, every snapshot parsed this run}; flag a
   // change only when that newest one is strictly newer than what state already had, so the caller
   // knows to send it while always being safe to persist plan.rateLimit (idle runs keep it as-is).
   plan.rateLimitChanged =
-    plan.rateLimit !== null && (state.rateLimit === null || plan.rateLimit.observedAt > state.rateLimit.observedAt);
+    plan.rateLimit !== null &&
+    (state.rateLimit === null || plan.rateLimit.observedAt > state.rateLimit.observedAt);
   return plan;
 }
 

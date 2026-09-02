@@ -9,26 +9,26 @@ for the full design; this file is just an orientation to what lives in this dire
 Three routes, authenticated with a **Bearer sync token** (not Clerk — the CLI has no browser
 session):
 
-| Path | Method | Purpose |
-|---|---|---|
-| `/api/v1/sync` | `POST` | Accepts a `SyncBatch` (`shared/src/sync.ts`), upserts sessions/token events, recomputes affected daily rollups |
-| `/api/v1/whoami` | `GET` | Validates a token and returns the user/token identity — what `codex-kaboo login` calls to confirm a pasted token |
-| `/api/v1/health` | `GET` | Unauthenticated liveness check |
+| Path             | Method | Purpose                                                                                                          |
+| ---------------- | ------ | ---------------------------------------------------------------------------------------------------------------- |
+| `/api/v1/sync`   | `POST` | Accepts a `SyncBatch` (`shared/src/sync.ts`), upserts sessions/token events, recomputes affected daily rollups   |
+| `/api/v1/whoami` | `GET`  | Validates a token and returns the user/token identity — what `codex-kaboo login` calls to confirm a pasted token |
+| `/api/v1/health` | `GET`  | Unauthenticated liveness check                                                                                   |
 
 The dashboard itself talks to Convex through the generated `api` object with a Clerk JWT, via
 `authedQuery`/`authedMutation` in `lib/auth.ts` — not through HTTP routes.
 
 ## Data model (`schema.ts`)
 
-| Table | Holds |
-|---|---|
-| `users` | One row per Clerk identity (`clerkId`, name/email/image, `createdAt`, `lastSeenAt`) |
-| `syncTokens` | Sync tokens by their sha256 hash (the raw token is never stored) — `prefix` and `name` are what the UI shows |
-| `machines` | One row per machine that has ever synced: label, platform/arch/versions, opt-in hostname, last known rate limit |
-| `sessions` | One row per Codex session/thread, denormalised from `SessionSummary` |
-| `tokenEvents` | One row per model response (token counts, day/hour, source/origin tags) |
-| `dailyRollups` | Precomputed per-(user, day) aggregates the dashboard actually queries, versioned by `ROLLUP_VERSION` |
-| `modelPrices` | Editable USD-per-million-token price table used to turn token counts into cost |
+| Table          | Holds                                                                                                           |
+| -------------- | --------------------------------------------------------------------------------------------------------------- |
+| `users`        | One row per Clerk identity (`clerkId`, name/email/image, `createdAt`, `lastSeenAt`)                             |
+| `syncTokens`   | Sync tokens by their sha256 hash (the raw token is never stored) — `prefix` and `name` are what the UI shows    |
+| `machines`     | One row per machine that has ever synced: label, platform/arch/versions, opt-in hostname, last known rate limit |
+| `sessions`     | One row per Codex session/thread, denormalised from `SessionSummary`                                            |
+| `tokenEvents`  | One row per model response (token counts, day/hour, source/origin tags)                                         |
+| `dailyRollups` | Precomputed per-(user, day) aggregates the dashboard actually queries, versioned by `ROLLUP_VERSION`            |
+| `modelPrices`  | Editable USD-per-million-token price table used to turn token counts into cost                                  |
 
 `dailyRollups` is the read path for almost everything the dashboard renders — `sessions` and
 `tokenEvents` are the source of truth it's built from, not what queries hit directly.
@@ -45,7 +45,7 @@ must be kept in sync by hand), `constants.ts`, `days.ts`, `hash.ts`, `types.ts`.
 
 Every upsert recomputes the rollup(s) it touched immediately (`recomputeDay`/`recomputeDays` in
 `rollups.ts`), so the dashboard never reads a stale aggregate — for newly-synced data. What it does
-*not* do is touch rollups nothing has re-synced: those keep whatever `ROLLUP_VERSION` they were
+_not_ do is touch rollups nothing has re-synced: those keep whatever `ROLLUP_VERSION` they were
 last written under. So whenever the aggregation logic changes and `ROLLUP_VERSION` bumps (currently
 `2`, in `shared/src/constants.ts` — the `byMachine`/`bySource` tokens went from session-derived to
 event-derived), running `npx convex run rollups:rebuildAll` (add `--prod` against production) is a

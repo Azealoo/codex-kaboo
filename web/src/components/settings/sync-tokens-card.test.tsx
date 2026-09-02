@@ -6,7 +6,14 @@ const create = vi.fn(async () => ({ id: "t1", token: "ck_rawsecret", prefix: "ck
 const revoke = vi.fn(async () => null);
 vi.mock("convex/react", () => ({
   useQuery: () => [
-    { _id: "t0", name: "Laptop", prefix: "ck_abc123", createdAt: 1_756_700_000_000, lastUsedAt: null, revokedAt: null },
+    {
+      _id: "t0",
+      name: "Laptop",
+      prefix: "ck_abc123",
+      createdAt: 1_756_700_000_000,
+      lastUsedAt: null,
+      revokedAt: null,
+    },
   ],
   useAction: () => create,
   useMutation: () => revoke,

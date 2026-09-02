@@ -15,11 +15,27 @@ export function ProjectsSection({ range, userId }: { range: ResolvedRange; userI
   const { data, isStale } = useBreakdowns(range, userId);
   const columns: Column<ProjectRow>[] = [
     { key: "project", header: "Project", render: (r) => r.key },
-    { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
+    {
+      key: "tokens",
+      header: "Tokens",
+      align: "right",
+      bar: (r) => r.tokens,
+      render: (r) => formatCompact(r.tokens),
+    },
     { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },
     { key: "sessions", header: "Sessions", align: "right", render: (r) => formatInt(r.sessions) },
-    { key: "messages", header: "User messages", align: "right", render: (r) => formatInt(r.userMessages) },
-    { key: "lines", header: "Lines +/−", align: "right", render: (r) => `+${formatInt(r.linesAdded)} / −${formatInt(r.linesRemoved)}` },
+    {
+      key: "messages",
+      header: "User messages",
+      align: "right",
+      render: (r) => formatInt(r.userMessages),
+    },
+    {
+      key: "lines",
+      header: "Lines +/−",
+      align: "right",
+      render: (r) => `+${formatInt(r.linesAdded)} / −${formatInt(r.linesRemoved)}`,
+    },
   ];
   return (
     <QuerySection
@@ -28,7 +44,13 @@ export function ProjectsSection({ range, userId }: { range: ResolvedRange; userI
       data={data}
       isStale={isStale}
     >
-      {(b) => (b.byProject.length === 0 ? <EmptyState title="No projects in this range" /> : <DataTable columns={columns} rows={b.byProject} rowKey={(r) => r.key} />)}
+      {(b) =>
+        b.byProject.length === 0 ? (
+          <EmptyState title="No projects in this range" />
+        ) : (
+          <DataTable columns={columns} rows={b.byProject} rowKey={(r) => r.key} />
+        )
+      }
     </QuerySection>
   );
 }

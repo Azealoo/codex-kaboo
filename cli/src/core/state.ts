@@ -19,12 +19,15 @@ export function emptyState(): SyncState {
   };
 }
 
-export async function readState(paths: KabooPaths): Promise<{ state: SyncState; corrupt: boolean }> {
+export async function readState(
+  paths: KabooPaths,
+): Promise<{ state: SyncState; corrupt: boolean }> {
   let text: string;
   try {
     text = await fs.readFile(paths.state, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { state: emptyState(), corrupt: false };
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      return { state: emptyState(), corrupt: false };
     throw error;
   }
   try {
@@ -59,20 +62,28 @@ export function emptyFileState(filePath: string): FileState {
 }
 
 export function resetFileState(previous: FileState | undefined, filePath: string): FileState {
-  return { ...emptyFileState(filePath), generation: previous === undefined ? 0 : previous.generation + 1 };
+  return {
+    ...emptyFileState(filePath),
+    generation: previous === undefined ? 0 : previous.generation + 1,
+  };
 }
 
 /** `sync --full`: forget every file's progress but keep generations increasing. */
 export function resetAllFiles(state: SyncState): SyncState {
   const files: Record<string, FileState> = {};
-  for (const [sessionId, file] of Object.entries(state.files)) files[sessionId] = resetFileState(file, file.path);
+  for (const [sessionId, file] of Object.entries(state.files))
+    files[sessionId] = resetFileState(file, file.path);
   return { ...state, files };
 }
 
 export type ResetReason = "shrunk" | "tail-mismatch";
 
 /** Null when the bytes before `offset` still match the recorded tail (so the file only grew). */
-export async function detectReset(fileState: FileState, filePath: string, size: number): Promise<ResetReason | null> {
+export async function detectReset(
+  fileState: FileState,
+  filePath: string,
+  size: number,
+): Promise<ResetReason | null> {
   if (fileState.offset === 0) return null;
   if (size < fileState.offset) return "shrunk";
   const start = Math.max(0, fileState.offset - TAIL_BYTES);
@@ -88,7 +99,11 @@ export async function detectReset(fileState: FileState, filePath: string, size: 
   }
 }
 
-export function isUnchanged(fileState: FileState | undefined, size: number, mtimeMs: number): boolean {
+export function isUnchanged(
+  fileState: FileState | undefined,
+  size: number,
+  mtimeMs: number,
+): boolean {
   return (
     fileState !== undefined &&
     fileState.lastError === null &&
@@ -110,13 +125,22 @@ export function isUnchanged(fileState: FileState | undefined, size: number, mtim
 export const MAX_FILE_FAILURES = 5;
 
 /** Records one failure, incrementing the counter only when the same file failed the same way. */
-export function recordFailure(previous: FileState, error: string, size: number, mtimeMs: number): FileState {
+export function recordFailure(
+  previous: FileState,
+  error: string,
+  size: number,
+  mtimeMs: number,
+): FileState {
   const repeat =
     previous.lastError === error &&
     previous.failure !== undefined &&
     previous.failure.size === size &&
     previous.failure.mtimeMs === mtimeMs;
-  return { ...previous, lastError: error, failure: { count: repeat ? previous.failure!.count + 1 : 1, size, mtimeMs } };
+  return {
+    ...previous,
+    lastError: error,
+    failure: { count: repeat ? previous.failure!.count + 1 : 1, size, mtimeMs },
+  };
 }
 
 /** Clears any recorded failure: the file went through, so the next problem starts from zero. */
@@ -129,7 +153,11 @@ export function clearFailure(fileState: FileState): FileState {
  * True when this exact file has failed the same way more than `MAX_FILE_FAILURES` times.
  * `lastError` is checked too, so a stale counter can never park a file that is now succeeding.
  */
-export function isPermanentlyFailing(fileState: FileState | undefined, size: number, mtimeMs: number): boolean {
+export function isPermanentlyFailing(
+  fileState: FileState | undefined,
+  size: number,
+  mtimeMs: number,
+): boolean {
   const failure = fileState?.failure;
   if (failure === undefined || fileState?.lastError == null) return false;
   return failure.count > MAX_FILE_FAILURES && failure.size === size && failure.mtimeMs === mtimeMs;

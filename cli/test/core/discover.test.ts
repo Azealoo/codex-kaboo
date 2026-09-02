@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { dedupeBySession, discoverRolloutFiles, parseRolloutName, type DiscoveredFile } from "../../src/core/discover";
+import {
+  dedupeBySession,
+  discoverRolloutFiles,
+  parseRolloutName,
+  type DiscoveredFile,
+} from "../../src/core/discover";
 
 const T1 = "0199a1b2-0000-7000-8000-000000000001";
 const T2 = "0199a1b2-0000-7000-8000-000000000002";
@@ -30,7 +35,10 @@ function makeHome(): string {
   writeFileSync(path.join(day, `rollout-2026-08-30T11-00-00-${T1}_${R1}.jsonl`), "{}\n{}\n");
   writeFileSync(path.join(day, "notes.txt"), "x");
   writeFileSync(path.join(day, `rollout-2026-08-30T12-00-00-${T2}.jsonl.tmp`), "x");
-  writeFileSync(path.join(archived, `rollout-2026-07-01T09-00-00-${T2}.jsonl.zst`), Buffer.from([0x28, 0xb5, 0x2f, 0xfd]));
+  writeFileSync(
+    path.join(archived, `rollout-2026-07-01T09-00-00-${T2}.jsonl.zst`),
+    Buffer.from([0x28, 0xb5, 0x2f, 0xfd]),
+  );
   return home;
 }
 
@@ -61,9 +69,17 @@ function makeExactHome(): string {
 describe("parseRolloutName", () => {
   it("accepts plain, forked and compressed names only", () => {
     expect(parseRolloutName(`rollout-2026-08-30T10-00-00-${T1}.jsonl`)).toEqual({
-      fileTimestamp: "2026-08-30T10-00-00", fileTimestampMs: Date.UTC(2026, 7, 30, 10, 0, 0), threadId: T1, rolloutId: null, compressed: false,
+      fileTimestamp: "2026-08-30T10-00-00",
+      fileTimestampMs: Date.UTC(2026, 7, 30, 10, 0, 0),
+      threadId: T1,
+      rolloutId: null,
+      compressed: false,
     });
-    expect(parseRolloutName(`rollout-2026-08-30T10-00-00-${T1}_${R1}.jsonl.zst`)).toMatchObject({ threadId: T1, rolloutId: R1, compressed: true });
+    expect(parseRolloutName(`rollout-2026-08-30T10-00-00-${T1}_${R1}.jsonl.zst`)).toMatchObject({
+      threadId: T1,
+      rolloutId: R1,
+      compressed: true,
+    });
     expect(parseRolloutName(`rollout-2026-08-30T10-00-00-${T1}.jsonl.tmp`)).toBeNull();
     expect(parseRolloutName("rollout-x.jsonl")).toBeNull();
   });
@@ -77,7 +93,13 @@ describe("discoverRolloutFiles", () => {
     expect(result.homes).toEqual([{ path: home, exists: true, files: 3 }]);
     expect(result.files.map((f) => f.sessionId)).toEqual([T2, T1, `${T1}_${R1}`]);
     const forked = result.files[2]!;
-    expect(forked).toMatchObject({ codexHome: home, threadId: T1, rolloutId: R1, compressed: false, size: 6 });
+    expect(forked).toMatchObject({
+      codexHome: home,
+      threadId: T1,
+      rolloutId: R1,
+      compressed: false,
+      size: 6,
+    });
     expect(forked.mtimeMs).toBeGreaterThan(0);
     expect(result.files[0]).toMatchObject({ compressed: true, sessionId: T2 });
   });
@@ -116,7 +138,11 @@ describe("discoverRolloutFiles", () => {
 
     const result = await discoverRolloutFiles([home]);
     expect(result.files).toHaveLength(1);
-    expect(result.files[0]).toMatchObject({ sessionId: T1, compressed: false, path: path.join(live, base) });
+    expect(result.files[0]).toMatchObject({
+      sessionId: T1,
+      compressed: false,
+      path: path.join(live, base),
+    });
     expect(result.duplicates).toEqual([
       { sessionId: T1, kept: path.join(live, base), dropped: path.join(archived, `${base}.zst`) },
     ]);
@@ -134,8 +160,18 @@ describe("discoverRolloutFiles", () => {
   });
   it("breaks a same-compression duplicate by size, then by path, and reports every dropped file", () => {
     const file = (over: Partial<DiscoveredFile>): DiscoveredFile => ({
-      fileTimestamp: "2026-08-30T10-00-00", fileTimestampMs: 0, threadId: T1, rolloutId: null, compressed: false,
-      path: "/a", codexHome: "/h", name: "n", sessionId: T1, size: 10, mtimeMs: 0, ...over,
+      fileTimestamp: "2026-08-30T10-00-00",
+      fileTimestampMs: 0,
+      threadId: T1,
+      rolloutId: null,
+      compressed: false,
+      path: "/a",
+      codexHome: "/h",
+      name: "n",
+      sessionId: T1,
+      size: 10,
+      mtimeMs: 0,
+      ...over,
     });
     const small = file({ path: "/a", size: 10 });
     const big = file({ path: "/b", size: 99 });

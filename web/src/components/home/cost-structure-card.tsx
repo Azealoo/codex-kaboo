@@ -24,7 +24,9 @@ export function CostStructureCard({
         <span className="ml-auto text-sm font-semibold text-foreground">{formatUsd(costUsd)}</span>
       </div>
       <StackedShareBar segments={costStructureSegments(costByKind)} format={formatUsd} />
-      <p className="text-xs text-muted-foreground">Cache savings {formatUsd(cacheSavingsUsd)} vs. no caching</p>
+      <p className="text-xs text-muted-foreground">
+        Cache savings {formatUsd(cacheSavingsUsd)} vs. no caching
+      </p>
       {unpricedModels && unpricedModels.length > 0 ? (
         <p className="text-xs text-muted-foreground">Unpriced: {unpricedModels.join(", ")}</p>
       ) : null}

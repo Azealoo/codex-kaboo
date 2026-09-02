@@ -82,12 +82,17 @@ export function sourceColorMap(keys: readonly string[]): Map<string, string> {
   const known = new Set<string>(SOURCE_ORDER);
   const present = new Set(keys);
   const inOrder = SOURCE_ORDER.filter((k) => present.has(k));
-  const extras = [...present].filter((k) => !known.has(k)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const extras = [...present]
+    .filter((k) => !known.has(k))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   return assignSlots([...inOrder, ...extras]);
 }
 
 export function sourceSegments(bySource: BreakdownsResult["bySource"], topN = 8): Segment[] {
-  const folded = foldTopN(bySource.map((s) => ({ key: s.key, value: s.tokens })), topN);
+  const folded = foldTopN(
+    bySource.map((s) => ({ key: s.key, value: s.tokens })),
+    topN,
+  );
   // Colour only the survivors: at most `topN` keys, so every one gets a real palette slot and
   // `OTHER_COLOR` stays unique to the fold bucket.
   const colors = sourceColorMap(folded.filter((i) => i.key !== OTHER_KEY).map((i) => i.key));

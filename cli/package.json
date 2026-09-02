@@ -3,9 +3,15 @@
   "version": "0.1.0",
   "description": "Collector that reports Codex CLI usage metadata to a codex-kaboo dashboard",
   "license": "MIT",
-  "bin": { "codex-kaboo": "dist/codex-kaboo.js" },
-  "files": ["dist"],
-  "engines": { "node": ">=20" },
+  "bin": {
+    "codex-kaboo": "dist/codex-kaboo.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",

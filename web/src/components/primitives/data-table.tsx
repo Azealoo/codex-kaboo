@@ -1,5 +1,12 @@
 import type { KeyboardEvent, ReactNode } from "react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { BarCell, type BarScale } from "./bar-cell";
 
@@ -39,7 +46,11 @@ export function DataTable<T>({
   const maxima = new Map<string, number>();
   for (const c of columns) {
     const bar = c.bar;
-    if (bar) maxima.set(c.key, rows.reduce((m, r) => Math.max(m, bar(r)), 0));
+    if (bar)
+      maxima.set(
+        c.key,
+        rows.reduce((m, r) => Math.max(m, bar(r)), 0),
+      );
   }
   return (
     <div className="overflow-x-auto">
@@ -60,7 +71,10 @@ export function DataTable<T>({
         <TableBody>
           {rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={columns.length} className="py-8 text-center text-sm text-muted-foreground">
+              <TableCell
+                colSpan={columns.length}
+                className="py-8 text-center text-sm text-muted-foreground"
+              >
                 {emptyLabel}
               </TableCell>
             </TableRow>
@@ -88,9 +102,20 @@ export function DataTable<T>({
                   className={cn(onRowClick && "cursor-pointer")}
                 >
                   {columns.map((c) => (
-                    <TableCell key={c.key} className={cn("text-sm", c.align === "right" && "text-right font-mono tabular")}>
+                    <TableCell
+                      key={c.key}
+                      className={cn(
+                        "text-sm",
+                        c.align === "right" && "text-right font-mono tabular",
+                      )}
+                    >
                       {c.bar ? (
-                        <BarCell value={c.bar(row)} max={maxima.get(c.key) ?? 0} scale={scale} color={barColor?.(row)}>
+                        <BarCell
+                          value={c.bar(row)}
+                          max={maxima.get(c.key) ?? 0}
+                          scale={scale}
+                          color={barColor?.(row)}
+                        >
                           {c.render(row)}
                         </BarCell>
                       ) : (

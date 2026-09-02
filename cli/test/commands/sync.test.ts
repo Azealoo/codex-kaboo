@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CLI_RUN_BUDGET_MS } from "@codex-kaboo/shared/constants";
@@ -25,7 +33,9 @@ afterEach(() => {
   }
 });
 
-function fakeClient(opts: { fail?: (batch: SyncBatch, index: number) => Error | null; latest?: string | null } = {}) {
+function fakeClient(
+  opts: { fail?: (batch: SyncBatch, index: number) => Error | null; latest?: string | null } = {},
+) {
   const batches: SyncBatch[] = [];
   const client: SyncClient = {
     async sync(batch) {
@@ -34,7 +44,10 @@ function fakeClient(opts: { fail?: (batch: SyncBatch, index: number) => Error | 
       if (error) throw error;
       const res: SyncResponse = {
         ok: true,
-        accepted: { sessions: { inserted: batch.sessions.length, updated: 0, unchanged: 0 }, events: { inserted: batch.tokenEvents.length, updated: 0, unchanged: 0 } },
+        accepted: {
+          sessions: { inserted: batch.sessions.length, updated: 0, unchanged: 0 },
+          events: { inserted: batch.tokenEvents.length, updated: 0, unchanged: 0 },
+        },
         conflicts: { sessions: [], events: 0 },
         serverTime: 1,
         latestCliVersion: opts.latest ?? null,
@@ -42,8 +55,12 @@ function fakeClient(opts: { fail?: (batch: SyncBatch, index: number) => Error | 
       };
       return res;
     },
-    async whoami() { throw new Error("not used"); },
-    async health() { return { ok: true, serverTime: 1 }; },
+    async whoami() {
+      throw new Error("not used");
+    },
+    async health() {
+      return { ok: true, serverTime: 1 };
+    },
   };
   return { client, batches };
 }
@@ -55,14 +72,32 @@ async function setup(opts: { loggedIn?: boolean } = {}) {
   cpSync(FIXTURE_HOME, codexHome, { recursive: true });
   const paths = kabooPaths(path.join(root, "kaboo"));
   if (opts.loggedIn !== false) {
-    await writeConfig(paths, { server: "https://x.convex.site", token: "ck_t", machineId: "m-1", label: "brisk-otter", hostnameOptIn: false, codexHomes: [] });
+    await writeConfig(paths, {
+      server: "https://x.convex.site",
+      token: "ck_t",
+      machineId: "m-1",
+      label: "brisk-otter",
+      hostnameOptIn: false,
+      codexHomes: [],
+    });
   }
   const clock = { now: NOW };
   let ids = 0;
   const fake = fakeClient();
   const deps: SyncDeps = {
-    paths, env: {}, now: () => clock.now, log: silentLogger, cliVersion: "0.1.0", machineZone: "UTC", newId: () => `id-${++ids}`,
-    createClient: () => fake.client, platform: "darwin", arch: "arm64", nodeVersion: "24.17.0", hostname: () => "h", pid: process.pid,
+    paths,
+    env: {},
+    now: () => clock.now,
+    log: silentLogger,
+    cliVersion: "0.1.0",
+    machineZone: "UTC",
+    newId: () => `id-${++ids}`,
+    createClient: () => fake.client,
+    platform: "darwin",
+    arch: "arm64",
+    nodeVersion: "24.17.0",
+    hostname: () => "h",
+    pid: process.pid,
   };
   return { root, codexHome, paths, clock, deps, fake };
 }
@@ -71,7 +106,15 @@ const base = { full: false, dryRun: false, scheduled: false, json: false };
 describe("runSync dry-run", () => {
   it("parses everything, prints the exact payloads, and touches neither the network nor state", async () => {
     const s = await setup();
-    const report = await runSync({ ...base, dryRun: true, codexHome: s.codexHome }, { ...s.deps, createClient: () => { throw new Error("no network in dry-run"); } });
+    const report = await runSync(
+      { ...base, dryRun: true, codexHome: s.codexHome },
+      {
+        ...s.deps,
+        createClient: () => {
+          throw new Error("no network in dry-run");
+        },
+      },
+    );
     expect(report.exitCode).toBe(0);
     expect(report.dryRun).toBe(true);
     expect(report.batches?.length).toBe(1);
@@ -98,7 +141,15 @@ describe("runSync dry-run", () => {
     expect((await readState(s.paths)).state.lastHeartbeatAt).toBe(NOW);
 
     s.clock.now = NOW + 2 * 60 * 60 * 1000; // past HEARTBEAT_INTERVAL_MS: a real run would heartbeat
-    const dry = await runSync({ ...base, dryRun: true, codexHome: s.codexHome }, { ...s.deps, createClient: () => { throw new Error("no network in dry-run"); } });
+    const dry = await runSync(
+      { ...base, dryRun: true, codexHome: s.codexHome },
+      {
+        ...s.deps,
+        createClient: () => {
+          throw new Error("no network in dry-run");
+        },
+      },
+    );
     expect(dry.heartbeat).toBe(true);
     expect(dry.uploads).toEqual({ sessions: 0, events: 0, requests: 1 });
     expect(dry.files.every((f) => f.action === "unchanged")).toBe(true);
@@ -107,7 +158,12 @@ describe("runSync dry-run", () => {
     expect(shown.sessions).toEqual([]); // machine-only: no session or event data
     expect(shown.tokenEvents).toEqual([]);
     expect(shown.rateLimit).toBeUndefined(); // the real run already acked this snapshot
-    expect(shown.machine).toMatchObject({ machineId: "m-1", label: "brisk-otter", platform: "darwin", hostname: null });
+    expect(shown.machine).toMatchObject({
+      machineId: "m-1",
+      label: "brisk-otter",
+      platform: "darwin",
+      hostname: null,
+    });
     // A dry run still writes nothing, so the real run below is still due.
     expect((await readState(s.paths)).state.lastHeartbeatAt).toBe(NOW);
 
@@ -121,10 +177,25 @@ describe("runSync dry-run", () => {
 
     // With `login --hostname`, the audit now shows the hostname the heartbeat carries.
     const t = await setup();
-    await writeConfig(t.paths, { server: "https://x.convex.site", token: "ck_t", machineId: "m-2", label: "brisk-otter", hostnameOptIn: true, codexHomes: [] });
+    await writeConfig(t.paths, {
+      server: "https://x.convex.site",
+      token: "ck_t",
+      machineId: "m-2",
+      label: "brisk-otter",
+      hostnameOptIn: true,
+      codexHomes: [],
+    });
     await runSync({ ...base, codexHome: t.codexHome }, t.deps);
     t.clock.now = NOW + 2 * 60 * 60 * 1000;
-    const opted = await runSync({ ...base, dryRun: true, codexHome: t.codexHome }, { ...t.deps, createClient: () => { throw new Error("no network in dry-run"); } });
+    const opted = await runSync(
+      { ...base, dryRun: true, codexHome: t.codexHome },
+      {
+        ...t.deps,
+        createClient: () => {
+          throw new Error("no network in dry-run");
+        },
+      },
+    );
     expect(opted.batches?.[0]?.machine.hostname).toBe("h");
   });
   it("works without a login and refuses a real sync without one", async () => {
@@ -133,7 +204,9 @@ describe("runSync dry-run", () => {
     expect(dry.exitCode).toBe(0);
     expect(dry.batches?.[0]?.machine.machineId).toBe("dry-run");
     expect((await runSync({ ...base, codexHome: s.codexHome }, s.deps)).exitCode).toBe(2);
-    expect((await runSync({ ...base, scheduled: true, codexHome: s.codexHome }, s.deps)).exitCode).toBe(0);
+    expect(
+      (await runSync({ ...base, scheduled: true, codexHome: s.codexHome }, s.deps)).exitCode,
+    ).toBe(0);
     expect(existsSync(s.paths.state)).toBe(false);
   });
 });
@@ -171,18 +244,37 @@ describe("runSync upload", () => {
   });
   it("halves batches on 413 until the server accepts them", async () => {
     const s = await setup();
-    const fake = fakeClient({ fail: (b) => (b.tokenEvents.length > 60 ? new SyncHttpError(413, "too_many_items", "too large", null, null) : null) });
-    const report = await runSync({ ...base, codexHome: s.codexHome }, { ...s.deps, createClient: () => fake.client, batchLimits: { maxEvents: 200, maxBytes: 3_500_000, maxSessions: 500 } });
+    const fake = fakeClient({
+      fail: (b) =>
+        b.tokenEvents.length > 60
+          ? new SyncHttpError(413, "too_many_items", "too large", null, null)
+          : null,
+    });
+    const report = await runSync(
+      { ...base, codexHome: s.codexHome },
+      {
+        ...s.deps,
+        createClient: () => fake.client,
+        batchLimits: { maxEvents: 200, maxBytes: 3_500_000, maxSessions: 500 },
+      },
+    );
     expect(report.exitCode).toBe(0);
     expect(report.warnings.some((w) => w.includes("too large"))).toBe(true);
-    const shipped = fake.batches.filter((b) => b.tokenEvents.length <= 60).reduce((n, b) => n + b.tokenEvents.length, 0);
+    const shipped = fake.batches
+      .filter((b) => b.tokenEvents.length <= 60)
+      .reduce((n, b) => n + b.tokenEvents.length, 0);
     expect(shipped).toBe(report.uploads.events);
     expect(report.uploads.events).toBeGreaterThan(200);
   });
   it("stops on 401 without advancing state", async () => {
     const s = await setup();
-    const fake = fakeClient({ fail: () => new SyncHttpError(401, "token_revoked", "revoked", null, null) });
-    const report = await runSync({ ...base, codexHome: s.codexHome }, { ...s.deps, createClient: () => fake.client });
+    const fake = fakeClient({
+      fail: () => new SyncHttpError(401, "token_revoked", "revoked", null, null),
+    });
+    const report = await runSync(
+      { ...base, codexHome: s.codexHome },
+      { ...s.deps, createClient: () => fake.client },
+    );
     expect(report.exitCode).toBe(2);
     expect(report.errors[0]).toContain("codex-kaboo login");
     const state = (await readState(s.paths)).state;
@@ -192,21 +284,36 @@ describe("runSync upload", () => {
   it("marks files from a rejected batch and continues; only acked batches advance", async () => {
     const s = await setup();
     const limits = { maxEvents: 30, maxBytes: 3_500_000, maxSessions: 500 };
-    const rejecting = fakeClient({ fail: (_b, i) => (i === 0 ? new SyncHttpError(400, "invalid_batch", "bad day", null, null) : null) });
-    const report = await runSync({ ...base, codexHome: s.codexHome }, { ...s.deps, createClient: () => rejecting.client, batchLimits: limits });
+    const rejecting = fakeClient({
+      fail: (_b, i) =>
+        i === 0 ? new SyncHttpError(400, "invalid_batch", "bad day", null, null) : null,
+    });
+    const report = await runSync(
+      { ...base, codexHome: s.codexHome },
+      { ...s.deps, createClient: () => rejecting.client, batchLimits: limits },
+    );
     expect(report.exitCode).toBe(1);
     const state = (await readState(s.paths)).state;
     const failed = Object.values(state.files).filter((f) => f.lastError !== null);
     expect(failed.length).toBeGreaterThanOrEqual(1);
     expect(failed[0]?.lastUploadedSeq).toBe(-1);
-    expect(Object.values(state.files).some((f) => f.lastError === null && f.lastUploadedSeq >= 0)).toBe(true);
+    expect(
+      Object.values(state.files).some((f) => f.lastError === null && f.lastUploadedSeq >= 0),
+    ).toBe(true);
     const t = await setup();
-    const flaky = fakeClient({ fail: (_b, i) => (i === 1 ? new SyncNetworkError("ECONNRESET", null) : null) });
-    const r2 = await runSync({ ...base, codexHome: t.codexHome }, { ...t.deps, createClient: () => flaky.client, batchLimits: limits });
+    const flaky = fakeClient({
+      fail: (_b, i) => (i === 1 ? new SyncNetworkError("ECONNRESET", null) : null),
+    });
+    const r2 = await runSync(
+      { ...base, codexHome: t.codexHome },
+      { ...t.deps, createClient: () => flaky.client, batchLimits: limits },
+    );
     expect(r2.exitCode).toBe(1);
     expect(r2.uploads.requests).toBe(1);
     const st2 = (await readState(t.paths)).state;
-    const advanced = Object.values(st2.files).filter((f) => f.lastUploadedSeq >= 0 || (f.summaryHash !== null));
+    const advanced = Object.values(st2.files).filter(
+      (f) => f.lastUploadedSeq >= 0 || f.summaryHash !== null,
+    );
     expect(advanced.length).toBeGreaterThanOrEqual(1);
     expect(advanced.length).toBeLessThan(r2.files.length);
   });
@@ -223,26 +330,39 @@ describe("runSync upload", () => {
     const name = `rollout-2026-08-30T13-00-00-${FX.paginatedSmall}.jsonl`;
     cpSync(path.join(FIXTURE_HOME, "sessions", "2026", "08", "30", name), path.join(day, name));
 
-    const rejecting = fakeClient({ fail: (b) => (b.sessions.length + b.tokenEvents.length > 0 ? new SyncHttpError(400, "invalid_batch", "day out of range", null, null) : null) });
+    const rejecting = fakeClient({
+      fail: (b) =>
+        b.sessions.length + b.tokenEvents.length > 0
+          ? new SyncHttpError(400, "invalid_batch", "day out of range", null, null)
+          : null,
+    });
     const deps = { ...s.deps, createClient: () => rejecting.client };
-    const run = (): Promise<Awaited<ReturnType<typeof runSync>>> => runSync({ ...base, codexHome: solo }, deps);
+    const run = (): Promise<Awaited<ReturnType<typeof runSync>>> =>
+      runSync({ ...base, codexHome: solo }, deps);
 
     // Six attempts: each one really tries, really fails, and really reports the failure.
     for (let attempt = 1; attempt <= MAX_FILE_FAILURES + 1; attempt++) {
       const report = await run();
       expect(report.exitCode, `attempt ${attempt}`).toBe(1);
       expect(report.errors.some((e) => e.includes("day out of range"))).toBe(true);
-      expect((await readState(s.paths)).state.files[FX.paginatedSmall]?.failure?.count).toBe(attempt);
+      expect((await readState(s.paths)).state.files[FX.paginatedSmall]?.failure?.count).toBe(
+        attempt,
+      );
     }
     // Machine-only heartbeats also go through the fake client, so count only real upload attempts.
-    const uploadAttempts = (): number => rejecting.batches.filter((b) => b.sessions.length + b.tokenEvents.length > 0).length;
+    const uploadAttempts = (): number =>
+      rejecting.batches.filter((b) => b.sessions.length + b.tokenEvents.length > 0).length;
     expect(uploadAttempts()).toBe(MAX_FILE_FAILURES + 1);
 
     // The seventh run parks it: no upload attempted, a warning instead of an error, exit 0.
     const parked = await run();
     expect(parked.exitCode).toBe(0);
     expect(parked.errors).toEqual([]);
-    expect(parked.warnings.some((w) => w.includes("skipped after 6 failed attempts") && w.includes("day out of range"))).toBe(true);
+    expect(
+      parked.warnings.some(
+        (w) => w.includes("skipped after 6 failed attempts") && w.includes("day out of range"),
+      ),
+    ).toBe(true);
     expect(parked.files.map((f) => f.action)).toEqual(["skipped"]);
     expect(uploadAttempts()).toBe(MAX_FILE_FAILURES + 1); // nothing was sent for the parked file
 
@@ -262,13 +382,20 @@ describe("runSync upload", () => {
     const s = await setup();
     writeFileSync(s.paths.lock, JSON.stringify({ pid: process.pid, at: NOW }));
     expect((await runSync({ ...base, codexHome: s.codexHome }, s.deps)).exitCode).toBe(1);
-    expect((await runSync({ ...base, scheduled: true, codexHome: s.codexHome }, s.deps)).exitCode).toBe(0);
+    expect(
+      (await runSync({ ...base, scheduled: true, codexHome: s.codexHome }, s.deps)).exitCode,
+    ).toBe(0);
     expect(s.fake.batches).toHaveLength(0);
     const u = await setup();
     const newer = fakeClient({ latest: "0.2.0" });
-    const report = await runSync({ ...base, codexHome: u.codexHome }, { ...u.deps, createClient: () => newer.client, webOrigin: "https://kaboo.example" });
+    const report = await runSync(
+      { ...base, codexHome: u.codexHome },
+      { ...u.deps, createClient: () => newer.client, webOrigin: "https://kaboo.example" },
+    );
     expect(report.latestCliVersion).toBe("0.2.0");
-    expect(report.warnings.some((w) => w.includes("https://kaboo.example/cli/codex-kaboo-cli.tgz"))).toBe(true);
+    expect(
+      report.warnings.some((w) => w.includes("https://kaboo.example/cli/codex-kaboo-cli.tgz")),
+    ).toBe(true);
     expect((await readState(u.paths)).state.latestCliVersion).toBe("0.2.0");
   });
   // Review finding (round 1): a non-final ack used to adopt the fully-parsed cursor
@@ -290,11 +417,18 @@ describe("runSync upload", () => {
       },
     });
 
-    const first = await runSync({ ...base, codexHome: s.codexHome }, { ...s.deps, createClient: () => flaky.client, batchLimits: limits });
+    const first = await runSync(
+      { ...base, codexHome: s.codexHome },
+      { ...s.deps, createClient: () => flaky.client, batchLimits: limits },
+    );
     expect(first.exitCode).toBe(1);
-    const touchingTarget = flaky.batches.filter((b) => b.tokenEvents.some((e) => e.sessionId === target));
+    const touchingTarget = flaky.batches.filter((b) =>
+      b.tokenEvents.some((e) => e.sessionId === target),
+    );
     expect(touchingTarget.length).toBeGreaterThanOrEqual(2); // the successful first chunk, then the failed second
-    const firstChunkSeqs = touchingTarget[0]!.tokenEvents.filter((e) => e.sessionId === target).map((e) => e.seq);
+    const firstChunkSeqs = touchingTarget[0]!.tokenEvents
+      .filter((e) => e.sessionId === target)
+      .map((e) => e.seq);
     const firstChunkLastSeq = Math.max(...firstChunkSeqs);
     expect(touchingTarget[0]!.sessions.some((sess) => sess.sessionId === target)).toBe(false); // not the file's final chunk
 
@@ -303,7 +437,10 @@ describe("runSync upload", () => {
     expect(afterFirst.lastUploadedSeq).toBe(firstChunkLastSeq);
     expect(afterFirst.lastError).toBeNull();
 
-    const second = await runSync({ ...base, codexHome: s.codexHome }, { ...s.deps, createClient: () => flaky.client, batchLimits: limits });
+    const second = await runSync(
+      { ...base, codexHome: s.codexHome },
+      { ...s.deps, createClient: () => flaky.client, batchLimits: limits },
+    );
     expect(second.exitCode).toBe(0);
     const afterSecond = (await readState(s.paths)).state.files[target]!;
     expect(afterSecond.lastUploadedSeq).toBeGreaterThan(afterFirst.lastUploadedSeq);
@@ -312,7 +449,10 @@ describe("runSync upload", () => {
     // No event was lost, and none was uploaded twice: the sum across both runs matches a clean run.
     const clean = await setup();
     const cleanFake = fakeClient();
-    const cleanReport = await runSync({ ...base, codexHome: clean.codexHome }, { ...clean.deps, createClient: () => cleanFake.client, batchLimits: limits });
+    const cleanReport = await runSync(
+      { ...base, codexHome: clean.codexHome },
+      { ...clean.deps, createClient: () => cleanFake.client, batchLimits: limits },
+    );
     expect(cleanReport.exitCode).toBe(0);
     expect(first.uploads.events + second.uploads.events).toBe(cleanReport.uploads.events);
   });
@@ -324,7 +464,14 @@ describe("runSync upload", () => {
         return null;
       },
     });
-    const report = await runSync({ ...base, codexHome: s.codexHome }, { ...s.deps, createClient: () => flaky.client, batchLimits: { maxEvents: 30, maxBytes: 3_500_000, maxSessions: 500 } });
+    const report = await runSync(
+      { ...base, codexHome: s.codexHome },
+      {
+        ...s.deps,
+        createClient: () => flaky.client,
+        batchLimits: { maxEvents: 30, maxBytes: 3_500_000, maxSessions: 500 },
+      },
+    );
     expect(report.exitCode).toBe(0);
     expect(report.warnings.some((w) => w.includes("run budget exhausted"))).toBe(true);
     expect(report.uploads.requests).toBe(1);

@@ -1,6 +1,13 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { assertNoNewline, checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTarget, type Spawner } from "./index";
+import {
+  assertNoNewline,
+  checkTargetPaths,
+  scheduledArgs,
+  type SchedulerAdapter,
+  type ScheduleTarget,
+  type Spawner,
+} from "./index";
 
 export const TASK_NAME = "codex-kaboo-sync";
 
@@ -29,7 +36,8 @@ export function renderVbs(target: ScheduleTarget): string {
     'Set sh = CreateObject("WScript.Shell")',
     'sh.Environment("Process")("CODEX_KABOO_SCHEDULED") = "1"',
   ];
-  if (target.codexHome) lines.push(`sh.Environment("Process")("CODEX_HOME") = ${vbsQuote(target.codexHome)}`);
+  if (target.codexHome)
+    lines.push(`sh.Environment("Process")("CODEX_HOME") = ${vbsQuote(target.codexHome)}`);
   lines.push(`sh.Run ${vbsQuote(command)}, 0, False`, "");
   return lines.join("\r\n");
 }
@@ -57,7 +65,10 @@ function powershellEnvLines(target: ScheduleTarget): string[] {
 
 /** Fallback when wscript.exe is unavailable (a console may flash briefly). Mirrors the VBS runner's environment. */
 export function renderPowershellCommand(target: ScheduleTarget): string {
-  const script = [...powershellEnvLines(target), `& ${powershellQuote(target.nodePath)} ${powershellQuote(target.scriptPath)} ${scheduledArgs().join(" ")}`].join("; ");
+  const script = [
+    ...powershellEnvLines(target),
+    `& ${powershellQuote(target.nodePath)} ${powershellQuote(target.scriptPath)} ${scheduledArgs().join(" ")}`,
+  ].join("; ");
   return `powershell.exe -NoProfile -WindowStyle Hidden -Command "${script}"`;
 }
 
@@ -70,7 +81,11 @@ export function ps1Path(kabooHome: string): string {
  * would exceed schtasks's /TR length limit (documented as 261 characters); mirrors the VBS runner.
  */
 export function renderPs1(target: ScheduleTarget): string {
-  const lines = [...powershellEnvLines(target), `& ${powershellQuote(target.nodePath)} ${powershellQuote(target.scriptPath)} ${scheduledArgs().join(" ")}`, ""];
+  const lines = [
+    ...powershellEnvLines(target),
+    `& ${powershellQuote(target.nodePath)} ${powershellQuote(target.scriptPath)} ${scheduledArgs().join(" ")}`,
+    "",
+  ];
   return lines.join("\r\n");
 }
 
@@ -91,9 +106,12 @@ export function schtasksQueryArgs(): string[] {
 
 /** Loose, localisation-tolerant status parsing: the first "<label>: <value>" line that looks like a status. */
 export function parseSchtasksStatus(stdout: string): { healthy: boolean; detail: string } {
-  const line = stdout.split(/\r?\n/).find((l) => /^\s*(status|statut|zustand|estado|stato|状态)\s*:/i.test(l));
-  const detail = line ? (line.split(":").slice(1).join(":").trim() || "unknown") : "unknown";
-  if (/disabled|désactiv|deaktiviert|deshabilit|disabilit|已禁用/i.test(detail)) return { healthy: false, detail };
+  const line = stdout
+    .split(/\r?\n/)
+    .find((l) => /^\s*(status|statut|zustand|estado|stato|状态)\s*:/i.test(l));
+  const detail = line ? line.split(":").slice(1).join(":").trim() || "unknown" : "unknown";
+  if (/disabled|désactiv|deaktiviert|deshabilit|disabilit|已禁用/i.test(detail))
+    return { healthy: false, detail };
   return { healthy: true, detail };
 }
 
@@ -128,7 +146,8 @@ export const schtasksAdapter: SchedulerAdapter = {
       }
     }
     const result = await spawner.run("schtasks", schtasksCreateArgs(command));
-    if (result.code !== 0) throw new Error(`schtasks /Create failed: ${result.stderr.trim() || result.stdout.trim()}`);
+    if (result.code !== 0)
+      throw new Error(`schtasks /Create failed: ${result.stderr.trim() || result.stdout.trim()}`);
     return `scheduled task ${TASK_NAME} created (every 15 minutes)`;
   },
   async uninstall(target, spawner) {
@@ -141,7 +160,12 @@ export const schtasksAdapter: SchedulerAdapter = {
     const query = await spawner.run("schtasks", schtasksQueryArgs());
     if (query.code !== 0) return { installed: false, healthy: false, detail: "not installed" };
     const missing = await checkTargetPaths(target);
-    if (missing.length > 0) return { installed: true, healthy: false, detail: `schedule broken: missing ${missing.join(", ")}; run \`codex-kaboo install\` again` };
+    if (missing.length > 0)
+      return {
+        installed: true,
+        healthy: false,
+        detail: `schedule broken: missing ${missing.join(", ")}; run \`codex-kaboo install\` again`,
+      };
     const parsed = parseSchtasksStatus(query.stdout);
     return { installed: true, healthy: parsed.healthy, detail: parsed.detail };
   },

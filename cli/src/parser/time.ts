@@ -40,7 +40,10 @@ export function machineZone(): string | undefined {
 }
 
 /** First valid zone of (session zone, fallback); undefined lets dayHourIn use the machine zone → UTC. */
-export function resolveZone(sessionZone: unknown, fallback: string | undefined): string | undefined {
+export function resolveZone(
+  sessionZone: unknown,
+  fallback: string | undefined,
+): string | undefined {
   if (isValidZone(sessionZone)) return sessionZone;
   if (isValidZone(fallback)) return fallback;
   return undefined;

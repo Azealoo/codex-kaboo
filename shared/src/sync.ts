@@ -21,7 +21,13 @@ export const dayString = z
 export const hourOfDay = z.int().min(0).max(23);
 
 /** The subset of token fields the three invariants below constrain (`cacheWrite` is not one of them). */
-type TokenFields = { input: number; cachedInput: number; output: number; reasoning: number; total: number };
+type TokenFields = {
+  input: number;
+  cachedInput: number;
+  output: number;
+  reasoning: number;
+  total: number;
+};
 
 /**
  * The parser's three token invariants: `cachedInput ⊆ input`, `reasoning ⊆ output` and
@@ -153,32 +159,34 @@ export const SessionSummary = z.object({
 });
 export type SessionSummary = z.infer<typeof SessionSummary>;
 
-export const TokenEvent = z.object({
-  sessionId: nonEmptyString,
-  seq: count, // 0-based line index in the rollout file
-  ts: timestampMs,
-  day: dayString,
-  hour: hourOfDay,
-  model: nonEmptyString,
-  effort: shortString.optional(),
-  turnId: shortString.optional(),
-  project: nonEmptyString,
-  // Denormalised from the parent session so the day's source token totals can be computed from
-  // EVENTS, on the event's own day, like every other token metric on the page — the session may
-  // sit on a different day, so a join would not do. The machine is NOT here: it is constant for a
-  // whole batch, so the server stamps it from `machine.machineId` (as it already does for
-  // sessions) rather than repeating it on every one of up to MAX_EVENTS_PER_REQUEST events.
-  source: nonEmptyString, // the parent session's source
-  isSubagent: z.boolean(),
-  origin: TokenEventOrigin, // the line type this row was derived from
-  input: count,
-  cachedInput: count,
-  cacheWrite: count,
-  output: count,
-  reasoning: count,
-  total: count, // always input + output (recomputed by the parser)
-  contextWindow: count.optional(),
-}).superRefine(addTokenInvariantIssues); // same three invariants as TokenCounts, on flat fields
+export const TokenEvent = z
+  .object({
+    sessionId: nonEmptyString,
+    seq: count, // 0-based line index in the rollout file
+    ts: timestampMs,
+    day: dayString,
+    hour: hourOfDay,
+    model: nonEmptyString,
+    effort: shortString.optional(),
+    turnId: shortString.optional(),
+    project: nonEmptyString,
+    // Denormalised from the parent session so the day's source token totals can be computed from
+    // EVENTS, on the event's own day, like every other token metric on the page — the session may
+    // sit on a different day, so a join would not do. The machine is NOT here: it is constant for a
+    // whole batch, so the server stamps it from `machine.machineId` (as it already does for
+    // sessions) rather than repeating it on every one of up to MAX_EVENTS_PER_REQUEST events.
+    source: nonEmptyString, // the parent session's source
+    isSubagent: z.boolean(),
+    origin: TokenEventOrigin, // the line type this row was derived from
+    input: count,
+    cachedInput: count,
+    cacheWrite: count,
+    output: count,
+    reasoning: count,
+    total: count, // always input + output (recomputed by the parser)
+    contextWindow: count.optional(),
+  })
+  .superRefine(addTokenInvariantIssues); // same three invariants as TokenCounts, on flat fields
 export type TokenEvent = z.infer<typeof TokenEvent>;
 
 export const RateLimitSnapshot = z.object({

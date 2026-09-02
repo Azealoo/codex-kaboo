@@ -52,7 +52,10 @@ export function createLogger(opts: LoggerOptions = {}): Logger {
     const line = `${new Date(now()).toISOString()} ${level.toUpperCase()} ${message}`;
     toFile(line);
     const showOnConsole =
-      level === "error" || level === "warn" || (level === "info" && !opts.quiet) || (level === "debug" && opts.verbose === true);
+      level === "error" ||
+      level === "warn" ||
+      (level === "info" && !opts.quiet) ||
+      (level === "debug" && opts.verbose === true);
     if (showOnConsole) write(line);
   };
 

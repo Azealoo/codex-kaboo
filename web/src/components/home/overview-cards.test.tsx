@@ -11,7 +11,14 @@ vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => useQueryMock(
 
 import { OverviewCards } from "./overview-cards";
 
-const range: ResolvedRange = { kind: "30D", from: "2026-08-01", to: "2026-08-30", days: 30, previous: true, label: "Last 30 days" };
+const range: ResolvedRange = {
+  kind: "30D",
+  from: "2026-08-01",
+  to: "2026-08-30",
+  days: 30,
+  previous: true,
+  label: "Last 30 days",
+};
 const zero: Metric = { current: 0, previous: null, change: null };
 
 function summaryWith(overrides: Partial<Record<MetricKey, Metric>>): SummaryResult {
@@ -48,7 +55,9 @@ describe("OverviewCards", () => {
     render(<OverviewCards range={range} view="efficiency" />);
     // Scope to the Cache hit rate card itself — the cost structure bar below it legitimately
     // renders its own "0.0%" segment shares for an all-zero costByKind, which isn't this metric.
-    const card = screen.getByText("Cache hit rate").closest('[data-slot="card"]') as HTMLElement | null;
+    const card = screen
+      .getByText("Cache hit rate")
+      .closest('[data-slot="card"]') as HTMLElement | null;
     expect(card).not.toBeNull();
     expect(within(card!).getByText(EM_DASH)).toBeInTheDocument();
     expect(within(card!).queryByText("0.0%")).not.toBeInTheDocument();

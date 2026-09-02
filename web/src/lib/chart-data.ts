@@ -73,7 +73,9 @@ function assemble(
 }
 
 export function trendByUser(trends: TrendsResult, colors: ColorMap): Stacked {
-  const totals = sumByEntity(trends.points, (p) => p.byUser.map((u) => ({ key: u.key, value: u.tokens })));
+  const totals = sumByEntity(trends.points, (p) =>
+    p.byUser.map((u) => ({ key: u.key, value: u.tokens })),
+  );
   const names = new Map(trends.users.map((u) => [u.userId as string, u.name]));
   return assemble(
     trends,
@@ -85,7 +87,9 @@ export function trendByUser(trends: TrendsResult, colors: ColorMap): Stacked {
 }
 
 export function trendByModel(trends: TrendsResult, colors: ColorMap, topN = 7): Stacked {
-  const totals = sumByEntity(trends.points, (p) => p.byModel.map((m) => ({ key: m.key, value: m.tokens })));
+  const totals = sumByEntity(trends.points, (p) =>
+    p.byModel.map((m) => ({ key: m.key, value: m.tokens })),
+  );
   const ordered = sortedEntities(totals);
   const top = ordered.length > topN + 1 ? ordered.slice(0, topN) : ordered;
   const rest = ordered.slice(top.length);
@@ -103,11 +107,17 @@ export type TrendMetric = "tokens" | "cost" | "hours";
 
 export function trendSingle(trends: TrendsResult, metric: TrendMetric, color: string): Stacked {
   const label = metric === "tokens" ? "Tokens" : metric === "cost" ? "Cost" : "Hours";
-  return assemble(trends, ["total"], () => label, () => color, (p) => {
-    if (metric === "tokens") return p.total;
-    if (metric === "cost") return p.costUsd;
-    return p.activeMs / 3_600_000;
-  });
+  return assemble(
+    trends,
+    ["total"],
+    () => label,
+    () => color,
+    (p) => {
+      if (metric === "tokens") return p.total;
+      if (metric === "cost") return p.costUsd;
+      return p.activeMs / 3_600_000;
+    },
+  );
 }
 
 /**
@@ -151,7 +161,11 @@ export function costStructureSegments(cost: CostByKind): Segment[] {
   }));
 }
 
-export function shareSegments(items: { key: string; value: number }[], colors: ColorMap, topN = 8): Segment[] {
+export function shareSegments(
+  items: { key: string; value: number }[],
+  colors: ColorMap,
+  topN = 8,
+): Segment[] {
   const folded = foldTopN(items, topN);
   const total = folded.reduce((acc, i) => acc + i.value, 0);
   return folded.map((i) => ({

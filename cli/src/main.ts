@@ -41,17 +41,34 @@ function clientFor(cliVersion: string) {
 
 function syncDeps(log: Logger): SyncDeps {
   return {
-    paths, env: process.env, now: () => Date.now(), log, cliVersion: CLI_VERSION, machineZone: machineZone(),
-    newId: () => randomUUID(), createClient: clientFor(CLI_VERSION), platform: process.platform, arch: process.arch,
-    nodeVersion: process.versions.node, hostname: () => os.hostname(), pid: process.pid,
+    paths,
+    env: process.env,
+    now: () => Date.now(),
+    log,
+    cliVersion: CLI_VERSION,
+    machineZone: machineZone(),
+    newId: () => randomUUID(),
+    createClient: clientFor(CLI_VERSION),
+    platform: process.platform,
+    arch: process.arch,
+    nodeVersion: process.versions.node,
+    hostname: () => os.hostname(),
+    pid: process.pid,
     ...(BAKED_WEB_ORIGIN ? { webOrigin: BAKED_WEB_ORIGIN } : {}),
   };
 }
 
 function scheduleDeps(log: Logger): ScheduleDeps {
   return {
-    paths, env: process.env, platform: process.platform, execPath: process.execPath, scriptPath: process.argv[1] ?? __filename,
-    homeDir: os.homedir(), ...(typeof process.getuid === "function" ? { uid: process.getuid() } : {}), spawner: nodeSpawner, log,
+    paths,
+    env: process.env,
+    platform: process.platform,
+    execPath: process.execPath,
+    scriptPath: process.argv[1] ?? __filename,
+    homeDir: os.homedir(),
+    ...(typeof process.getuid === "function" ? { uid: process.getuid() } : {}),
+    spawner: nodeSpawner,
+    log,
   };
 }
 
@@ -96,7 +113,9 @@ function promptToken(question: string): Promise<string> {
     const isTTY = input.isTTY === true;
 
     if (!isTTY) {
-      output.write("warning: stdin is not a TTY; input cannot be hidden and may be echoed by your terminal or shell\n");
+      output.write(
+        "warning: stdin is not a TTY; input cannot be hidden and may be echoed by your terminal or shell\n",
+      );
       const rl = readline.createInterface({ input, output, terminal: false });
       // `rl.question`'s callback is NOT the only way this prompt can end: when stdin is already at
       // EOF (`login --json < /dev/null`, a provisioning script with no input) readline emits `close`
@@ -180,7 +199,9 @@ function promptToken(question: string): Promise<string> {
 const program = new Command();
 program
   .name("codex-kaboo")
-  .description("Report Codex CLI usage metadata (never text or paths) to your codex-kaboo dashboard")
+  .description(
+    "Report Codex CLI usage metadata (never text or paths) to your codex-kaboo dashboard",
+  )
   .version(CLI_VERSION)
   .option("--json", "print machine-readable JSON on stdout")
   .option("--verbose", "debug logging on stderr");
@@ -198,18 +219,44 @@ program
   .option("--machine-name <name>", "label shown in the dashboard")
   .option("--hostname", "also upload this machine's hostname")
   .option("--no-hostname", "stop uploading this machine's hostname (clears a previous opt-in)")
-  .action(async (o: { token?: string; server?: string; machineName?: string; hostname?: boolean }) => {
-    const g = globals();
-    const cliVersion = CLI_VERSION;
-    const result = await runLogin(
-      { ...(o.token ? { token: o.token } : {}), ...(o.server ? { server: o.server } : {}), ...(o.machineName ? { machineName: o.machineName } : {}), hostname: o.hostname, json: g.json },
-      { paths, env: process.env, bakedServer: BAKED_SERVER, cliVersion, prompt: promptToken, createClient: clientFor(cliVersion), newId: () => randomUUID(), now: () => Date.now(), log: makeLogger({ verbose: g.verbose }) },
-    );
-    emit(g.json, result, result.ok
-      ? [`logged in as ${result.user?.name ?? result.user?.email ?? result.user?.userId} (${result.server})`, `machine label: ${result.label}`, "next: codex-kaboo install"]
-      : [`error: ${result.error ?? "login failed"}`]);
-    process.exitCode = result.exitCode;
-  });
+  .action(
+    async (o: { token?: string; server?: string; machineName?: string; hostname?: boolean }) => {
+      const g = globals();
+      const cliVersion = CLI_VERSION;
+      const result = await runLogin(
+        {
+          ...(o.token ? { token: o.token } : {}),
+          ...(o.server ? { server: o.server } : {}),
+          ...(o.machineName ? { machineName: o.machineName } : {}),
+          hostname: o.hostname,
+          json: g.json,
+        },
+        {
+          paths,
+          env: process.env,
+          bakedServer: BAKED_SERVER,
+          cliVersion,
+          prompt: promptToken,
+          createClient: clientFor(cliVersion),
+          newId: () => randomUUID(),
+          now: () => Date.now(),
+          log: makeLogger({ verbose: g.verbose }),
+        },
+      );
+      emit(
+        g.json,
+        result,
+        result.ok
+          ? [
+              `logged in as ${result.user?.name ?? result.user?.email ?? result.user?.userId} (${result.server})`,
+              `machine label: ${result.label}`,
+              "next: codex-kaboo install",
+            ]
+          : [`error: ${result.error ?? "login failed"}`],
+      );
+      process.exitCode = result.exitCode;
+    },
+  );
 
 program
   .command("logout")
@@ -228,17 +275,29 @@ program
   .option("--dry-run", "parse and show what would be sent; no network, no state changes")
   .option("--scheduled", "quiet mode for the scheduler (exit 0 when not logged in)")
   .option("--codex-home <path>", "Codex home to scan (default: CODEX_HOME or ~/.codex)")
-  .action(async (o: { full?: boolean; dryRun?: boolean; scheduled?: boolean; codexHome?: string }) => {
-    const g = globals();
-    const scheduled = o.scheduled === true || process.env.CODEX_KABOO_SCHEDULED === "1";
-    const log = makeLogger({ quiet: scheduled || g.json, verbose: g.verbose, toFile: o.dryRun !== true });
-    const report = await runSync(
-      { full: o.full === true, dryRun: o.dryRun === true, scheduled, json: g.json, ...(o.codexHome ? { codexHome: o.codexHome } : {}) },
-      syncDeps(log),
-    );
-    emit(g.json, report, formatSyncReport(report));
-    process.exitCode = report.exitCode;
-  });
+  .action(
+    async (o: { full?: boolean; dryRun?: boolean; scheduled?: boolean; codexHome?: string }) => {
+      const g = globals();
+      const scheduled = o.scheduled === true || process.env.CODEX_KABOO_SCHEDULED === "1";
+      const log = makeLogger({
+        quiet: scheduled || g.json,
+        verbose: g.verbose,
+        toFile: o.dryRun !== true,
+      });
+      const report = await runSync(
+        {
+          full: o.full === true,
+          dryRun: o.dryRun === true,
+          scheduled,
+          json: g.json,
+          ...(o.codexHome ? { codexHome: o.codexHome } : {}),
+        },
+        syncDeps(log),
+      );
+      emit(g.json, report, formatSyncReport(report));
+      process.exitCode = report.exitCode;
+    },
+  );
 
 program
   .command("install")
@@ -247,10 +306,14 @@ program
   .action(async (o: { systemd?: boolean }) => {
     const g = globals();
     const log = makeLogger({ verbose: g.verbose, toFile: true });
-    const result = await runInstall({ systemd: o.systemd === true, json: g.json }, {
-      ...scheduleDeps(log),
-      runSync: () => runSync({ full: false, dryRun: false, scheduled: false, json: g.json }, syncDeps(log)),
-    });
+    const result = await runInstall(
+      { systemd: o.systemd === true, json: g.json },
+      {
+        ...scheduleDeps(log),
+        runSync: () =>
+          runSync({ full: false, dryRun: false, scheduled: false, json: g.json }, syncDeps(log)),
+      },
+    );
     emit(g.json, result, [result.detail, ...(result.sync ? formatSyncReport(result.sync) : [])]);
     process.exitCode = result.exitCode;
   });
@@ -261,7 +324,10 @@ program
   .option("--systemd", "on Linux, remove the systemd user timer")
   .action(async (o: { systemd?: boolean }) => {
     const g = globals();
-    const result = await runUninstall({ systemd: o.systemd === true, json: g.json }, scheduleDeps(makeLogger({ verbose: g.verbose })));
+    const result = await runUninstall(
+      { systemd: o.systemd === true, json: g.json },
+      scheduleDeps(makeLogger({ verbose: g.verbose })),
+    );
     emit(g.json, result, [result.detail]);
     process.exitCode = result.exitCode;
   });
@@ -273,7 +339,12 @@ program
   .option("--systemd")
   .action(async (o: { codexHome?: string; systemd?: boolean }) => {
     const g = globals();
-    const report = await runStatus({ ...scheduleDeps(makeLogger({ verbose: g.verbose })), cliVersion: CLI_VERSION, ...(o.codexHome ? { codexHomeOverride: o.codexHome } : {}), systemd: o.systemd === true });
+    const report = await runStatus({
+      ...scheduleDeps(makeLogger({ verbose: g.verbose })),
+      cliVersion: CLI_VERSION,
+      ...(o.codexHome ? { codexHomeOverride: o.codexHome } : {}),
+      systemd: o.systemd === true,
+    });
     emit(g.json, report, formatStatus(report));
   });
 
@@ -284,7 +355,14 @@ program
   .option("--systemd")
   .action(async (o: { codexHome?: string; systemd?: boolean }) => {
     const g = globals();
-    const report = await runDoctor({ ...scheduleDeps(makeLogger({ verbose: g.verbose })), cliVersion: CLI_VERSION, nodeVersion: process.versions.node, createClient: clientFor(CLI_VERSION), ...(o.codexHome ? { codexHomeOverride: o.codexHome } : {}), systemd: o.systemd === true });
+    const report = await runDoctor({
+      ...scheduleDeps(makeLogger({ verbose: g.verbose })),
+      cliVersion: CLI_VERSION,
+      nodeVersion: process.versions.node,
+      createClient: clientFor(CLI_VERSION),
+      ...(o.codexHome ? { codexHomeOverride: o.codexHome } : {}),
+      systemd: o.systemd === true,
+    });
     emit(g.json, report, formatDoctor(report));
     process.exitCode = report.exitCode;
   });

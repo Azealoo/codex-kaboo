@@ -32,19 +32,24 @@ export function QuotaCard() {
         ) : null}
       </div>
       {quota === null ? (
-        <EmptyState title="No quota data yet" description="Appears after the first sync from any machine." />
+        <EmptyState
+          title="No quota data yet"
+          description="Appears after the first sync from any machine."
+        />
       ) : (
         <>
           <QuotaGauge usedPercent={quota.usedPercent} />
           <div className="text-xs text-muted-foreground">
             <div>
-              {now === null ? "Resets soon" : formatResetsIn(quota.resetsAt, now)} · {quota.planType ?? "unknown plan"}
+              {now === null ? "Resets soon" : formatResetsIn(quota.resetsAt, now)} ·{" "}
+              {quota.planType ?? "unknown plan"}
             </div>
             <div>
               {/* receivedAt here too, for the same reason as the badge above: both answer "how
                   fresh is this number?", and only the server clock can answer that comparably
                   against the viewer's `now`. */}
-              as of {now === null ? "—" : formatRelative(quota.receivedAt, now)} · {quota.machine.label} ({quota.user.name})
+              as of {now === null ? "—" : formatRelative(quota.receivedAt, now)} ·{" "}
+              {quota.machine.label} ({quota.user.name})
             </div>
           </div>
         </>

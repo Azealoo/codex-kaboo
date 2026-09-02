@@ -123,7 +123,10 @@ function formatterFor(timeZone: string | undefined): Intl.DateTimeFormat {
 }
 
 /** Local calendar day and hour of `tsMs` in `timeZone`; invalid/missing zone → machine zone → UTC. */
-export function dayHourIn(tsMs: number, timeZone: string | undefined): { day: string; hour: number } {
+export function dayHourIn(
+  tsMs: number,
+  timeZone: string | undefined,
+): { day: string; hour: number } {
   const parts = formatterFor(timeZone).formatToParts(new Date(tsMs));
   const get = (type: Intl.DateTimeFormatPartTypes): string =>
     parts.find((p) => p.type === type)?.value ?? "";

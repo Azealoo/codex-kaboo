@@ -60,8 +60,15 @@ export function addTokens(a: Tokens, b: Tokens): Tokens {
 
 export function emptyToolCounts(): ToolCounts {
   return {
-    commandRead: 0, commandList: 0, commandSearch: 0, commandOther: 0, fileChange: 0,
-    webSearch: 0, imageView: 0, mcpTool: 0, other: 0,
+    commandRead: 0,
+    commandList: 0,
+    commandSearch: 0,
+    commandOther: 0,
+    fileChange: 0,
+    webSearch: 0,
+    imageView: 0,
+    mcpTool: 0,
+    other: 0,
   };
 }
 

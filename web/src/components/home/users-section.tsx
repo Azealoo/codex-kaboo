@@ -20,7 +20,13 @@ import { useRangeHref } from "@/hooks/use-range";
 import { useStableQuery } from "@/hooks/use-stable-query";
 import { colorFor } from "@/lib/colors";
 import { formatDeltaPercent } from "@/lib/format";
-import { LEADER_METRICS, leaderKind, leaderValue, sortLeaderboard, type LeaderMetric } from "@/lib/leaderboard";
+import {
+  LEADER_METRICS,
+  leaderKind,
+  leaderValue,
+  sortLeaderboard,
+  type LeaderMetric,
+} from "@/lib/leaderboard";
 import { formatMetricValue } from "@/lib/metrics";
 import type { ResolvedRange } from "@/lib/range";
 import { cn } from "@/lib/utils";
@@ -44,7 +50,12 @@ export function UsersSection({ range }: { range: ResolvedRange }) {
 
   const actions = (
     <>
-      <SegmentedControl ariaLabel="Ranking metric" options={LEADER_METRICS} value={metric} onChange={setMetric} />
+      <SegmentedControl
+        ariaLabel="Ranking metric"
+        options={LEADER_METRICS}
+        value={metric}
+        onChange={setMetric}
+      />
       <SegmentedControl ariaLabel="Bar scale" options={SCALES} value={scale} onChange={setScale} />
     </>
   );
@@ -64,7 +75,10 @@ export function UsersSection({ range }: { range: ResolvedRange }) {
     imageUrl: r.imageUrl,
     color: colorFor(colors, r.userId),
     value: formatMetricValue(kind, leaderValue(r, metric)),
-    sub: metric === "tokens" && r.change !== null ? `${formatDeltaPercent(r.change)} vs previous` : undefined,
+    sub:
+      metric === "tokens" && r.change !== null
+        ? `${formatDeltaPercent(r.change)} vs previous`
+        : undefined,
     href: href(`/users/${r.userId}`),
   }));
 
@@ -76,7 +90,9 @@ export function UsersSection({ range }: { range: ResolvedRange }) {
       render: (r) => (
         <span className="inline-flex items-center gap-2 tabular">
           {rows.indexOf(r) + 1}
-          {metric === "tokens" && range.previous ? <RankMovement rank={r.rank} previousRank={r.previousRank} /> : null}
+          {metric === "tokens" && range.previous ? (
+            <RankMovement rank={r.rank} previousRank={r.previousRank} />
+          ) : null}
         </span>
       ),
     },
@@ -105,13 +121,24 @@ export function UsersSection({ range }: { range: ResolvedRange }) {
         </span>
       ),
     },
-    { key: "cache", header: "Cache hit", align: "right", render: (r) => formatMetricValue("percent", r.cacheHitRate) },
-    { key: "active", header: "Active", align: "right", render: (r) => formatMetricValue("hours", r.activeMs) },
+    {
+      key: "cache",
+      header: "Cache hit",
+      align: "right",
+      render: (r) => formatMetricValue("percent", r.cacheHitRate),
+    },
+    {
+      key: "active",
+      header: "Active",
+      align: "right",
+      render: (r) => formatMetricValue("hours", r.activeMs),
+    },
     {
       key: "delta",
       header: "vs previous",
       align: "right",
-      render: (r) => (metric === "tokens" ? <DeltaPill change={r.change} goodDirection="up" /> : null),
+      render: (r) =>
+        metric === "tokens" ? <DeltaPill change={r.change} goodDirection="up" /> : null,
     },
   ];
 
@@ -123,11 +150,20 @@ export function UsersSection({ range }: { range: ResolvedRange }) {
       bodyClassName={cn("flex flex-col gap-6", isStale && "opacity-60 transition-opacity")}
     >
       {rows.length === 0 ? (
-        <EmptyState title="No usage in this range" description="Install the collector on a machine or widen the range." />
+        <EmptyState
+          title="No usage in this range"
+          description="Install the collector on a machine or widen the range."
+        />
       ) : (
         <>
           <Podium entries={podium} />
-          <DataTable columns={columns} rows={rows} rowKey={(r) => r.userId} scale={scale} barColor={(r) => colorFor(colors, r.userId)} />
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(r) => r.userId}
+            scale={scale}
+            barColor={(r) => colorFor(colors, r.userId)}
+          />
         </>
       )}
     </SectionCard>

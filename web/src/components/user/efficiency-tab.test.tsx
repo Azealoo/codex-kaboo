@@ -11,7 +11,14 @@ vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => useQueryMock(
 
 import { EfficiencyTab } from "./efficiency-tab";
 
-const range: ResolvedRange = { kind: "30D", from: "2026-08-01", to: "2026-08-30", days: 30, previous: true, label: "Last 30 days" };
+const range: ResolvedRange = {
+  kind: "30D",
+  from: "2026-08-01",
+  to: "2026-08-30",
+  days: 30,
+  previous: true,
+  label: "Last 30 days",
+};
 const userId = "user1" as Id<"users">;
 
 describe("EfficiencyTab", () => {

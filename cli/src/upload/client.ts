@@ -1,5 +1,15 @@
-import { CLI_VERSION_HEADER, HEALTH_PATH, SYNC_PATH, WHOAMI_PATH } from "@codex-kaboo/shared/constants";
-import { ErrorResponse, SyncResponse, WhoamiResponse, type SyncBatch } from "@codex-kaboo/shared/sync";
+import {
+  CLI_VERSION_HEADER,
+  HEALTH_PATH,
+  SYNC_PATH,
+  WHOAMI_PATH,
+} from "@codex-kaboo/shared/constants";
+import {
+  ErrorResponse,
+  SyncResponse,
+  WhoamiResponse,
+  type SyncBatch,
+} from "@codex-kaboo/shared/sync";
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -35,7 +45,10 @@ export class SyncHttpError extends Error {
 }
 
 export class SyncNetworkError extends Error {
-  constructor(message: string, public readonly cause: unknown) {
+  constructor(
+    message: string,
+    public readonly cause: unknown,
+  ) {
     super(message);
     this.name = "SyncNetworkError";
   }
@@ -95,7 +108,8 @@ function describeError(body: ErrorResponse | null, status: number): string {
 
 export function createClient(opts: ClientOptions): SyncClient {
   const doFetch: FetchLike = opts.fetch ?? ((url, init) => fetch(url, init));
-  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const sleep =
+    opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const maxAttempts = opts.maxAttempts ?? 6; // 1 initial attempt + 5 retries, reaching the full 1/2/4/8/16 s backoff schedule
   const random = opts.random ?? Math.random;
@@ -119,7 +133,10 @@ export function createClient(opts: ClientOptions): SyncClient {
           signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (error) {
-        lastError = new SyncNetworkError(`network error: ${error instanceof Error ? error.message : String(error)}`, error);
+        lastError = new SyncNetworkError(
+          `network error: ${error instanceof Error ? error.message : String(error)}`,
+          error,
+        );
         if (attempt < maxAttempts) await sleep(backoffMs(attempt, random));
         continue;
       }
@@ -134,7 +151,13 @@ export function createClient(opts: ClientOptions): SyncClient {
       const errorBody = ErrorResponse.safeParse(parsed);
       const bodyOrNull = errorBody.success ? errorBody.data : null;
       const retryAfterMs = parseRetryAfter(response.headers.get("retry-after"), now());
-      const httpError = new SyncHttpError(response.status, bodyOrNull?.error ?? `http_${response.status}`, describeError(bodyOrNull, response.status), bodyOrNull, retryAfterMs);
+      const httpError = new SyncHttpError(
+        response.status,
+        bodyOrNull?.error ?? `http_${response.status}`,
+        describeError(bodyOrNull, response.status),
+        bodyOrNull,
+        retryAfterMs,
+      );
       if (response.status >= 500 || RETRYABLE.has(response.status)) {
         lastError = httpError;
         if (attempt < maxAttempts) await sleep(retryAfterMs ?? backoffMs(attempt, random));
@@ -142,23 +165,45 @@ export function createClient(opts: ClientOptions): SyncClient {
       }
       throw httpError;
     }
-    throw lastError instanceof Error ? lastError : new SyncNetworkError("request failed", lastError);
+    throw lastError instanceof Error
+      ? lastError
+      : new SyncNetworkError("request failed", lastError);
   }
 
   return {
     async sync(batch) {
       const parsed = SyncResponse.safeParse(await request(SYNC_PATH, "POST", batch));
-      if (!parsed.success) throw new SyncHttpError(200, "invalid_response", "server returned an unexpected sync response", null, null);
+      if (!parsed.success)
+        throw new SyncHttpError(
+          200,
+          "invalid_response",
+          "server returned an unexpected sync response",
+          null,
+          null,
+        );
       return parsed.data;
     },
     async whoami() {
       const parsed = WhoamiResponse.safeParse(await request(WHOAMI_PATH, "GET"));
-      if (!parsed.success) throw new SyncHttpError(200, "invalid_response", "server returned an unexpected whoami response", null, null);
+      if (!parsed.success)
+        throw new SyncHttpError(
+          200,
+          "invalid_response",
+          "server returned an unexpected whoami response",
+          null,
+          null,
+        );
       return parsed.data;
     },
     async health() {
-      const raw = (await request(HEALTH_PATH, "GET")) as { ok?: unknown; serverTime?: unknown } | null;
-      return { ok: raw?.ok === true, serverTime: typeof raw?.serverTime === "number" ? raw.serverTime : null };
+      const raw = (await request(HEALTH_PATH, "GET")) as {
+        ok?: unknown;
+        serverTime?: unknown;
+      } | null;
+      return {
+        ok: raw?.ok === true,
+        serverTime: typeof raw?.serverTime === "number" ? raw.serverTime : null,
+      };
     },
   };
 }

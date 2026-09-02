@@ -10,7 +10,10 @@ import { SyncTokensCard } from "@/components/settings/sync-tokens-card";
 export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Settings" description="Sync tokens, collector install, machines and model prices." />
+      <PageHeader
+        title="Settings"
+        description="Sync tokens, collector install, machines and model prices."
+      />
       <SectionErrorBoundary title="Tokens could not load">
         <SyncTokensCard />
       </SectionErrorBoundary>

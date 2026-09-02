@@ -11,13 +11,17 @@ const options = [
 describe("SegmentedControl", () => {
   it("calls onChange with the clicked value", async () => {
     const onChange = vi.fn();
-    render(<SegmentedControl ariaLabel="View" options={options} value="volume" onChange={onChange} />);
+    render(
+      <SegmentedControl ariaLabel="View" options={options} value="volume" onChange={onChange} />,
+    );
     await userEvent.click(screen.getByRole("radio", { name: "Efficiency" }));
     expect(onChange).toHaveBeenCalledWith("efficiency");
   });
   it("never empties: clicking the selected option keeps it selected", async () => {
     const onChange = vi.fn();
-    render(<SegmentedControl ariaLabel="View" options={options} value="volume" onChange={onChange} />);
+    render(
+      <SegmentedControl ariaLabel="View" options={options} value="volume" onChange={onChange} />,
+    );
     await userEvent.click(screen.getByRole("radio", { name: "Volume" }));
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByRole("radio", { name: "Volume" })).toHaveAttribute("aria-checked", "true");

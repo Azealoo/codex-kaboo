@@ -7,7 +7,12 @@ export const PRESETS = ["1D", "7D", "30D", "90D", "ALL"] as const;
 export type Preset = (typeof PRESETS)[number];
 export const DEFAULT_PRESET = "30D";
 
-const PRESET_DAYS: Record<Exclude<Preset, "ALL">, number> = { "1D": 1, "7D": 7, "30D": 30, "90D": 90 };
+const PRESET_DAYS: Record<Exclude<Preset, "ALL">, number> = {
+  "1D": 1,
+  "7D": 7,
+  "30D": 30,
+  "90D": 90,
+};
 
 export type RangeParams = { range: Preset; from: string | null; to: string | null };
 
@@ -58,7 +63,14 @@ function resolveCustom(from: string, to: string, today: string): ResolvedRange |
   if (compareDays(from, clampedTo) > 0) return null;
   const days = daysBetween(from, clampedTo);
   if (days > MAX_CUSTOM_RANGE_DAYS) return null;
-  return { kind: "custom", from, to: clampedTo, days, previous: true, label: customLabel(from, clampedTo) };
+  return {
+    kind: "custom",
+    from,
+    to: clampedTo,
+    days,
+    previous: true,
+    label: customLabel(from, clampedTo),
+  };
 }
 
 /**

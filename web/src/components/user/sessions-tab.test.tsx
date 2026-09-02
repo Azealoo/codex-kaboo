@@ -5,7 +5,9 @@ import type { Id } from "@convex/_generated/dataModel";
 // SessionsTab issues an unguarded `usePaginatedQuery`. Keeping it throwing exercises the
 // "query fails" path without needing a real Convex backend.
 const usePaginatedQueryMock = vi.fn();
-vi.mock("convex/react", () => ({ usePaginatedQuery: (...args: unknown[]) => usePaginatedQueryMock(...args) }));
+vi.mock("convex/react", () => ({
+  usePaginatedQuery: (...args: unknown[]) => usePaginatedQueryMock(...args),
+}));
 
 import { SessionsTab } from "./sessions-tab";
 

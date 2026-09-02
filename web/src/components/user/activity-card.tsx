@@ -18,11 +18,18 @@ export function ActivityCard({ userId, today }: { userId: Id<"users">; today: st
   return (
     <SectionCard
       title="Activity"
-      description={data ? `${formatInt(data.activeDays)} active days · busiest day ${formatCompact(data.maxTokens)} tokens` : "Last 12 months"}
+      description={
+        data
+          ? `${formatInt(data.activeDays)} active days · busiest day ${formatCompact(data.maxTokens)} tokens`
+          : "Last 12 months"
+      }
       help="One cell per day over the last 12 months, in the day the work happened (machine time zone). Bins are fixed: under 10M, under 100M, under 1B, 1B+ tokens."
     >
       {data ? (
-        <ActivityHeatmap grid={buildActivityGrid(from, today, data.days)} unpriced={data.unpricedModels.length > 0} />
+        <ActivityHeatmap
+          grid={buildActivityGrid(from, today, data.days)}
+          unpriced={data.unpricedModels.length > 0}
+        />
       ) : (
         <Skeleton className="h-28" />
       )}

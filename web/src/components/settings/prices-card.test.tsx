@@ -3,8 +3,24 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prices = [
-  { _id: "p1", model: "model-a", inputUsdPerMTok: 1, cachedInputUsdPerMTok: 0.1, outputUsdPerMTok: 5, source: "manual", updatedAt: 1 },
-  { _id: "p2", model: "model-b", inputUsdPerMTok: 2, cachedInputUsdPerMTok: 0.2, outputUsdPerMTok: 8, source: "manual", updatedAt: 2 },
+  {
+    _id: "p1",
+    model: "model-a",
+    inputUsdPerMTok: 1,
+    cachedInputUsdPerMTok: 0.1,
+    outputUsdPerMTok: 5,
+    source: "manual",
+    updatedAt: 1,
+  },
+  {
+    _id: "p2",
+    model: "model-b",
+    inputUsdPerMTok: 2,
+    cachedInputUsdPerMTok: 0.2,
+    outputUsdPerMTok: 8,
+    source: "manual",
+    updatedAt: 2,
+  },
 ];
 
 // `upsert` is looked up once per row (`useMutation(api.prices.upsert)`), so every row shares this

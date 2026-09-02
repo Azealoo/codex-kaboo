@@ -30,7 +30,8 @@ export async function buildScheduleTarget(deps: ScheduleDeps): Promise<ScheduleT
     kabooHome: deps.paths.home,
     homeDir: deps.homeDir,
   };
-  if (deps.env.CODEX_HOME && deps.env.CODEX_HOME.trim().length > 0) target.codexHome = deps.env.CODEX_HOME.trim();
+  if (deps.env.CODEX_HOME && deps.env.CODEX_HOME.trim().length > 0)
+    target.codexHome = deps.env.CODEX_HOME.trim();
   if (deps.uid !== undefined) target.uid = deps.uid;
   if (deps.env.PATH) target.pathEnv = deps.env.PATH;
   return target;

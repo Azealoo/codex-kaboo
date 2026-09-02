@@ -32,35 +32,140 @@ const zeroTools = {
 };
 
 const events: EventInput[] = [
-  { hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", machineId: "m1", source: "cli", isSubagent: false, input: 1000, cachedInput: 400, cacheWrite: 0, output: 200, reasoning: 50, total: 1200 },
-  { hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", machineId: "m1", source: "cli", isSubagent: false, input: 500, cachedInput: 100, cacheWrite: 10, output: 100, reasoning: 0, total: 600 },
-  { hour: 23, model: "gpt-5.6-luna", effort: "low", project: "beta", machineId: "m2", source: "exec", isSubagent: false, input: 300, cachedInput: 0, cacheWrite: 0, output: 30, reasoning: 0, total: 330 },
-  { hour: 10, model: "codex-auto-review", project: "alpha", machineId: "m1", source: "subagent:review", isSubagent: true, input: 700, cachedInput: 700, cacheWrite: 0, output: 70, reasoning: 70, total: 770 },
+  {
+    hour: 9,
+    model: "gpt-5.6-sol",
+    effort: "medium",
+    project: "alpha",
+    machineId: "m1",
+    source: "cli",
+    isSubagent: false,
+    input: 1000,
+    cachedInput: 400,
+    cacheWrite: 0,
+    output: 200,
+    reasoning: 50,
+    total: 1200,
+  },
+  {
+    hour: 9,
+    model: "gpt-5.6-sol",
+    effort: "medium",
+    project: "alpha",
+    machineId: "m1",
+    source: "cli",
+    isSubagent: false,
+    input: 500,
+    cachedInput: 100,
+    cacheWrite: 10,
+    output: 100,
+    reasoning: 0,
+    total: 600,
+  },
+  {
+    hour: 23,
+    model: "gpt-5.6-luna",
+    effort: "low",
+    project: "beta",
+    machineId: "m2",
+    source: "exec",
+    isSubagent: false,
+    input: 300,
+    cachedInput: 0,
+    cacheWrite: 0,
+    output: 30,
+    reasoning: 0,
+    total: 330,
+  },
+  {
+    hour: 10,
+    model: "codex-auto-review",
+    project: "alpha",
+    machineId: "m1",
+    source: "subagent:review",
+    isSubagent: true,
+    input: 700,
+    cachedInput: 700,
+    cacheWrite: 0,
+    output: 70,
+    reasoning: 70,
+    total: 770,
+  },
 ];
 
 const sessions: SessionInput[] = [
   {
-    machineId: "m1", project: "alpha", source: "cli", isSubagent: false,
-    turns: 2, userMessages: 2, agentMessages: 3, linesAdded: 10, linesRemoved: 2, filesChanged: 1, compactions: 1,
-    activeMs: 600_000, wallMs: 3_600_000, ttft: { count: 2, sumMs: 1500, hist: hist(1, 3) },
-    toolCounts: { ...zeroTools, commandRead: 3, commandList: 1, commandOther: 2, fileChange: 1, mcpTool: 1 },
+    machineId: "m1",
+    project: "alpha",
+    source: "cli",
+    isSubagent: false,
+    turns: 2,
+    userMessages: 2,
+    agentMessages: 3,
+    linesAdded: 10,
+    linesRemoved: 2,
+    filesChanged: 1,
+    compactions: 1,
+    activeMs: 600_000,
+    wallMs: 3_600_000,
+    ttft: { count: 2, sumMs: 1500, hist: hist(1, 3) },
+    toolCounts: {
+      ...zeroTools,
+      commandRead: 3,
+      commandList: 1,
+      commandOther: 2,
+      fileChange: 1,
+      mcpTool: 1,
+    },
     mcpTools: [{ key: "context7/query-docs", count: 1 }],
     skills: [{ key: "dataviz", count: 2 }],
-    tokens: { input: 1500, cachedInput: 500, cacheWrite: 10, output: 300, reasoning: 50, total: 1800 },
+    tokens: {
+      input: 1500,
+      cachedInput: 500,
+      cacheWrite: 10,
+      output: 300,
+      reasoning: 50,
+      total: 1800,
+    },
   },
   {
-    machineId: "m2", project: "beta", source: "exec", isSubagent: false,
-    turns: 1, userMessages: 1, agentMessages: 1, linesAdded: 0, linesRemoved: 0, filesChanged: 0, compactions: 0,
-    activeMs: 120_000, wallMs: 300_000, ttft: { count: 1, sumMs: 250, hist: hist(0) },
+    machineId: "m2",
+    project: "beta",
+    source: "exec",
+    isSubagent: false,
+    turns: 1,
+    userMessages: 1,
+    agentMessages: 1,
+    linesAdded: 0,
+    linesRemoved: 0,
+    filesChanged: 0,
+    compactions: 0,
+    activeMs: 120_000,
+    wallMs: 300_000,
+    ttft: { count: 1, sumMs: 250, hist: hist(0) },
     toolCounts: { ...zeroTools, commandRead: 1 },
     mcpTools: [],
-    skills: [{ key: "dataviz", count: 1 }, { key: "brainstorming", count: 1 }],
+    skills: [
+      { key: "dataviz", count: 1 },
+      { key: "brainstorming", count: 1 },
+    ],
     tokens: { input: 300, cachedInput: 0, cacheWrite: 0, output: 30, reasoning: 0, total: 330 },
   },
   {
-    machineId: "m1", project: "alpha", source: "subagent:review", isSubagent: true,
-    turns: 1, userMessages: 0, agentMessages: 1, linesAdded: 5, linesRemoved: 5, filesChanged: 1, compactions: 0,
-    activeMs: 60_000, wallMs: 60_000, ttft: { count: 1, sumMs: 100, hist: hist(0) },
+    machineId: "m1",
+    project: "alpha",
+    source: "subagent:review",
+    isSubagent: true,
+    turns: 1,
+    userMessages: 0,
+    agentMessages: 1,
+    linesAdded: 5,
+    linesRemoved: 5,
+    filesChanged: 1,
+    compactions: 0,
+    activeMs: 60_000,
+    wallMs: 60_000,
+    ttft: { count: 1, sumMs: 100, hist: hist(0) },
     toolCounts: { ...zeroTools, commandRead: 4 },
     mcpTools: [],
     skills: [],
@@ -75,8 +180,22 @@ describe("computeDayRollup", () => {
     expect(r.day).toBe(DAY);
     expect(r.version).toBe(2);
     expect(r.computedAt).toBe(AT);
-    expect(r.tokens).toEqual({ input: 2500, cachedInput: 1200, cacheWrite: 10, output: 400, reasoning: 120, total: 2900 });
-    expect(r.subagentTokens).toEqual({ input: 700, cachedInput: 700, cacheWrite: 0, output: 70, reasoning: 70, total: 770 });
+    expect(r.tokens).toEqual({
+      input: 2500,
+      cachedInput: 1200,
+      cacheWrite: 10,
+      output: 400,
+      reasoning: 120,
+      total: 2900,
+    });
+    expect(r.subagentTokens).toEqual({
+      input: 700,
+      cachedInput: 700,
+      cacheWrite: 0,
+      output: 70,
+      reasoning: 70,
+      total: 770,
+    });
     expect(r.responses).toBe(4);
     expect(r.sessions).toBe(2);
     expect(r.subagentSessions).toBe(1);
@@ -96,9 +215,37 @@ describe("computeDayRollup", () => {
     byHour[23] = 330;
     expect(r.byHour).toEqual(byHour);
     expect(r.byModel).toEqual([
-      { key: "codex-auto-review", tokens: { input: 700, cachedInput: 700, cacheWrite: 0, output: 70, reasoning: 70, total: 770 }, responses: 1 },
-      { key: "gpt-5.6-luna", effort: "low", tokens: { input: 300, cachedInput: 0, cacheWrite: 0, output: 30, reasoning: 0, total: 330 }, responses: 1 },
-      { key: "gpt-5.6-sol", effort: "medium", tokens: { input: 1500, cachedInput: 500, cacheWrite: 10, output: 300, reasoning: 50, total: 1800 }, responses: 2 },
+      {
+        key: "codex-auto-review",
+        tokens: {
+          input: 700,
+          cachedInput: 700,
+          cacheWrite: 0,
+          output: 70,
+          reasoning: 70,
+          total: 770,
+        },
+        responses: 1,
+      },
+      {
+        key: "gpt-5.6-luna",
+        effort: "low",
+        tokens: { input: 300, cachedInput: 0, cacheWrite: 0, output: 30, reasoning: 0, total: 330 },
+        responses: 1,
+      },
+      {
+        key: "gpt-5.6-sol",
+        effort: "medium",
+        tokens: {
+          input: 1500,
+          cachedInput: 500,
+          cacheWrite: 10,
+          output: 300,
+          reasoning: 50,
+          total: 1800,
+        },
+        responses: 2,
+      },
     ]);
     expect(r.byTool).toEqual([
       { key: "commandList", count: 1 },
@@ -117,8 +264,24 @@ describe("computeDayRollup", () => {
       { key: "dataviz", count: 3, sessions: 2 },
     ]);
     expect(r.byProject).toEqual([
-      { key: "alpha", tokens: 2570, responses: 3, sessions: 1, userMessages: 2, linesAdded: 10, linesRemoved: 2 },
-      { key: "beta", tokens: 330, responses: 1, sessions: 1, userMessages: 1, linesAdded: 0, linesRemoved: 0 },
+      {
+        key: "alpha",
+        tokens: 2570,
+        responses: 3,
+        sessions: 1,
+        userMessages: 2,
+        linesAdded: 10,
+        linesRemoved: 2,
+      },
+      {
+        key: "beta",
+        tokens: 330,
+        responses: 1,
+        sessions: 1,
+        userMessages: 1,
+        linesAdded: 0,
+        linesRemoved: 0,
+      },
     ]);
     // Tokens come from the day's EVENTS, session counts from its sessions. Sessions exclude
     // sub-agent threads everywhere (spec); tokens include them everywhere. m1 carries one main and
@@ -172,19 +335,49 @@ describe("computeDayRollup", () => {
   // machine/source TOKENS have to be event-derived too or day D reads 500 against 1,500.
   it("puts machine and source tokens on the event's day, not the session's start day", () => {
     const spanning: SessionInput = {
-      ...sessions[0]!, machineId: "m9", source: "vscode", project: "gamma", mcpTools: [], skills: [],
-      tokens: { input: 1250, cachedInput: 0, cacheWrite: 0, output: 250, reasoning: 0, total: 1500 },
+      ...sessions[0]!,
+      machineId: "m9",
+      source: "vscode",
+      project: "gamma",
+      mcpTools: [],
+      skills: [],
+      tokens: {
+        input: 1250,
+        cachedInput: 0,
+        cacheWrite: 0,
+        output: 250,
+        reasoning: 0,
+        total: 1500,
+      },
     };
     const before: EventInput = {
-      hour: 23, model: "gpt-5.6-sol", project: "gamma", isSubagent: false, machineId: "m9", source: "vscode",
-      input: 420, cachedInput: 0, cacheWrite: 0, output: 80, reasoning: 0, total: 500,
+      hour: 23,
+      model: "gpt-5.6-sol",
+      project: "gamma",
+      isSubagent: false,
+      machineId: "m9",
+      source: "vscode",
+      input: 420,
+      cachedInput: 0,
+      cacheWrite: 0,
+      output: 80,
+      reasoning: 0,
+      total: 500,
     };
     const after: EventInput = { ...before, hour: 0, input: 850, output: 150, total: 1000 };
 
     const d = computeDayRollup(userId, "2026-08-31", [before], [spanning], AT);
     expect(d.tokens.total).toBe(500);
     expect(d.byProject).toEqual([
-      { key: "gamma", tokens: 500, responses: 1, sessions: 1, userMessages: 2, linesAdded: 10, linesRemoved: 2 },
+      {
+        key: "gamma",
+        tokens: 500,
+        responses: 1,
+        sessions: 1,
+        userMessages: 2,
+        linesAdded: 10,
+        linesRemoved: 2,
+      },
     ]);
     expect(d.byMachine).toEqual([{ key: "m9", tokens: 500, sessions: 1 }]);
     expect(d.bySource).toEqual([{ key: "vscode", tokens: 500, sessions: 1 }]);
@@ -194,7 +387,15 @@ describe("computeDayRollup", () => {
     const next = computeDayRollup(userId, "2026-09-01", [after], [], AT);
     expect(next.tokens.total).toBe(1000);
     expect(next.byProject).toEqual([
-      { key: "gamma", tokens: 1000, responses: 1, sessions: 0, userMessages: 0, linesAdded: 0, linesRemoved: 0 },
+      {
+        key: "gamma",
+        tokens: 1000,
+        responses: 1,
+        sessions: 0,
+        userMessages: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+      },
     ]);
     expect(next.byMachine).toEqual([{ key: "m9", tokens: 1000, sessions: 0 }]);
     expect(next.bySource).toEqual([{ key: "vscode", tokens: 1000, sessions: 0 }]);
@@ -268,7 +469,13 @@ describe("mergeRollups", () => {
       { key: "dataviz", count: 4, sessions: 3 },
     ]);
     expect(merged.byProject.find((p) => p.key === "beta")).toEqual({
-      key: "beta", tokens: 660, responses: 2, sessions: 2, userMessages: 2, linesAdded: 0, linesRemoved: 0,
+      key: "beta",
+      tokens: 660,
+      responses: 2,
+      sessions: 2,
+      userMessages: 2,
+      linesAdded: 0,
+      linesRemoved: 0,
     });
     expect(merged.byMachine).toEqual([
       { key: "m1", tokens: 2570, sessions: 1 },
@@ -282,13 +489,21 @@ describe("mergeRollups", () => {
     const b = mergeRollups([day2, day1]);
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
     const many = (offset: number) =>
-      computeDayRollup(userId, "2026-08-30", [], [{
-        ...sessions[1]!,
-        mcpTools: Array.from({ length: 60 }, (_, i) => ({
-          key: `tool-${String(offset + i).padStart(3, "0")}`,
-          count: 1,
-        })),
-      }], AT);
+      computeDayRollup(
+        userId,
+        "2026-08-30",
+        [],
+        [
+          {
+            ...sessions[1]!,
+            mcpTools: Array.from({ length: 60 }, (_, i) => ({
+              key: `tool-${String(offset + i).padStart(3, "0")}`,
+              count: 1,
+            })),
+          },
+        ],
+        AT,
+      );
     const capped = mergeRollups([many(0), many(60)]);
     expect(capped.byMcpTool).toHaveLength(100);
     expect(capped.byMcpTool[0]).toEqual({ key: "(other)", count: 21 });

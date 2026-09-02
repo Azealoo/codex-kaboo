@@ -78,7 +78,9 @@ function NewTokenDialog() {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{created ? `Token "${created.name}" created` : "New sync token"}</DialogTitle>
+          <DialogTitle>
+            {created ? `Token "${created.name}" created` : "New sync token"}
+          </DialogTitle>
           <DialogDescription>
             {created
               ? "Copy it now — it is shown only once. Anyone with this token can upload usage to your account."
@@ -88,13 +90,21 @@ function NewTokenDialog() {
         {created ? (
           <div className="flex flex-col gap-3">
             <CopyBox label="Token" value={created.token} />
-            <CopyBox label="Run on the machine after installing the collector" value={commands.login} />
+            <CopyBox
+              label="Run on the machine after installing the collector"
+              value={commands.login}
+            />
             <CopyBox label="Install (if not installed yet)" value={commands.install} />
           </div>
         ) : (
           <div className="flex flex-col gap-2">
             <Label htmlFor="token-name">Token name</Label>
-            <Input id="token-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={64} />
+            <Input
+              id="token-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={64}
+            />
             <InlineError message={submit.error} />
           </div>
         )}
@@ -142,13 +152,16 @@ function RevokeButton({ token }: { token: SyncTokenRow }) {
               Revoke “{token.name}” ({token.prefix}…)?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Machines using “{token.name}” ({token.prefix}…) stop syncing immediately (their next sync gets
-              401). Already uploaded data is kept. This cannot be undone.
+              Machines using “{token.name}” ({token.prefix}…) stop syncing immediately (their next
+              sync gets 401). Already uploaded data is kept. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction disabled={revoke.pending} onClick={() => void revoke.run({ tokenId: token._id })}>
+            <AlertDialogAction
+              disabled={revoke.pending}
+              onClick={() => void revoke.run({ tokenId: token._id })}
+            >
               Revoke
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -166,13 +179,21 @@ export function SyncTokensCard() {
   const now = useNow();
   const columns: Column<SyncTokenRow>[] = [
     { key: "name", header: "Name", render: (t) => t.name },
-    { key: "prefix", header: "Token", render: (t) => <code className="font-mono text-xs">{t.prefix}…</code> },
+    {
+      key: "prefix",
+      header: "Token",
+      render: (t) => <code className="font-mono text-xs">{t.prefix}…</code>,
+    },
     { key: "created", header: "Created", render: (t) => formatDateTime(t.createdAt) },
     {
       key: "used",
       header: "Last used",
       render: (t) =>
-        now === null ? EM_DASH : t.lastUsedAt === null ? "never" : formatRelative(t.lastUsedAt, now),
+        now === null
+          ? EM_DASH
+          : t.lastUsedAt === null
+            ? "never"
+            : formatRelative(t.lastUsedAt, now),
     },
     {
       key: "status",
@@ -197,7 +218,10 @@ export function SyncTokensCard() {
       {tokens === undefined ? (
         <Skeleton className="h-24" />
       ) : tokens.length === 0 ? (
-        <EmptyState title="No tokens yet" description="Create one, then run the install commands on your machine." />
+        <EmptyState
+          title="No tokens yet"
+          description="Create one, then run the install commands on your machine."
+        />
       ) : (
         <DataTable columns={columns} rows={tokens} rowKey={(t) => t._id} />
       )}

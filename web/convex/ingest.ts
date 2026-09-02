@@ -20,7 +20,11 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
-  httpAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx,
+  httpAction,
+  internalMutation,
+  internalQuery,
+  type ActionCtx,
+  type MutationCtx,
 } from "./_generated/server";
 import { LIMITS, latestCliVersion } from "./lib/constants";
 import { parseBearer, sha256Hex } from "./lib/hash";
@@ -83,8 +87,24 @@ export function chunkSessions(sessions: SessionSummary[]): SessionSummary[][] {
 // deleted `state.json` both included. `machineId` is deliberately absent: the server stamps it, so
 // it is not a payload field at all.
 const EVENT_KEYS = [
-  "sessionId", "seq", "ts", "day", "hour", "model", "effort", "turnId", "project", "source",
-  "isSubagent", "origin", "input", "cachedInput", "cacheWrite", "output", "reasoning", "total",
+  "sessionId",
+  "seq",
+  "ts",
+  "day",
+  "hour",
+  "model",
+  "effort",
+  "turnId",
+  "project",
+  "source",
+  "isSubagent",
+  "origin",
+  "input",
+  "cachedInput",
+  "cacheWrite",
+  "output",
+  "reasoning",
+  "total",
   "contextWindow",
 ] as const;
 
@@ -121,7 +141,10 @@ export const upsertMachine = internalMutation({
     cliVersion: v.string(),
     now: v.number(),
   },
-  handler: async (ctx, { userId, machine, cliVersion, now }): Promise<{ conflict: boolean; created: boolean }> => {
+  handler: async (
+    ctx,
+    { userId, machine, cliVersion, now },
+  ): Promise<{ conflict: boolean; created: boolean }> => {
     const existing = await ctx.db
       .query("machines")
       .withIndex("by_machineId", (q) => q.eq("machineId", machine.machineId))
@@ -182,7 +205,10 @@ export const upsertSessions = internalMutation({
     sessions: v.array(v.object(sessionSummaryFields)),
     now: v.number(),
   },
-  handler: async (ctx, { userId, machineId, sessions, now }): Promise<{ counts: UpsertCounts; conflicts: string[] }> => {
+  handler: async (
+    ctx,
+    { userId, machineId, sessions, now },
+  ): Promise<{ counts: UpsertCounts; conflicts: string[] }> => {
     const counts = zeroCounts();
     const conflicts: string[] = [];
     const touched = new Set<string>();
@@ -245,7 +271,10 @@ export const upsertEvents = internalMutation({
     events: v.array(v.object(tokenEventFields)),
     now: v.number(),
   },
-  handler: async (ctx, { userId, machineId, events, now }): Promise<{ counts: UpsertCounts; conflicts: number }> => {
+  handler: async (
+    ctx,
+    { userId, machineId, events, now },
+  ): Promise<{ counts: UpsertCounts; conflicts: number }> => {
     const counts = zeroCounts();
     let conflicts = 0;
     const touched = new Set<string>();
@@ -315,7 +344,10 @@ export const finishSync = internalMutation({
     rateLimit: v.optional(rateLimitSnapshotValidator),
     now: v.number(),
   },
-  handler: async (ctx, { userId, machineId, tokenId, rateLimit, now }): Promise<{ rateLimitStored: boolean; tokenTouched: boolean }> => {
+  handler: async (
+    ctx,
+    { userId, machineId, tokenId, rateLimit, now },
+  ): Promise<{ rateLimitStored: boolean; tokenTouched: boolean }> => {
     let rateLimitStored = false;
     const machine = await ctx.db
       .query("machines")
@@ -379,7 +411,8 @@ type AuthResult = { ok: true; auth: TokenLookup } | { ok: false; response: Respo
 
 async function authenticate(ctx: ActionCtx, request: Request): Promise<AuthResult> {
   const raw = parseBearer(request.headers.get("authorization"));
-  if (!raw) return { ok: false, response: errorResponse(401, "unauthorized", "missing bearer token") };
+  if (!raw)
+    return { ok: false, response: errorResponse(401, "unauthorized", "missing bearer token") };
   const auth = await ctx.runQuery(internal.syncTokens.lookupByHash, {
     tokenHash: await sha256Hex(raw),
   });
@@ -396,7 +429,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function internalError(error: unknown): Response {
   console.error("codex-kaboo ingest failed", error);
-  return errorResponse(503, "internal", "unexpected error, retry later", {}, { "retry-after": "5" });
+  return errorResponse(
+    503,
+    "internal",
+    "unexpected error, retry later",
+    {},
+    { "retry-after": "5" },
+  );
 }
 
 /**

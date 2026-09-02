@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
-import { parseJsonLine, readJsonlLines, zstdSupported, type LineRecord } from "../../src/core/jsonl-reader";
+import {
+  parseJsonLine,
+  readJsonlLines,
+  zstdSupported,
+  type LineRecord,
+} from "../../src/core/jsonl-reader";
 
 // Temp dirs are tracked and removed in afterEach so failed runs don't litter os.tmpdir().
 const tmpDirs: string[] = [];
@@ -36,7 +41,9 @@ describe("readJsonlLines", () => {
     expect(lines.map((l) => l.text)).toEqual(['{"a":"é"}', '{"b":"😀"}', '{"c":1}']);
     expect(lines.map((l) => l.end)).toEqual([11, 24, 32]); // é = 2 bytes, 😀 = 4 bytes
     expect(result).toMatchObject({ consumed: 32, lines: 3, partial: false, bytes: 32 });
-    expect(Buffer.from(result.tail, "base64").toString("utf8")).toBe('{"a":"é"}\n{"b":"😀"}\n{"c":1}\n');
+    expect(Buffer.from(result.tail, "base64").toString("utf8")).toBe(
+      '{"a":"é"}\n{"b":"😀"}\n{"c":1}\n',
+    );
   });
   it("does not yield or count a trailing partial line", async () => {
     const file = tmpFile("b.jsonl", '{"a":1}\n{"b":');
@@ -62,7 +69,7 @@ describe("readJsonlLines", () => {
     expect(Buffer.from(result.tail, "base64").length).toBe(64);
   });
   it("yields corrupt lines as text; parseJsonLine returns undefined for them", async () => {
-    const file = tmpFile("e.jsonl", "{not json\n{\"ok\":true}\n");
+    const file = tmpFile("e.jsonl", '{not json\n{"ok":true}\n');
     const { lines } = await collect(file);
     expect(parseJsonLine(lines[0]?.text ?? "")).toBeUndefined();
     expect(parseJsonLine(lines[1]?.text ?? "")).toEqual({ ok: true });
@@ -81,10 +88,15 @@ describe("readJsonlLines", () => {
   });
   // Same code path as the zstd test above (readJsonlLines throws ZstdUnsupportedError, not
   // ENOENT, before ever touching the filesystem when zstd is unavailable), so gate it the same way.
-  it.skipIf(!zstdSupported())("rejects with ENOENT when the .zst source file is missing", async () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ck-reader-"));
-    tmpDirs.push(dir);
-    const missing = path.join(dir, "missing.jsonl.zst");
-    await expect(readJsonlLines(missing, () => {}, { compressed: true })).rejects.toMatchObject({ code: "ENOENT" });
-  });
+  it.skipIf(!zstdSupported())(
+    "rejects with ENOENT when the .zst source file is missing",
+    async () => {
+      const dir = mkdtempSync(path.join(os.tmpdir(), "ck-reader-"));
+      tmpDirs.push(dir);
+      const missing = path.join(dir, "missing.jsonl.zst");
+      await expect(readJsonlLines(missing, () => {}, { compressed: true })).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    },
+  );
 });

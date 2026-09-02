@@ -16,7 +16,11 @@ export const nodeSpawner: Spawner = {
       try {
         child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
       } catch (error) {
-        resolve({ code: null, stdout, stderr: error instanceof Error ? error.message : String(error) });
+        resolve({
+          code: null,
+          stdout,
+          stderr: error instanceof Error ? error.message : String(error),
+        });
         return;
       }
       const timeoutMs = opts.timeoutMs ?? 30_000;

@@ -14,22 +14,64 @@ const opt = (flag) => {
 const uuid = opt("--uuid");
 const parentUuid = opt("--parent") ?? "0199f1c0-0000-7000-8000-0000000000a0";
 if (!input || !output || !uuid) {
-  console.error("usage: make-fixture.mjs <input.jsonl> <output.jsonl> --uuid <uuid> [--parent <uuid>]");
+  console.error(
+    "usage: make-fixture.mjs <input.jsonl> <output.jsonl> --uuid <uuid> [--parent <uuid>]",
+  );
   process.exit(2);
 }
 if (!fs.existsSync(input)) {
   console.error(`make-fixture: source rollout not found: ${input}`);
-  console.error("Substitute any real rollout of the same shape (see the table in Task 17 Step 4: same history_mode/originator and roughly the same size), keep the synthetic UUID, then re-verify every pinned number against the regenerated fixture.");
+  console.error(
+    "Substitute any real rollout of the same shape (see the table in Task 17 Step 4: same history_mode/originator and roughly the same size), keep the synthetic UUID, then re-verify every pinned number against the regenerated fixture.",
+  );
   process.exit(1);
 }
 
-const KNOWN_TYPES = new Set(["session_meta", "turn_context", "event_msg", "response_item", "compacted", "token_usage_record"]);
+const KNOWN_TYPES = new Set([
+  "session_meta",
+  "turn_context",
+  "event_msg",
+  "response_item",
+  "compacted",
+  "token_usage_record",
+]);
 const KEEP = new Set([
-  "type", "turn_id", "call_id", "model", "effort", "originator", "cli_version", "history_mode", "model_provider",
-  "thread_source", "timezone", "mode", "kind", "status", "role", "phase", "plan_type", "limit_id", "limit_name",
-  "branch", "server", "tool", "timestamp", "current_date", "approval_policy", "rate_limit_reached_type",
-  "collaboration_mode_kind", "multi_agent_version", "other", "window_id", "first_window_id", "previous_window_id",
-  "window_number", "reasoning_effort", "exit_code", "duration",
+  "type",
+  "turn_id",
+  "call_id",
+  "model",
+  "effort",
+  "originator",
+  "cli_version",
+  "history_mode",
+  "model_provider",
+  "thread_source",
+  "timezone",
+  "mode",
+  "kind",
+  "status",
+  "role",
+  "phase",
+  "plan_type",
+  "limit_id",
+  "limit_name",
+  "branch",
+  "server",
+  "tool",
+  "timestamp",
+  "current_date",
+  "approval_policy",
+  "rate_limit_reached_type",
+  "collaboration_mode_kind",
+  "multi_agent_version",
+  "other",
+  "window_id",
+  "first_window_id",
+  "previous_window_id",
+  "window_number",
+  "reasoning_effort",
+  "exit_code",
+  "duration",
 ]);
 // `name` is deliberately absent from KEEP: it is decided by the enclosing key below — kept on a
 // payload/item (`response_item`/`function_call` names drive MCP detection), redacted inside
@@ -84,7 +126,10 @@ function synthDiff(diff) {
     else if (line.startsWith("-")) current.removed += 1;
   }
   return hunks
-    .map((h) => `@@ -1,${h.removed} +1,${h.added} @@\n${"+x\n".repeat(h.added)}${"-x\n".repeat(h.removed)}`)
+    .map(
+      (h) =>
+        `@@ -1,${h.removed} +1,${h.added} @@\n${"+x\n".repeat(h.added)}${"-x\n".repeat(h.removed)}`,
+    )
     .join("");
 }
 

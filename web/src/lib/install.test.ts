@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { compareVersions, installCommands, INSTALL_OS, installSteps, isNewerThanTested, tgzUrl } from "./install";
+import {
+  compareVersions,
+  installCommands,
+  INSTALL_OS,
+  installSteps,
+  isNewerThanTested,
+  tgzUrl,
+} from "./install";
 
 const origin = "https://codex-kaboo.vercel.app";
 
@@ -10,7 +17,9 @@ describe("install strings", () => {
     // surface must get the one command that works on npm >= 12.
     expect(tgzUrl(origin)).toBe("https://codex-kaboo.vercel.app/cli/codex-kaboo-cli.tgz");
     const c = installCommands(origin);
-    expect(c.install).toBe("npm install -g --allow-remote=all https://codex-kaboo.vercel.app/cli/codex-kaboo-cli.tgz");
+    expect(c.install).toBe(
+      "npm install -g --allow-remote=all https://codex-kaboo.vercel.app/cli/codex-kaboo-cli.tgz",
+    );
     expect(c.login).toBe("codex-kaboo login --token <token>");
     expect(installCommands(origin, "ck_abc").login).toBe("codex-kaboo login --token ck_abc");
     expect(c.schedule).toBe("codex-kaboo install");

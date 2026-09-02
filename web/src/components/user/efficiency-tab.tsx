@@ -48,13 +48,19 @@ function EfficiencyStats({ range, userId }: { range: ResolvedRange; userId: Id<"
     userId,
     previous: range.previous,
   });
-  if (!summary) return <CardsSkeleton count={9} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" />;
+  if (!summary)
+    return <CardsSkeleton count={9} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" />;
   // costUsd and linesAdded are sums (never null in practice); Metric.current is typed
   // `number | null` for every key, so widen back to `number` here rather than at the rate sites.
   const cost = summary.metrics.costUsd.current ?? 0;
   const perLine = costPerLine(cost, summary.metrics.linesAdded.current ?? 0);
   return (
-    <div className={cn("grid gap-4 md:grid-cols-2 xl:grid-cols-3", isStale && "opacity-60 transition-opacity")}>
+    <div
+      className={cn(
+        "grid gap-4 md:grid-cols-2 xl:grid-cols-3",
+        isStale && "opacity-60 transition-opacity",
+      )}
+    >
       <CostStructureCard
         costByKind={summary.costByKind}
         costUsd={cost}
@@ -68,7 +74,13 @@ function EfficiencyStats({ range, userId }: { range: ResolvedRange; userId: Id<"
         help="What the cached input tokens would have cost at the full input price, minus what they cost at the cached price."
         footer={`Without caching: ${formatUsd(costWithoutCaching(cost, summary.cacheSavingsUsd))}`}
       />
-      <StatCard label="Cost per line" value={perLine} kind="usd" help="Estimated cost divided by generated lines." footer={perLine === null ? "No generated lines in this range" : undefined} />
+      <StatCard
+        label="Cost per line"
+        value={perLine}
+        kind="usd"
+        help="Estimated cost divided by generated lines."
+        footer={perLine === null ? "No generated lines in this range" : undefined}
+      />
       <MetricStatCard metricKey="cacheHitRate" metric={summary.metrics.cacheHitRate} />
       <MetricStatCard metricKey="tokensPerLine" metric={summary.metrics.tokensPerLine} />
       <MetricStatCard metricKey="tokensPerTurn" metric={summary.metrics.tokensPerTurn} />

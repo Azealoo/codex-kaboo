@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { activityLevel, buildActivityGrid, describeCell, heatLevel, hourLabel, type ActivityCell, WEEKDAY_LABELS } from "./heatmap";
+import {
+  activityLevel,
+  buildActivityGrid,
+  describeCell,
+  heatLevel,
+  hourLabel,
+  type ActivityCell,
+  WEEKDAY_LABELS,
+} from "./heatmap";
 
 describe("activityLevel", () => {
   it.each([
@@ -20,9 +28,20 @@ describe("buildActivityGrid", () => {
   const day = (d: string, tokens: number) => ({ day: d, tokens, sessions: 1, costUsd: 0 });
   it("aligns weeks to Monday and pads out-of-range cells", () => {
     // 2026-08-05 is a Wednesday, 2026-08-16 a Sunday.
-    const grid = buildActivityGrid("2026-08-05", "2026-08-16", [day("2026-08-05", 5), day("2026-08-10", 20_000_000)]);
+    const grid = buildActivityGrid("2026-08-05", "2026-08-16", [
+      day("2026-08-05", 5),
+      day("2026-08-10", 20_000_000),
+    ]);
     expect(grid.weeks).toHaveLength(2);
-    expect(grid.weeks[0]?.map((c) => c.inRange)).toEqual([false, false, true, true, true, true, true]);
+    expect(grid.weeks[0]?.map((c) => c.inRange)).toEqual([
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
     expect(grid.weeks[0]?.[2]).toMatchObject({ day: "2026-08-05", level: 1, tokens: 5 });
     expect(grid.weeks[1]?.[0]).toMatchObject({ day: "2026-08-10", level: 2 });
     expect(grid.weeks[1]?.[6]).toMatchObject({ day: "2026-08-16", level: 0, inRange: true });
@@ -55,7 +74,14 @@ describe("heatLevel", () => {
 });
 
 describe("describeCell", () => {
-  const cell: ActivityCell = { day: "2026-09-01", level: 2, tokens: 1_500_000, sessions: 3, costUsd: 3, inRange: true };
+  const cell: ActivityCell = {
+    day: "2026-09-01",
+    level: 2,
+    tokens: 1_500_000,
+    sessions: 3,
+    costUsd: 3,
+    inRange: true,
+  };
 
   it("describes tokens, sessions and cost with no qualification when everything in range is priced", () => {
     expect(describeCell(cell, false)).toBe("Sep 1, 2026: 1.5M tokens, 3 sessions, $3.00");

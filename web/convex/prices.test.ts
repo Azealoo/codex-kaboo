@@ -6,8 +6,19 @@ import { SEED_PRICES } from "./prices";
 import { withUser, registerUser, seedRollup, setup } from "./test.helpers";
 
 const event: EventInput = {
-  hour: 9, model: "gpt-5.6-sol", effort: "medium", project: "alpha", machineId: "machine-1", source: "cli", isSubagent: false,
-  input: 1000, cachedInput: 400, cacheWrite: 0, output: 200, reasoning: 50, total: 1200,
+  hour: 9,
+  model: "gpt-5.6-sol",
+  effort: "medium",
+  project: "alpha",
+  machineId: "machine-1",
+  source: "cli",
+  isSubagent: false,
+  input: 1000,
+  cachedInput: 400,
+  cacheWrite: 0,
+  output: 200,
+  reasoning: 50,
+  total: 1200,
 };
 
 describe("SEED_PRICES", () => {
@@ -17,7 +28,11 @@ describe("SEED_PRICES", () => {
   // property worth pinning: the typo guard (MAX_PRICE_USD_PER_MTOK) must never reject a real seed
   // price.
   it("keeps every seed price at or under the typo-guard bound", () => {
-    const prices = SEED_PRICES.flatMap((row) => [row.inputUsdPerMTok, row.cachedInputUsdPerMTok, row.outputUsdPerMTok]);
+    const prices = SEED_PRICES.flatMap((row) => [
+      row.inputUsdPerMTok,
+      row.cachedInputUsdPerMTok,
+      row.outputUsdPerMTok,
+    ]);
     expect(Math.max(...prices)).toBeLessThanOrEqual(MAX_PRICE_USD_PER_MTOK);
   });
 });
@@ -32,10 +47,15 @@ describe("prices.seed", () => {
     expect(rows).toHaveLength(14);
     expect(rows.map((r) => r.model)).toEqual([...rows.map((r) => r.model)].sort());
     expect(rows.find((r) => r.model === "gpt-5.6-sol")).toMatchObject({
-      inputUsdPerMTok: 2, cachedInputUsdPerMTok: 0.2, outputUsdPerMTok: 10, source: "seed",
+      inputUsdPerMTok: 2,
+      cachedInputUsdPerMTok: 0.2,
+      outputUsdPerMTok: 10,
+      source: "seed",
     });
     expect(rows.find((r) => r.model === "gpt-5.1-codex-mini")).toMatchObject({
-      inputUsdPerMTok: 0.25, cachedInputUsdPerMTok: 0.03, outputUsdPerMTok: 2,
+      inputUsdPerMTok: 0.25,
+      cachedInputUsdPerMTok: 0.03,
+      outputUsdPerMTok: 2,
     });
     expect(rows.find((r) => r.model === "codex-auto-review")).toBeUndefined();
   });
@@ -46,27 +66,56 @@ describe("prices.upsert / remove", () => {
     const t = setup();
     await registerUser(t, "alice");
     const id = await withUser(t, "alice").mutation(api.prices.upsert, {
-      model: " gpt-9 ", inputUsdPerMTok: 1, cachedInputUsdPerMTok: 0.1, outputUsdPerMTok: 5,
+      model: " gpt-9 ",
+      inputUsdPerMTok: 1,
+      cachedInputUsdPerMTok: 0.1,
+      outputUsdPerMTok: 5,
     });
     const again = await withUser(t, "alice").mutation(api.prices.upsert, {
-      model: "gpt-9", inputUsdPerMTok: 2, cachedInputUsdPerMTok: 0.2, outputUsdPerMTok: 8,
+      model: "gpt-9",
+      inputUsdPerMTok: 2,
+      cachedInputUsdPerMTok: 0.2,
+      outputUsdPerMTok: 8,
     });
     expect(again).toBe(id);
     const rows = await withUser(t, "alice").query(api.prices.list, {});
     expect(rows).toEqual([
-      { _id: id, model: "gpt-9", inputUsdPerMTok: 2, cachedInputUsdPerMTok: 0.2, outputUsdPerMTok: 8, source: "manual", updatedAt: expect.any(Number) },
+      {
+        _id: id,
+        model: "gpt-9",
+        inputUsdPerMTok: 2,
+        cachedInputUsdPerMTok: 0.2,
+        outputUsdPerMTok: 8,
+        source: "manual",
+        updatedAt: expect.any(Number),
+      },
     ]);
-    await expect(withUser(t, "alice").mutation(api.prices.upsert, {
-      model: "gpt-9", inputUsdPerMTok: -1, cachedInputUsdPerMTok: 0, outputUsdPerMTok: 0,
-    })).rejects.toMatchObject({ data: { code: "bad_price" } });
+    await expect(
+      withUser(t, "alice").mutation(api.prices.upsert, {
+        model: "gpt-9",
+        inputUsdPerMTok: -1,
+        cachedInputUsdPerMTok: 0,
+        outputUsdPerMTok: 0,
+      }),
+    ).rejects.toMatchObject({ data: { code: "bad_price" } });
     // Typo guard: 10000.01 is just above MAX_PRICE_USD_PER_MTOK (10000), a fat-fingered magnitude
     // rather than a real price — see the constant's comment in shared/src/constants.ts.
-    await expect(withUser(t, "alice").mutation(api.prices.upsert, {
-      model: "gpt-9", inputUsdPerMTok: 10000.01, cachedInputUsdPerMTok: 0, outputUsdPerMTok: 0,
-    })).rejects.toMatchObject({ data: { code: "bad_price" } });
-    await expect(withUser(t, "alice").mutation(api.prices.upsert, {
-      model: "  ", inputUsdPerMTok: 1, cachedInputUsdPerMTok: 0, outputUsdPerMTok: 0,
-    })).rejects.toMatchObject({ data: { code: "bad_model" } });
+    await expect(
+      withUser(t, "alice").mutation(api.prices.upsert, {
+        model: "gpt-9",
+        inputUsdPerMTok: 10000.01,
+        cachedInputUsdPerMTok: 0,
+        outputUsdPerMTok: 0,
+      }),
+    ).rejects.toMatchObject({ data: { code: "bad_price" } });
+    await expect(
+      withUser(t, "alice").mutation(api.prices.upsert, {
+        model: "  ",
+        inputUsdPerMTok: 1,
+        cachedInputUsdPerMTok: 0,
+        outputUsdPerMTok: 0,
+      }),
+    ).rejects.toMatchObject({ data: { code: "bad_model" } });
     expect(await withUser(t, "alice").mutation(api.prices.remove, { model: "gpt-9" })).toBeNull();
     expect(await withUser(t, "alice").mutation(api.prices.remove, { model: "gpt-9" })).toBeNull();
     expect(await withUser(t, "alice").query(api.prices.list, {})).toEqual([]);
@@ -76,19 +125,37 @@ describe("prices.upsert / remove", () => {
     const t = setup();
     const alice = await registerUser(t, "alice");
     await seedRollup(t, alice, "2026-08-31", [event], []);
-    const before = await withUser(t, "alice").query(api.stats.summary, { from: "2026-08-31", to: "2026-08-31", previous: false });
+    const before = await withUser(t, "alice").query(api.stats.summary, {
+      from: "2026-08-31",
+      to: "2026-08-31",
+      previous: false,
+    });
     expect(before.metrics.costUsd.current).toBe(0);
     expect(before.unpricedModels).toEqual(["gpt-5.6-sol"]);
     await withUser(t, "alice").mutation(api.prices.upsert, {
-      model: "gpt-5.6-sol", inputUsdPerMTok: 2, cachedInputUsdPerMTok: 0.2, outputUsdPerMTok: 10,
+      model: "gpt-5.6-sol",
+      inputUsdPerMTok: 2,
+      cachedInputUsdPerMTok: 0.2,
+      outputUsdPerMTok: 10,
     });
-    const priced = await withUser(t, "alice").query(api.stats.summary, { from: "2026-08-31", to: "2026-08-31", previous: false });
+    const priced = await withUser(t, "alice").query(api.stats.summary, {
+      from: "2026-08-31",
+      to: "2026-08-31",
+      previous: false,
+    });
     expect(priced.metrics.costUsd.current).toBeCloseTo(0.00328, 8);
     expect(priced.unpricedModels).toEqual([]);
     await withUser(t, "alice").mutation(api.prices.upsert, {
-      model: "gpt-5.6-sol", inputUsdPerMTok: 4, cachedInputUsdPerMTok: 0.4, outputUsdPerMTok: 20,
+      model: "gpt-5.6-sol",
+      inputUsdPerMTok: 4,
+      cachedInputUsdPerMTok: 0.4,
+      outputUsdPerMTok: 20,
     });
-    const doubled = await withUser(t, "alice").query(api.stats.summary, { from: "2026-08-31", to: "2026-08-31", previous: false });
+    const doubled = await withUser(t, "alice").query(api.stats.summary, {
+      from: "2026-08-31",
+      to: "2026-08-31",
+      previous: false,
+    });
     expect(doubled.metrics.costUsd.current).toBeCloseTo(0.00656, 8);
   });
 });

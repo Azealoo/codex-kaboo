@@ -58,7 +58,8 @@ async function main() {
   const version = buildVersion(pkg.version, sha, now);
 
   if (!process.env.CODEX_KABOO_SERVER) {
-    const msg = "[pack-cli] CODEX_KABOO_SERVER is not set; the packed CLI would need `--server` at login.";
+    const msg =
+      "[pack-cli] CODEX_KABOO_SERVER is not set; the packed CLI would need `--server` at login.";
     if (process.env.CONVEX_DEPLOY_KEY || process.env.VERCEL) throw new Error(msg);
     console.warn(`${msg} (local build — continuing)`);
   }
@@ -67,7 +68,9 @@ async function main() {
     writeFileSync(cliPkgPath, `${JSON.stringify({ ...pkg, version }, null, 2)}\n`);
     passthrough(npm, ["run", "build", "-w", "cli"]);
     const tmp = mkdtempSync(path.join(tmpdir(), "codex-kaboo-pack-"));
-    const packed = JSON.parse(capture(npm, ["pack", "-w", "cli", "--json", "--pack-destination", tmp]));
+    const packed = JSON.parse(
+      capture(npm, ["pack", "-w", "cli", "--json", "--pack-destination", tmp]),
+    );
     const filename = packed[0].filename;
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
@@ -90,7 +93,8 @@ async function main() {
 // Only run the packer when this file is executed directly (`node scripts/pack-cli.mjs`, which is
 // how both the `prebuild` script and local verification invoke it) — not when pack-cli.test.ts
 // imports it for the pure helpers above, which must not trigger a real build/pack as a side effect.
-const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isMain =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   await main();
 }
