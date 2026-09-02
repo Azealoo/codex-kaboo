@@ -11,4 +11,12 @@ describe("nodeSpawner", () => {
     expect(missing.code).toBeNull();
     expect(missing.stderr.length).toBeGreaterThan(0);
   });
+
+  it("kills a wedged command after the timeout instead of hanging forever", async () => {
+    const start = Date.now();
+    const result = await nodeSpawner.run(process.execPath, ["-e", "setTimeout(()=>{}, 60000)"], { timeoutMs: 200 });
+    expect(result.timedOut).toBe(true);
+    expect(result.code).toBeNull();
+    expect(Date.now() - start).toBeLessThan(5000); // well under the child's 60 s timer or vitest's testTimeout
+  });
 });

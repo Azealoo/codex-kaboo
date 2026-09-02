@@ -20,10 +20,11 @@ export interface SpawnResult {
   code: number | null;
   stdout: string;
   stderr: string;
+  timedOut?: boolean;
 }
 
 export interface Spawner {
-  run(command: string, args: string[], opts?: { input?: string }): Promise<SpawnResult>;
+  run(command: string, args: string[], opts?: { input?: string; timeoutMs?: number }): Promise<SpawnResult>;
 }
 
 export interface ScheduleStatus {
