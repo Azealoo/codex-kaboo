@@ -18,6 +18,8 @@ import type * as lib_days from "../lib/days.js";
 import type * as lib_hash from "../lib/hash.js";
 import type * as lib_types from "../lib/types.js";
 import type * as lib_validators from "../lib/validators.js";
+import type * as machines from "../machines.js";
+import type * as prices from "../prices.js";
 import type * as rollups from "../rollups.js";
 import type * as sessions from "../sessions.js";
 import type * as stats from "../stats.js";
@@ -41,6 +43,8 @@ declare const fullApi: ApiFromModules<{
   "lib/hash": typeof lib_hash;
   "lib/types": typeof lib_types;
   "lib/validators": typeof lib_validators;
+  machines: typeof machines;
+  prices: typeof prices;
   rollups: typeof rollups;
   sessions: typeof sessions;
   stats: typeof stats;
