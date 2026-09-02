@@ -96,6 +96,12 @@ describe("fixtures", () => {
     expect(parsed.summary).toMatchObject({ source: "vscode", model: "gpt-5.7-future", responses: 1, mcpTools: [{ key: "context7/query-docs", count: 1 }] });
     expect(parsed.summary.toolCounts).toMatchObject({ mcpTool: 1, other: 1 });
     expect(parsed.summary.tokens).toMatchObject({ input: 300, cachedInput: 100, output: 20, reasoning: 5, total: 320 });
+    // This file really carries both: token_count 1008 at seq 4, then token_usage_record 320 at
+    // seq 5. A parse truncated at seq 4 ships the count row, so the wire has to say which
+    // mechanism each row came from for the server to retract it later.
+    expect(parsed.summary.eventOrigin).toBe("record");
+    expect(parsed.events).toHaveLength(1);
+    expect(parsed.events[0]).toMatchObject({ seq: 5, origin: "record", machineId: "machine-1", source: "vscode", total: 320 });
     expect(parsed.diagnostics.unknownTypes).toMatchObject({ world_state: 1, inter_agent_communication: 1 });
     expect(parsed.diagnostics.mcpFallbackUsed).toBe(false);
   });
