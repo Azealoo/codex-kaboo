@@ -1,86 +1,62 @@
-# Welcome to your Convex functions directory!
+# Convex backend
 
-Write your Convex functions here.
-See https://docs.convex.dev/functions for more.
+This is codex-kaboo's Convex deployment: the `codex-kaboo` collector CLI uploads metadata here,
+and the Next.js dashboard reads it back. See `docs/superpowers/specs/2026-09-01-codex-kaboo-design.md`
+for the full design; this file is just an orientation to what lives in this directory.
 
-A query function that takes two arguments looks like:
+## HTTP surface (`http.ts`, handlers in `ingest.ts`)
 
-```ts
-// convex/myFunctions.ts
-import { query } from "./_generated/server";
-import { v } from "convex/values";
+Three routes, authenticated with a **Bearer sync token** (not Clerk — the CLI has no browser
+session):
 
-export const myQueryFunction = query({
-  // Validators for arguments.
-  args: {
-    first: v.number(),
-    second: v.string(),
-  },
+| Path | Method | Purpose |
+|---|---|---|
+| `/api/v1/sync` | `POST` | Accepts a `SyncBatch` (`shared/src/sync.ts`), upserts sessions/token events, recomputes affected daily rollups |
+| `/api/v1/whoami` | `GET` | Validates a token and returns the user/token identity — what `codex-kaboo login` calls to confirm a pasted token |
+| `/api/v1/health` | `GET` | Unauthenticated liveness check |
 
-  // Function implementation.
-  handler: async (ctx, args) => {
-    // Read the database as many times as you need here.
-    // See https://docs.convex.dev/database/reading-data.
-    const documents = await ctx.db.query("tablename").collect();
+The dashboard itself talks to Convex through the generated `api` object with a Clerk JWT, via
+`authedQuery`/`authedMutation` in `lib/auth.ts` — not through HTTP routes.
 
-    // Arguments passed from the client are properties of the args object.
-    console.log(args.first, args.second)
+## Data model (`schema.ts`)
 
-    // Write arbitrary JavaScript here: filter, aggregate, build derived data,
-    // remove non-public properties, or create new objects.
-    return documents;
-  },
-});
-```
+| Table | Holds |
+|---|---|
+| `users` | One row per Clerk identity (`clerkId`, name/email/image, `createdAt`, `lastSeenAt`) |
+| `syncTokens` | Sync tokens by their sha256 hash (the raw token is never stored) — `prefix` and `name` are what the UI shows |
+| `machines` | One row per machine that has ever synced: label, platform/arch/versions, opt-in hostname, last known rate limit |
+| `sessions` | One row per Codex session/thread, denormalised from `SessionSummary` |
+| `tokenEvents` | One row per model response (token counts, day/hour, source/origin tags) |
+| `dailyRollups` | Precomputed per-(user, day) aggregates the dashboard actually queries, versioned by `ROLLUP_VERSION` |
+| `modelPrices` | Editable USD-per-million-token price table used to turn token counts into cost |
 
-Using this query function in a React component looks like:
+`dailyRollups` is the read path for almost everything the dashboard renders — `sessions` and
+`tokenEvents` are the source of truth it's built from, not what queries hit directly.
 
-```ts
-const data = useQuery(api.myFunctions.myQueryFunction, { first: 10, second: "hello" });
-```
+## `lib/`
 
+Pure, unit-tested helpers shared by the functions above: `aggregate.ts` (build/merge a day's
+rollup from its events and sessions), `cost.ts` (price a `Tokens` object), `auth.ts`
+(`authedQuery`/`authedMutation` wrappers that resolve the Clerk identity into a `users` row),
+`validators.ts` (Convex `v.*` validators mirroring the zod shapes in `shared/src/sync.ts` — the two
+must be kept in sync by hand), `constants.ts`, `days.ts`, `hash.ts`, `types.ts`.
 
-A mutation function looks like:
+## Rollups and `ROLLUP_VERSION`
 
-```ts
-// convex/myFunctions.ts
-import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+Every upsert recomputes the rollup(s) it touched immediately (`recomputeDay`/`recomputeDays` in
+`rollups.ts`), so the dashboard never reads a stale aggregate — for newly-synced data. What it does
+*not* do is touch rollups nothing has re-synced: those keep whatever `ROLLUP_VERSION` they were
+last written under. So whenever the aggregation logic changes and `ROLLUP_VERSION` bumps (currently
+`2`, in `shared/src/constants.ts` — the `byMachine`/`bySource` tokens went from session-derived to
+event-derived), running `npx convex run rollups:rebuildAll` (add `--prod` against production) is a
+**required** step on every deployment, not an optional cleanup — see the root README's Deployment
+section. It pages through every stored rollup and recomputes it; on a deployment with no rollups
+yet, the first call returns `{done: true, recomputed: 0}`, which is success, not a no-op failure.
 
-export const myMutationFunction = mutation({
-  // Validators for arguments.
-  args: {
-    first: v.string(),
-    second: v.string(),
-  },
+## Local dev and tests
 
-  // Function implementation.
-  handler: async (ctx, args) => {
-    // Insert or modify documents in the database here.
-    // Mutations can also read from the database like queries.
-    // See https://docs.convex.dev/database/writing-data.
-    const message = { body: args.first, author: args.second };
-    const id = await ctx.db.insert("messages", message);
-
-    // Optionally, return a value from your mutation.
-    return await ctx.db.get("messages", id);
-  },
-});
-```
-
-Using this mutation function in a React component looks like:
-
-```ts
-const mutation = useMutation(api.myFunctions.myMutationFunction);
-function handleButtonPress() {
-  // fire and forget, the most common way to use mutations
-  mutation({ first: "Hello!", second: "me" });
-  // OR
-  // use the result once the mutation has completed
-  mutation({ first: "Hello!", second: "me" }).then(result => console.log(result));
-}
-```
-
-Use the Convex CLI to push your functions to a deployment. See everything
-the Convex CLI can do by running `npx convex -h` in your project root
-directory. To learn more, launch the docs with `npx convex docs`.
+`npx convex dev` from `web/` links a dev deployment and writes `web/.env.local`. It needs
+`CLERK_FRONTEND_API_URL` set on the deployment (`auth.config.ts` reads it) before it will push, and
+`npx convex run prices:seed` once to populate `modelPrices`. Every module above has a co-located
+`*.test.ts` using `convex-test`; run them with `npm test -w web` (Vitest) — no live deployment
+required.

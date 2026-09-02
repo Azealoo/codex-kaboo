@@ -27,7 +27,7 @@ codex-kaboo/
   cli/                  package "codex-kaboo-cli", "bin": { "codex-kaboo": "dist/codex-kaboo.js" },
                         "files": ["dist"], "dependencies": {} (everything bundled by tsup),
                         devDeps: @codex-kaboo/shared "*", commander ^14, zod ^4, tsup ^8, vitest ^4.1, @types/node
-                        engines.node ">=18"
+                        engines.node ">=20"
   web/                  package "web" (Next 16 app), also hosts web/convex/
                         vitest projects: "convex" (edge-runtime, convex/**/*.test.ts, server.deps.inline ["convex-test"]),
                         "unit" (node, src/**/*.test.ts), "dom" (jsdom, src/**/*.test.tsx)
@@ -61,7 +61,7 @@ Single-test invocation: `npx vitest run <path> -t "<name>"` inside the workspace
 ```ts
 export const SCHEMA_VERSION = 1 as const;
 export const PARSER_VERSION = 1;
-export const ROLLUP_VERSION = 1;
+export const ROLLUP_VERSION = 2; // bumped for the byMachine/bySource event-basis change, §8/§9
 
 // Server-side request limits (also advertised in every sync response as `limits`).
 export const MAX_BODY_BYTES = 8 * 1024 * 1024;
@@ -197,6 +197,13 @@ export const Ttft = z.object({
 });
 export type Ttft = z.infer<typeof Ttft>;
 
+// Which of Codex's two token-usage mechanisms produced a row: `token_count` event_msg lines
+// (`count`) or `token_usage_record` lines (`record`). A file that emits both is parsed as
+// `record`-only; carrying the mechanism on the wire is what lets the server retract a `count`
+// event an earlier, truncated parse of the same file already shipped. See `SessionSummary.eventOrigin`.
+export const TokenEventOrigin = z.enum(["count", "record"]);
+export type TokenEventOrigin = z.infer<typeof TokenEventOrigin>;
+
 export const SessionSummary = z.object({
   sessionId: nonEmptyString, // threadId or `${threadId}_${rolloutId}`
   threadId: nonEmptyString,
@@ -230,6 +237,10 @@ export const SessionSummary = z.object({
   ttft: Ttft,
   tokens: TokenCounts,
   responses: count, // number of token events
+  // The mechanism this parse chose for the WHOLE file, re-derived from scratch every parse — the
+  // file's current, authoritative answer. `record` here retracts any `count` event the server
+  // still holds for this session.
+  eventOrigin: TokenEventOrigin,
   inProgress: z.boolean(),
   lineCount: count,
   generation: count,
@@ -249,7 +260,10 @@ export const TokenEvent = z.object({
   effort: shortString.optional(),
   turnId: shortString.optional(),
   project: nonEmptyString,
+  source: nonEmptyString, // the parent session's source, denormalised (the day rollup needs it
+                          // on the EVENT's own day, and the session may sit on a different day)
   isSubagent: z.boolean(),
+  origin: TokenEventOrigin, // the line type this row was derived from
   input: count,
   cachedInput: count,
   cacheWrite: count,
@@ -446,6 +460,11 @@ advances it when patching an existing row (only when inserting a new one).
 
 - `sessions` gains `effort?: string` (from `SessionSummary.effort`). `machineId` is stamped by the
   server from `batch.machine.machineId`; `SessionSummary` does not carry it.
+- `tokenEvents` documents likewise gain a server-stamped `machineId` (same `batch.machine.machineId`
+  source as `sessions`) — a machine is constant for a whole batch by construction, so `TokenEvent`
+  does not carry it on the wire (a required field the CLI cannot populate before login, e.g. for
+  `sync --dry-run`, does not belong there). The wire *does* carry `TokenEvent.source` (denormalised
+  from the parent session) and `TokenEvent.origin` (`TokenEventOrigin`); both are stored as sent.
 - `machines.lastRateLimit` = `RateLimitSnapshot & { receivedAt: number }` (`receivedAt` = server time
   of the request that carried it; the stored snapshot is replaced when the incoming `receivedAt` is
   newer-or-equal to the one on file — `now >= machine.lastRateLimit.receivedAt`, so a same-millisecond
@@ -556,10 +575,14 @@ export type BreakdownsResult = {
   byMcpTool: { key: string; count: number }[];
   bySkill: { key: string; count: number; sessions: number }[];
   byProject: { key: string; tokens: number; responses: number; sessions: number; userMessages: number; linesAdded: number; linesRemoved: number; share: number }[];
-  // byMachine/bySource are the only two breakdowns on the SESSION basis (tokenEvents carry no
-  // machineId or source), attributed to the session's START day; every other one is event-derived.
-  // Their `share` is therefore normalised WITHIN its own group — each group sums to 1 — while every
-  // other `share` is against `totalTokens`. `sessions` excludes sub-agent threads; `tokens` includes them.
+  // byMachine/bySource mix two bases on the SAME row, same convention as byProject: `tokens` is
+  // event-derived (from tokenEvents.machineId/source, on the EVENT's own day — ROLLUP_VERSION 2;
+  // before that they were session-derived and could show a machine at 250% beside a 100% project
+  // table), while `sessions` stays session-derived (attributed to the session's START day, and
+  // excludes sub-agent threads — the spec's attribution rule: token metrics on the event's day,
+  // session metrics on the session's start day). Because `tokens` is now on the same basis as
+  // `totalTokens`, `share` is plain (against `totalTokens`, like every other breakdown) rather than
+  // normalised within its own group.
   byMachine: { key: string; label: string; tokens: number; sessions: number; share: number }[]; // key = machineId
   bySource: { key: string; tokens: number; sessions: number; share: number }[];
   byHour: number[];                      // 24 entries, total tokens

@@ -242,17 +242,24 @@ Shared validators live in `convex/lib/validators.ts`.
 | `users` | clerkId (identity.subject), tokenIdentifier, email?, name?, imageUrl?, createdAt, lastSeenAt | by_clerkId |
 | `syncTokens` | userId, tokenHash (sha256 hex; raw never stored), prefix (`ck_3f9a1c`), name, createdAt, lastUsedAt?, revokedAt? | by_hash, by_user |
 | `machines` | machineId (CLI uuid), userId, label (default adjective-animal, renameable), hostname? (opt-in), platform, arch?, nodeVersion?, cliVersion, codexVersion?, codexLatestVersion?, tz?, firstSeenAt, lastSyncAt (server clock), lastRateLimit? {usedPercent, windowMinutes, resetsAt, planType?, limitId?, observedAt, receivedAt} | by_machineId, by_user |
-| `sessions` | userId, machineId, sessionId (`threadId` or `threadId_rolloutId`), threadId, parentThreadId?, startedAt, endedAt, wallMs, day (start day, session tz), timezone?, project, gitBranch?, originator, source, isSubagent, model, cliVersion?, turns, completedTurns, userMessages, agentMessages, reasoningItems, toolCounts {commandRead, commandList, commandSearch, commandOther, fileChange, webSearch, imageView, mcpTool, other}, mcpTools [{key: "server/tool", count}], skills [{key, count}], linesAdded, linesRemoved, filesChanged, compactions, activeMs, ttft {count, sumMs, hist[16]}, tokens, responses, inProgress, lineCount, generation, parseErrors, parserVersion, summaryHash, syncedAt | by_sessionId, by_user_day, by_user_startedAt, by_startedAt |
-| `tokenEvents` | userId, sessionId, seq, ts, day, hour, model, effort?, turnId?, project, isSubagent (denormalised by the CLI), input, cachedInput, cacheWrite, output, reasoning, total, contextWindow? | by_session_seq, by_user_day |
+| `sessions` | userId, machineId, sessionId (`threadId` or `threadId_rolloutId`), threadId, parentThreadId?, startedAt, endedAt, wallMs, day (start day, session tz), timezone?, project, gitBranch?, originator, source, isSubagent, model, cliVersion?, turns, completedTurns, userMessages, agentMessages, reasoningItems, toolCounts {commandRead, commandList, commandSearch, commandOther, fileChange, webSearch, imageView, mcpTool, other}, mcpTools [{key: "server/tool", count}], skills [{key, count}], linesAdded, linesRemoved, filesChanged, compactions, activeMs, ttft {count, sumMs, hist[16]}, tokens, responses, eventOrigin (`"count"` \| `"record"`, re-derived whole-file every parse), inProgress, lineCount, generation, parseErrors, parserVersion, summaryHash, syncedAt | by_sessionId, by_user_day, by_user_startedAt, by_startedAt |
+| `tokenEvents` | userId, machineId (server-stamped from `batch.machine.machineId`, not wire-carried), sessionId, seq, ts, day, hour, model, effort?, turnId?, project, source (the parent session's source, denormalised by the CLI), isSubagent (denormalised by the CLI), origin (`"count"` \| `"record"`, which mechanism produced this row), input, cachedInput, cacheWrite, output, reasoning, total, contextWindow? | by_session_seq, by_user_day |
 | `dailyRollups` | userId, day, version, computedAt, tokens, responses, subagentTokens, sessions, subagentSessions, turns, userMessages, agentMessages, linesAdded, linesRemoved, filesChanged, compactions, activeMs, wallMs, ttft, byHour number[24] (total tokens), byModel [{model, effort?, tokens…, responses}], byTool [{key, count}], byMcpTool [{key, count}], bySkill [{key, count, sessions}], byProject [{key, tokens, responses, sessions, userMessages, linesAdded, linesRemoved}], byMachine [{key, tokens, sessions}], bySource [{key, tokens, sessions}] | by_user_day, by_day |
 | `modelPrices` | model (exact match), inputUsdPerMTok, cachedInputUsdPerMTok, outputUsdPerMTok, source ("seed" \| "manual"), updatedAt, updatedBy? | by_model |
 
 Attribution rules: token metrics go to the event's local `day`/`hour`; session-level metrics
 (sessions, turns, messages, tools, skills, lines, compactions, active/wall time, TTFT) go to the
-session's start `day`. Sub-agent sessions are included in `tokens` (they consume the shared quota)
-and tracked separately in `subagentTokens/subagentSessions`; leaderboard sessions/messages exclude
-them. Rollup sub-arrays are sorted by key and capped at 100 entries with an `(other)` fold, so
-recomputes are byte-identical and documents stay a few KB.
+session's start `day`. `byMachine`/`bySource` mix both on the same row by this same rule: `tokens`
+is event-derived (from `tokenEvents.machineId`/`source`, on the event's own day), `sessions` is
+session-derived (from `sessions.machineId`/`source`, on the session's start day, excluding
+sub-agent threads) — not an inconsistency, the same convention `byProject` already uses. Because
+`tokens` is event-derived like every other breakdown, `stats.breakdowns` prices its `share` against
+`totalTokens` directly rather than normalising within the `byMachine`/`bySource` group (pre-v2, when
+their tokens were session-derived, within-group normalisation was needed to keep a midnight-
+spanning session from rendering a machine over 100%). Sub-agent sessions are included in `tokens`
+(they consume the shared quota) and tracked separately in `subagentTokens/subagentSessions`;
+leaderboard sessions/messages exclude them. Rollup sub-arrays are sorted by key and capped at 100
+entries with an `(other)` fold, so recomputes are byte-identical and documents stay a few KB.
 
 ### Functions
 
@@ -301,7 +308,7 @@ non-negative integers, timestamps within [2020, 2100], `ttft.hist.length === 16`
 mcpTools/skills entries, strings ≤ 256 chars; unknown keys stripped. Limits
 (`shared/src/constants.ts`): body ≤ 8 MiB, ≤ 500 sessions and ≤ 5,000 events per request, 1,000
 events per mutation, `TTFT_BUCKETS_MS = [250,500,750,1000,1500,2000,3000,4000,6000,8000,12000,
-16000,24000,32000,60000,∞]`, `ROLLUP_VERSION = 1`. All timestamps are Unix ms. The response
+16000,24000,32000,60000,∞]`, `ROLLUP_VERSION = 2`. All timestamps are Unix ms. The response
 advertises `limits` so the CLI can re-chunk, and `latestCliVersion` (from `public/cli/version.json`,
 embedded at deploy) for the upgrade hint. Unchanged data ⇒ no request, except a machine-only
 heartbeat at most hourly.
@@ -309,10 +316,11 @@ heartbeat at most hourly.
 ## Collector CLI (`cli/`)
 
 Commands (`codex-kaboo <cmd>`, commander, `--json` everywhere):
-- `login [--token ck_…] [--server URL] [--machine-name NAME] [--hostname]` — prompts for the token
-  if omitted, calls `/api/v1/whoami`, writes `~/.codex-kaboo/config.json` (mode 0600). The server
-  URL is baked in at build time (`CODEX_KABOO_SERVER`); `--server` overrides it for dev. The
-  hostname is uploaded only with `--hostname`.
+- `login [--token ck_…] [--server URL] [--machine-name NAME] [--hostname|--no-hostname]` — prompts
+  for the token if omitted, calls `/api/v1/whoami`, writes `~/.codex-kaboo/config.json` (mode
+  0600). The server URL is baked in at build time (`CODEX_KABOO_SERVER`); `--server` overrides it
+  for dev. The hostname is uploaded only after `--hostname`; the opt-in is sticky across re-logins
+  (a bare `login` keeps it) until `--no-hostname` clears it.
 - `sync [--full] [--dry-run] [--scheduled] [--codex-home PATH]` — discover → parse changed files →
   upload. `--dry-run` = full parse, no network, no state write, per-file counts (`--json` prints the
   exact batches: the privacy audit). `--full` resets file state (machineId/config kept) and
@@ -521,10 +529,23 @@ transforms are tested instead. Playwright + `@clerk/testing` smoke is optional a
 
 ## Privacy rule (hard)
 
-Uploaded: token counts, model names, efforts, tool kinds, skill names, project = basename(cwd),
-git branch, timestamps/durations, line counts, Codex/CLI versions, platform/arch, user-chosen
-machine label. Never uploaded: prompt/response text, command strings, file paths, diff contents,
-repository URLs, hostnames. Test fixtures are synthetic. `sync --dry-run --json` shows the exact payload.
+Uploaded (README "What is uploaded" is the source of truth; keep this in sync with it): token
+counts (input/cached-input/cache-write/output/reasoning/total, per response and per session, plus
+per-response context window and a `"count"`/`"record"` tag for which log mechanism produced each
+count), session/thread/turn IDs, the machine ID and label, model names, reasoning efforts, tool
+kinds and **MCP tool identifiers** (`server/tool`), skill names, project = basename(cwd), git
+branch, timestamps/durations, the session's **IANA time zone**, how the session started (source:
+cli / exec / vscode / mcp / custom / internal / subagent:<kind> / unknown) and, separately, its
+originator, line counts, Codex/CLI/collector/**Node** versions, platform/arch, activity counts
+(turns, messages, reasoning items, compactions, lines/files changed), parser bookkeeping (parse
+errors, generation, parser version, in-progress), and the weekly **rate-limit snapshot**
+(usedPercent, `planType`, limitId, windowMinutes, resetsAt, observedAt) — `planType` discloses the
+OpenAI plan tier (e.g. `"pro"`). Never uploaded: prompt/response text, command strings, file
+paths, diff contents, repository URLs, or this machine's hostname (opt-in only, via
+`login --hostname` / cleared with `--no-hostname`, sticky across re-logins). MCP tool identifiers,
+skill names and the project basename are uploaded exactly as chosen, so a name given after an
+internal host or a client travels too. Test fixtures are synthetic. `sync --dry-run --json` shows
+the exact payload.
 
 ## Deployment and one-time setup
 
