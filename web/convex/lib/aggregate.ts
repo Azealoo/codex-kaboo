@@ -342,3 +342,53 @@ export function computeDayRollup(
 
   return { userId, day, version: ROLLUP_VERSION, computedAt, ...c.finish() };
 }
+
+/** A fold of several rollups (any users, any days). */
+export type Aggregate = RollupBody & { days: number; activeDays: number };
+
+/** A rollup body tagged with its calendar day (a `Doc<"dailyRollups">` and a `Rollup` both are). */
+export type DayRollup = RollupBody & { day: string };
+
+export function emptyAggregate(): Aggregate {
+  return { ...emptyRollupBody(), days: 0, activeDays: 0 };
+}
+
+/**
+ * Sums every counter, merges keyed arrays by key (and effort) and re-applies the 100-entry cap.
+ * `days` counts the folded documents; `activeDays` counts the distinct calendar days that carry
+ * data, so two users' rollups for the same day count as one active day.
+ */
+export function mergeRollups(rollups: DayRollup[]): Aggregate {
+  const c = new Collector();
+  const body = c.body;
+  let days = 0;
+  const activeDayKeys = new Set<string>();
+  for (const r of rollups) {
+    days += 1;
+    if (r.tokens.total > 0 || r.sessions > 0) activeDayKeys.add(r.day);
+    body.tokens = addTokens(body.tokens, r.tokens);
+    body.subagentTokens = addTokens(body.subagentTokens, r.subagentTokens);
+    body.responses += r.responses;
+    body.sessions += r.sessions;
+    body.subagentSessions += r.subagentSessions;
+    body.turns += r.turns;
+    body.userMessages += r.userMessages;
+    body.agentMessages += r.agentMessages;
+    body.linesAdded += r.linesAdded;
+    body.linesRemoved += r.linesRemoved;
+    body.filesChanged += r.filesChanged;
+    body.compactions += r.compactions;
+    body.activeMs += r.activeMs;
+    body.wallMs += r.wallMs;
+    body.ttft = addTtft(body.ttft, r.ttft);
+    for (let hour = 0; hour < 24; hour++) c.addHour(hour, r.byHour[hour] ?? 0);
+    for (const m of r.byModel) c.addModel(m.key, m.effort, m.tokens, m.responses);
+    for (const t of r.byTool) c.addTool(t.key, t.count);
+    for (const t of r.byMcpTool) c.addMcpTool(t.key, t.count);
+    for (const s of r.bySkill) c.addSkill(s.key, s.count, s.sessions);
+    for (const p of r.byProject) c.addProject(p.key, p);
+    for (const m of r.byMachine) c.addMachine(m.key, m.tokens, m.sessions);
+    for (const s of r.bySource) c.addSource(s.key, s.tokens, s.sessions);
+  }
+  return { ...c.finish(), days, activeDays: activeDayKeys.size };
+}

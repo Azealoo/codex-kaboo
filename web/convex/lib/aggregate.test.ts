@@ -3,7 +3,9 @@ import type { Id } from "../_generated/dataModel";
 import type { Ttft } from "../../../shared/src/sync";
 import {
   computeDayRollup,
+  emptyAggregate,
   emptyRollupBody,
+  mergeRollups,
   type EventInput,
   type SessionInput,
 } from "./aggregate";
@@ -170,5 +172,85 @@ describe("computeDayRollup", () => {
     expect(r.byMcpTool[99]).toEqual({ key: "mcp-150", count: 150 });
     const keys = r.byMcpTool.map((e) => e.key);
     expect([...keys].sort()).toEqual(keys);
+  });
+});
+
+describe("mergeRollups", () => {
+  const day1 = computeDayRollup(userId, "2026-08-31", events, sessions, AT);
+  const day2 = computeDayRollup(userId, "2026-09-01", [events[2]!], [sessions[1]!], AT);
+  const empty = computeDayRollup(userId, "2026-09-02", [], [], AT);
+
+  it("returns the empty aggregate for no rollups", () => {
+    expect(mergeRollups([])).toEqual(emptyAggregate());
+  });
+
+  it("folds a single rollup into itself plus day counts", () => {
+    const merged = mergeRollups([day1]);
+    expect(merged).toMatchObject({
+      tokens: day1.tokens,
+      subagentTokens: day1.subagentTokens,
+      ttft: day1.ttft,
+      byHour: day1.byHour,
+      byModel: day1.byModel,
+      byTool: day1.byTool,
+      byMcpTool: day1.byMcpTool,
+      bySkill: day1.bySkill,
+      byProject: day1.byProject,
+      byMachine: day1.byMachine,
+      bySource: day1.bySource,
+      sessions: day1.sessions,
+      turns: day1.turns,
+      activeMs: day1.activeMs,
+      days: 1,
+      activeDays: 1,
+    });
+    expect("userId" in merged).toBe(false);
+    expect("day" in merged).toBe(false);
+  });
+
+  it("sums counters and merges keyed arrays across days", () => {
+    const merged = mergeRollups([day1, day2, empty]);
+    expect(merged.days).toBe(3);
+    expect(merged.activeDays).toBe(2);
+    // distinct calendar days, not documents: two rollups for the same day count once
+    expect(mergeRollups([day1, day2, day2])).toMatchObject({ days: 3, activeDays: 2 });
+    expect(merged.tokens.total).toBe(2900 + 330);
+    expect(merged.sessions).toBe(3);
+    expect(merged.byHour[23]).toBe(660);
+    expect(merged.byModel.find((m) => m.key === "gpt-5.6-luna")).toEqual({
+      key: "gpt-5.6-luna",
+      effort: "low",
+      tokens: { input: 600, cachedInput: 0, cacheWrite: 0, output: 60, reasoning: 0, total: 660 },
+      responses: 2,
+    });
+    expect(merged.bySkill).toEqual([
+      { key: "brainstorming", count: 2, sessions: 2 },
+      { key: "dataviz", count: 4, sessions: 3 },
+    ]);
+    expect(merged.byProject.find((p) => p.key === "beta")).toEqual({
+      key: "beta", tokens: 660, responses: 2, sessions: 2, userMessages: 2, linesAdded: 0, linesRemoved: 0,
+    });
+    expect(merged.byMachine).toEqual([
+      { key: "m1", tokens: 2570, sessions: 2 },
+      { key: "m2", tokens: 660, sessions: 2 },
+    ]);
+    expect(merged.byTool.find((t) => t.key === "commandRead")?.count).toBe(5);
+  });
+
+  it("is order independent and re-caps folded arrays", () => {
+    const a = mergeRollups([day1, day2]);
+    const b = mergeRollups([day2, day1]);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    const many = (offset: number) =>
+      computeDayRollup(userId, "2026-08-30", [], [{
+        ...sessions[1]!,
+        mcpTools: Array.from({ length: 60 }, (_, i) => ({
+          key: `tool-${String(offset + i).padStart(3, "0")}`,
+          count: 1,
+        })),
+      }], AT);
+    const capped = mergeRollups([many(0), many(60)]);
+    expect(capped.byMcpTool).toHaveLength(100);
+    expect(capped.byMcpTool[0]).toEqual({ key: "(other)", count: 21 });
   });
 });
