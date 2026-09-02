@@ -6,3 +6,7 @@ cli/test/fixtures
 package-lock.json
 docs
 .superpowers
+# Convex's codegen writes these in its own style and rewrites them on every `convex dev`/`deploy`.
+# Formatting them here only means the next deploy re-dirties the tree and fails `format:check` —
+# a gate that fails after a routine deploy is a gate people learn to ignore.
+web/convex/_generated

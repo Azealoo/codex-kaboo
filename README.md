@@ -193,6 +193,25 @@ Point a locally built collector at the dev deployment with
 
 ## Deployment
 
+`bash scripts/deploy.sh` does the Vercel half in one pass — links the project, sets Root Directory
+(the CLI cannot set that field; the script uses the REST API), sets every environment variable,
+mints the Convex deploy key straight into Vercel without it passing through the terminal, and
+deploys. It reads the deployment-specific values from the environment so no identifier lives in
+this public repo:
+
+```bash
+CONVEX_SITE=https://<prod-deployment>.convex.site \
+CLERK_PUBLISHABLE_KEY=pk_live_… CLERK_SECRET_KEY=sk_live_… \
+CLERK_FRONTEND_API_URL=https://<slug>.clerk.accounts.dev \
+bash scripts/deploy.sh
+```
+
+The three `CLERK_*` values are optional: without them it deploys with placeholders, which builds and
+serves but cannot sign anyone in — useful for proving the pipeline before the Clerk application
+exists, and safe only while production holds no data. Re-run with the real values to finish.
+
+The rest of this section is what that script automates, plus the parts only a human can do.
+
 Vercel project with **Root Directory = `web`** (build command from `web/vercel.json`:
 `npx convex deploy --cmd "npm run build"`), environment variables `CONVEX_DEPLOY_KEY`,
 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_SIGN_IN_URL`,
