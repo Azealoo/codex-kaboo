@@ -1,8 +1,8 @@
-import { CLI_LOCK_STALE_MS, CLI_MIN_BATCH_EVENTS, HEARTBEAT_INTERVAL_MS } from "@codex-kaboo/shared/constants";
+import { CLI_LOCK_STALE_MS, CLI_MIN_BATCH_EVENTS, CLI_RUN_BUDGET_MS, HEARTBEAT_INTERVAL_MS } from "@codex-kaboo/shared/constants";
 import type { RateLimitSnapshot, SyncBatch, SyncResponse, UpsertCounts } from "@codex-kaboo/shared/sync";
 import { readConfig } from "../core/config";
 import { resolveCodexHomes, type KabooPaths } from "../core/paths";
-import { readState, resetAllFiles, writeState } from "../core/state";
+import { emptyFileState, readState, resetAllFiles, writeState } from "../core/state";
 import type { Config, SyncState } from "../types";
 import { applyAck, buildBatches, DEFAULT_BATCH_LIMITS, type BatchLimits } from "../upload/batch";
 import { isAuthError, isBadRequest, isPayloadTooLarge, type SyncClient } from "../upload/client";
@@ -150,8 +150,6 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
       summaryChanged: f.upload?.summaryChanged ?? false,
     }));
     state.codexVersion = plan.codexVersion;
-    const rateLimitNewer =
-      plan.rateLimit !== null && (state.rateLimit === null || plan.rateLimit.observedAt > state.rateLimit.observedAt);
     const machine = buildMachineInfo({
       config, platform: deps.platform, arch: deps.arch, nodeVersion: deps.nodeVersion, hostname: deps.hostname,
       machineZone: deps.machineZone, codexVersion: plan.codexVersion, codexLatestVersion: plan.codexLatestVersion,
@@ -167,7 +165,7 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
     if (opts.dryRun) {
       const batches = buildBatches(plan.uploads, limits);
       report.batches = batches.map((batch, index) => {
-        const sendRateLimit = index === 0 && rateLimitNewer;
+        const sendRateLimit = index === 0 && plan.rateLimitChanged;
         return toSyncBatch(batch, machine, {
           cliVersion: deps.cliVersion,
           batchId: deps.newId(),
@@ -188,7 +186,7 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
     const client = deps.createClient(config as Config);
     const accepted = { sessions: zeroCounts(), events: zeroCounts() };
     const conflicts: { sessions: string[]; events: number } = { sessions: [], events: 0 };
-    let rateLimitToSend: RateLimitSnapshot | null = rateLimitNewer ? plan.rateLimit : null;
+    let rateLimitToSend: RateLimitSnapshot | null = plan.rateLimitChanged ? plan.rateLimit : null;
     const applyResponse = (res: SyncResponse): void => {
       addCounts(accepted.sessions, res.accepted.sessions);
       addCounts(accepted.events, res.accepted.events);
@@ -205,13 +203,22 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
       }
     };
     const failFile = (sessionId: string, message: string): void => {
-      const current = state.files[sessionId] ?? plannedById.get(sessionId)?.next;
+      const planned = plannedById.get(sessionId);
+      // A rejected file must keep whatever cursor it had before this run (or none at all), never
+      // the fully-advanced `planned.next` — see the non-final-ack comment below for why that matters.
+      const current = state.files[sessionId] ?? planned?.prev ?? (planned ? emptyFileState(planned.file.path) : undefined);
       if (current) state.files[sessionId] = { ...current, lastError: message };
     };
 
+    const deadline = start + (deps.budgetMs ?? CLI_RUN_BUDGET_MS);
     let pending = plan.uploads;
     let stopped = false;
     while (pending.length > 0 && !stopped) {
+      if (deps.now() >= deadline) {
+        report.warnings.push("run budget exhausted; remaining files continue next run");
+        stopped = true;
+        break;
+      }
       const batch = buildBatches(pending, limits)[0];
       if (!batch) break;
       const rateLimitChanged = rateLimitToSend !== null;
@@ -259,13 +266,31 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
       for (const entry of batch.files) {
         const planned = plannedById.get(entry.sessionId);
         if (!planned) continue;
-        const current = state.files[entry.sessionId] ?? planned.next;
-        state.files[entry.sessionId] = {
-          ...planned.next,
-          lastUploadedSeq: Math.max(current.lastUploadedSeq, planned.next.lastUploadedSeq, entry.lastSeq),
-          summaryHash: entry.final ? planned.summaryHash : current.summaryHash,
-          lastError: null,
-        };
+        if (entry.final) {
+          // The file's whole upload (through its summary) is now acked: safe to adopt this run's
+          // fully-parsed cursor.
+          const current = state.files[entry.sessionId] ?? planned.next;
+          state.files[entry.sessionId] = {
+            ...planned.next,
+            lastUploadedSeq: Math.max(current.lastUploadedSeq, planned.next.lastUploadedSeq, entry.lastSeq),
+            summaryHash: planned.summaryHash,
+            lastError: null,
+          };
+        } else {
+          // Non-final ack: only part of this file's new events were accepted. Do NOT adopt
+          // `planned.next`'s cursor (offset/size/mtimeMs) — with lastError cleared, that would make
+          // the next run's `isUnchanged` check see this file as fully caught up and skip re-parsing
+          // it forever, silently losing every event past what this batch acked. Keep whatever
+          // cursor is already on record (this run's own earlier write, else the state this run
+          // started with, else "nothing read yet") so the file is re-parsed next run and the events
+          // still unacked (seq > the raised lastUploadedSeq) are correctly re-derived and re-offered.
+          const current = state.files[entry.sessionId] ?? planned.prev ?? emptyFileState(planned.file.path);
+          state.files[entry.sessionId] = {
+            ...current,
+            lastUploadedSeq: Math.max(current.lastUploadedSeq, entry.lastSeq),
+            lastError: null,
+          };
+        }
       }
       pending = applyAck(pending, batch);
       await writeState(deps.paths, state);
