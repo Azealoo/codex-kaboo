@@ -6,6 +6,7 @@ import { discoverRolloutFiles, parseRolloutName } from "../../src/core/discover"
 
 const T1 = "0199a1b2-0000-7000-8000-000000000001";
 const T2 = "0199a1b2-0000-7000-8000-000000000002";
+const T3 = "0199a1b2-0000-7000-8000-000000000003";
 const R1 = "0199a1b2-0000-7000-8000-00000000000a";
 
 // Temp dirs are tracked and removed in afterEach so failed runs don't litter os.tmpdir().
@@ -30,6 +31,17 @@ function makeHome(): string {
   writeFileSync(path.join(day, "notes.txt"), "x");
   writeFileSync(path.join(day, `rollout-2026-08-30T12-00-00-${T2}.jsonl.tmp`), "x");
   writeFileSync(path.join(archived, `rollout-2026-07-01T09-00-00-${T2}.jsonl.zst`), Buffer.from([0x28, 0xb5, 0x2f, 0xfd]));
+  return home;
+}
+
+// A second, distinct existing home with exactly one matching rollout file — used to prove that
+// once the cap is already full, a later home is not walked at all (not just discarded).
+function makeSmallHome(): string {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ck-codex-small-"));
+  tmpDirs.push(home);
+  const day = path.join(home, "sessions", "2026", "08", "30");
+  mkdirSync(day, { recursive: true });
+  writeFileSync(path.join(day, `rollout-2026-08-30T09-00-00-${T3}.jsonl`), "{}\n");
   return home;
 }
 
@@ -62,5 +74,15 @@ describe("discoverRolloutFiles", () => {
     expect(capped.files).toHaveLength(2);
     expect(capped.truncated).toBe(true);
     expect(capped.homes[1]).toEqual({ path: path.join(home, "missing"), exists: false, files: 0 });
+  });
+  it("stops walking further homes once the file cap is already reached", async () => {
+    const home1 = makeHome();
+    const home2 = makeSmallHome();
+    const capped = await discoverRolloutFiles([home1, home2], { maxFiles: 2 });
+    expect(capped.files).toHaveLength(2);
+    expect(capped.files.map((f) => f.sessionId)).toEqual([T1, `${T1}_${R1}`]);
+    expect(capped.files.every((f) => f.codexHome === home1)).toBe(true);
+    expect(capped.truncated).toBe(true);
+    expect(capped.homes[1]).toEqual({ path: home2, exists: true, files: 0 });
   });
 });

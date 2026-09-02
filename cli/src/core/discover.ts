@@ -78,7 +78,7 @@ export async function discoverRolloutFiles(
       exists = false;
     }
     const found: string[] = [];
-    if (exists) {
+    if (exists && files.length < maxFiles) {
       for (const sub of SUBDIRS) await walk(path.join(home, sub), found, maxFiles + 1 - files.length);
     }
     let count = 0;
