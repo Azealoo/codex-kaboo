@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it } from "vitest";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CRON_BEGIN, CRON_END, cronAdapter, removeCronBlock, renderCronLine, upsertCronBlock } from "../../src/schedule/cron";
 import { checkTargetPaths, pickScheduler, type ScheduleTarget, type Spawner, type SpawnResult } from "../../src/schedule/index";
 import { LAUNCHD_LABEL, launchdAdapter, plistPath, renderPlist, xmlEscape } from "../../src/schedule/launchd";
-import { parseSchtasksStatus, renderVbs, schtasksAdapter, schtasksCreateArgs, TASK_NAME, vbsQuote } from "../../src/schedule/schtasks";
+import { parseSchtasksStatus, renderPowershellCommand, renderVbs, schtasksAdapter, schtasksCreateArgs, TASK_NAME, vbsQuote } from "../../src/schedule/schtasks";
 import { renderService, renderTimer, systemdAdapter, systemdDir } from "../../src/schedule/systemd";
 
 function target(overrides: Partial<ScheduleTarget> = {}): ScheduleTarget {
@@ -31,6 +31,22 @@ function mockSpawner(handler: (command: string, args: string[], input?: string) 
   return { spawner, calls };
 }
 
+const tempDirs: string[] = [];
+
+/** Every adapter under test writes real files (plist/units/VBS) to this instead of the real home directory. */
+function freshTempDir(prefix: string): string {
+  const dir = mkdtempSync(path.join(os.tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 describe("launchd", () => {
   it("renders an escaped plist and installs via bootout/bootstrap/kickstart", async () => {
     const plist = renderPlist(target({ codexHome: "/Users/me/<codex>" }));
@@ -42,7 +58,7 @@ describe("launchd", () => {
     expect(plist).toContain("<key>StandardOutPath</key>\n  <string>/Users/me/.codex-kaboo/launchd.log</string>");
     expect(plist).toContain("<key>ProcessType</key>\n  <string>Background</string>");
     expect(xmlEscape(`a"b'c`)).toBe("a&quot;b&apos;c");
-    const homeDir = mkdtempSync(path.join(os.tmpdir(), "ck-launchd-"));
+    const homeDir = freshTempDir("ck-launchd-");
     const t = target({ homeDir });
     const { spawner, calls } = mockSpawner((cmd, args) => (args[0] === "bootout" ? { code: 3, stdout: "", stderr: "not loaded" } : undefined));
     await launchdAdapter.install(t, spawner);
@@ -56,6 +72,15 @@ describe("launchd", () => {
     expect(status.installed).toBe(true);
     await launchdAdapter.uninstall(t, spawner);
     expect(existsSync(plistPath(homeDir))).toBe(false);
+  });
+
+  it("surfaces a launchctl kickstart failure during install", async () => {
+    const homeDir = freshTempDir("ck-launchd-kickstart-");
+    const t = target({ homeDir });
+    const { spawner } = mockSpawner((cmd, args) =>
+      args[0] === "kickstart" ? { code: 1, stdout: "", stderr: "kickstart: could not start job" } : undefined,
+    );
+    await expect(launchdAdapter.install(t, spawner)).rejects.toThrow(/kickstart failed/);
   });
 });
 
@@ -72,6 +97,23 @@ describe("cron", () => {
     expect(removeCronBlock(twice)).toBe("0 * * * * echo hi\n");
     expect(upsertCronBlock("", line)).toBe(`${CRON_BEGIN}\n${line}\n${CRON_END}\n`);
   });
+
+  it("escapes % and \" in every interpolated value (crontab(5) turns a bare % into a newline)", () => {
+    const line = renderCronLine(target({
+      nodePath: "/opt/node%5/bin/node",
+      scriptPath: '/Users/me/weird"quote/dist/codex-kaboo.js',
+      kabooHome: "/Users/me/.codex-kaboo%home",
+      codexHome: '/srv/codex"home%1',
+    }));
+    expect(line).toContain("/opt/node\\%5/bin/node");
+    expect(line).toContain('/Users/me/weird\\"quote/dist/codex-kaboo.js');
+    expect(line).toContain("/Users/me/.codex-kaboo\\%home/cron.log");
+    expect(line).toContain('CODEX_HOME="/srv/codex\\"home\\%1"');
+    const installed = upsertCronBlock("0 * * * * echo hi\n", line);
+    expect(removeCronBlock(installed)).toBe("0 * * * * echo hi\n");
+    expect(upsertCronBlock(installed, line)).toBe(installed);
+  });
+
   it("installs through crontab -l / crontab - and reports status", async () => {
     let stored = "";
     const { spawner, calls } = mockSpawner((cmd, args, input) => {
@@ -92,7 +134,7 @@ describe("cron", () => {
 
 describe("systemd", () => {
   it("renders unit files and enables the timer", async () => {
-    const homeDir = mkdtempSync(path.join(os.tmpdir(), "ck-systemd-"));
+    const homeDir = freshTempDir("ck-systemd-");
     const t = target({ homeDir, codexHome: "/srv/codex" });
     expect(renderService(t)).toContain(`ExecStart="/opt/node & co/bin/node" "${t.scriptPath}" sync --scheduled`);
     expect(renderService(t)).toContain("Environment=CODEX_HOME=/srv/codex");
@@ -105,6 +147,14 @@ describe("systemd", () => {
     expect(calls.map((c) => c.args.join(" "))).toEqual(["--user daemon-reload", "--user enable --now codex-kaboo-sync.timer"]);
     await systemdAdapter.uninstall(t, spawner);
     expect(existsSync(path.join(systemdDir(homeDir), "codex-kaboo-sync.timer"))).toBe(false);
+  });
+
+  it("doubles % in interpolated values and posix-joins systemdDir", () => {
+    const t = target({ nodePath: "/opt/node%5/bin/node", codexHome: "/srv/codex%home" });
+    const service = renderService(t);
+    expect(service).toContain('ExecStart="/opt/node%%5/bin/node"');
+    expect(service).toContain("Environment=CODEX_HOME=/srv/codex%%home");
+    expect(systemdDir("/Users/me")).toBe("/Users/me/.config/systemd/user");
   });
 });
 
@@ -121,7 +171,7 @@ describe("schtasks", () => {
     expect(parseSchtasksStatus("Status: Ready")).toEqual({ healthy: true, detail: "Ready" });
     expect(parseSchtasksStatus("Status: Disabled")).toEqual({ healthy: false, detail: "Disabled" });
     expect(parseSchtasksStatus("Statut: Prêt")).toEqual({ healthy: true, detail: "Prêt" });
-    const homeDir = mkdtempSync(path.join(os.tmpdir(), "ck-schtasks-"));
+    const homeDir = freshTempDir("ck-schtasks-");
     const kabooHome = path.join(homeDir, ".codex-kaboo");
     const { spawner, calls } = mockSpawner((cmd, _args) => (cmd === "where" ? { code: 0, stdout: "C:\\Windows\\System32\\wscript.exe", stderr: "" } : undefined));
     await schtasksAdapter.install({ ...t, homeDir, kabooHome }, spawner);
@@ -132,6 +182,25 @@ describe("schtasks", () => {
     expect(status).toMatchObject({ installed: true }); // `healthy` depends on checkTargetPaths, which cannot see the fake C:\ paths
     expect((await schtasksAdapter.status(t, mockSpawner(() => ({ code: 1, stdout: "", stderr: "ERROR: The system cannot find the file specified." })).spawner)).installed).toBe(false);
   });
+
+  it("falls back to the PowerShell runner when wscript.exe is unavailable", async () => {
+    const homeDir = freshTempDir("ck-schtasks-ps-");
+    const kabooHome = path.join(homeDir, ".codex-kaboo");
+    const t = target({
+      nodePath: "C:\\Program Files\\nodejs\\node.exe",
+      scriptPath: "C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\codex-kaboo-cli\\dist\\codex-kaboo.js",
+      kabooHome,
+      homeDir,
+      codexHome: "D:\\codex",
+    });
+    const { spawner, calls } = mockSpawner((cmd) => (cmd === "where" ? { code: 1, stdout: "", stderr: "INFO: Could not find files matching the specified pattern." } : undefined));
+    await schtasksAdapter.install(t, spawner);
+    expect(existsSync(path.join(kabooHome, "sync-hidden.vbs"))).toBe(false);
+    const create = calls.find((c) => c.command === "schtasks" && c.args[0] === "/Create")!;
+    const tr = create.args[create.args.length - 1];
+    expect(tr).toBe(renderPowershellCommand(t));
+    expect(tr).toContain("-WindowStyle Hidden");
+  });
 });
 
 describe("index", () => {
@@ -140,7 +209,7 @@ describe("index", () => {
     expect(pickScheduler("win32", {}).name).toBe("schtasks");
     expect(pickScheduler("linux", {}).name).toBe("cron");
     expect(pickScheduler("linux", { systemd: true }).name).toBe("systemd");
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ck-paths-"));
+    const dir = freshTempDir("ck-paths-");
     const script = path.join(dir, "codex-kaboo.js");
     writeFileSync(script, "");
     expect(await checkTargetPaths(target({ nodePath: process.execPath, scriptPath: script }))).toEqual([]);

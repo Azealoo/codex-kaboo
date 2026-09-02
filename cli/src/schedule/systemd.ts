@@ -4,12 +4,18 @@ import { checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTa
 
 const UNIT = "codex-kaboo-sync";
 
+/** POSIX-only generator: `path.posix` so the unit directory is byte-identical wherever the tests run (Windows CI included). */
 export function systemdDir(homeDir: string): string {
-  return path.join(homeDir, ".config", "systemd", "user");
+  return path.posix.join(homeDir, ".config", "systemd", "user");
+}
+
+/** systemd unit files expand `%` specifiers (`%h`, `%%`, …); double a literal `%` so interpolated values pass through unchanged. */
+function systemdEscape(value: string): string {
+  return value.replace(/%/g, "%%");
 }
 
 export function renderService(target: ScheduleTarget): string {
-  const env = ["Environment=CODEX_KABOO_SCHEDULED=1", ...(target.codexHome ? [`Environment=CODEX_HOME=${target.codexHome}`] : [])];
+  const env = ["Environment=CODEX_KABOO_SCHEDULED=1", ...(target.codexHome ? [`Environment=CODEX_HOME=${systemdEscape(target.codexHome)}`] : [])];
   return [
     "[Unit]",
     "Description=codex-kaboo sync",
@@ -17,7 +23,7 @@ export function renderService(target: ScheduleTarget): string {
     "[Service]",
     "Type=oneshot",
     ...env,
-    `ExecStart="${target.nodePath}" "${target.scriptPath}" ${scheduledArgs().join(" ")}`,
+    `ExecStart="${systemdEscape(target.nodePath)}" "${systemdEscape(target.scriptPath)}" ${scheduledArgs().join(" ")}`,
     "",
   ].join("\n");
 }

@@ -4,11 +4,20 @@ import { checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTa
 export const CRON_BEGIN = "# BEGIN codex-kaboo";
 export const CRON_END = "# END codex-kaboo";
 
+/**
+ * crontab(5): an unescaped `%` in the command field is turned into a newline (everything after it
+ * becomes stdin to the job), so every `%` in an interpolated value must be escaped as `\%`. These
+ * values are also wrapped in double quotes, so an embedded `"` must be escaped as `\"` too.
+ */
+function cronEscape(value: string): string {
+  return value.replace(/%/g, "\\%").replace(/"/g, '\\"');
+}
+
 /** POSIX-only generator: `path.posix` so the crontab line is byte-identical wherever the tests run (Windows CI included). */
 export function renderCronLine(target: ScheduleTarget): string {
-  const env = ["CODEX_KABOO_SCHEDULED=1", ...(target.codexHome ? [`CODEX_HOME="${target.codexHome}"`] : [])].join(" ");
-  const log = path.posix.join(target.kabooHome, "cron.log");
-  return `*/15 * * * * ${env} "${target.nodePath}" "${target.scriptPath}" ${scheduledArgs().join(" ")} >> "${log}" 2>&1`;
+  const env = ["CODEX_KABOO_SCHEDULED=1", ...(target.codexHome ? [`CODEX_HOME="${cronEscape(target.codexHome)}"`] : [])].join(" ");
+  const log = cronEscape(path.posix.join(target.kabooHome, "cron.log"));
+  return `*/15 * * * * ${env} "${cronEscape(target.nodePath)}" "${cronEscape(target.scriptPath)}" ${scheduledArgs().join(" ")} >> "${log}" 2>&1`;
 }
 
 export function removeCronBlock(existing: string): string {

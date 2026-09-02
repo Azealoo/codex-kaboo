@@ -73,7 +73,8 @@ export const launchdAdapter: SchedulerAdapter = {
       const legacy = await spawner.run("launchctl", ["load", "-w", file]);
       if (legacy.code !== 0) throw new Error(`launchctl bootstrap failed: ${bootstrap.stderr.trim() || legacy.stderr.trim()}`);
     }
-    await spawner.run("launchctl", ["kickstart", "-k", `${domain(target)}/${LAUNCHD_LABEL}`]);
+    const kickstart = await spawner.run("launchctl", ["kickstart", "-k", `${domain(target)}/${LAUNCHD_LABEL}`]);
+    if (kickstart.code !== 0) throw new Error(`launchctl kickstart failed: ${kickstart.stderr.trim()}`);
     return `launchd agent ${LAUNCHD_LABEL} installed (${file}), runs every 15 minutes`;
   },
   async uninstall(target, spawner) {
