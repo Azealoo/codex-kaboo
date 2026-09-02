@@ -91,6 +91,12 @@ export async function planSync(state: SyncState, homes: string[], opts: PlanOpti
   if (discovered.truncated) {
     plan.warnings.push(`more than ${CLI_MAX_FILES} rollout files found; only the first ${CLI_MAX_FILES} are processed`);
   }
+  for (const duplicate of discovered.duplicates) {
+    // Expected during Codex's compress-then-delete window, so this is a warning and not an error:
+    // the two files are the same session and progress is keyed by sessionId, so whichever copy
+    // survives picks up exactly where this one left off.
+    plan.warnings.push(`${duplicate.dropped}: same session as ${duplicate.kept}; only the latter is processed`);
+  }
   let zstdWarned = false;
 
   for (const file of discovered.files) {

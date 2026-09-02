@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { discoverRolloutFiles, parseRolloutName } from "../../src/core/discover";
+import { dedupeBySession, discoverRolloutFiles, parseRolloutName, type DiscoveredFile } from "../../src/core/discover";
 
 const T1 = "0199a1b2-0000-7000-8000-000000000001";
 const T2 = "0199a1b2-0000-7000-8000-000000000002";
@@ -97,6 +97,67 @@ describe("discoverRolloutFiles", () => {
     expect(capped.files.every((f) => f.codexHome === home1)).toBe(true);
     expect(capped.truncated).toBe(true);
     expect(capped.homes[1]).toEqual({ path: home2, exists: true, files: 0 });
+  });
+  it("keeps only the uncompressed copy when one session exists as both .jsonl and .jsonl.zst", async () => {
+    // Codex compresses a rollout and only then deletes the original, so mid-window both files
+    // exist under the same rollout-<ts>-<uuid> base name and map to one sessionId. Shipping both
+    // put two SessionSummary objects with the same sessionId in a single batch and made every
+    // (sessionId, seq) event key collide; locally the stored summaryHash then alternated between
+    // the two forever.
+    const home = mkdtempSync(path.join(os.tmpdir(), "ck-codex-dup-"));
+    tmpDirs.push(home);
+    const live = path.join(home, "sessions", "2026", "08", "30");
+    const archived = path.join(home, "archived_sessions", "2026", "08", "30");
+    mkdirSync(live, { recursive: true });
+    mkdirSync(archived, { recursive: true });
+    const base = `rollout-2026-08-30T10-00-00-${T1}.jsonl`;
+    writeFileSync(path.join(live, base), "{}\n{}\n{}\n");
+    writeFileSync(path.join(archived, `${base}.zst`), Buffer.from([0x28, 0xb5, 0x2f, 0xfd]));
+
+    const result = await discoverRolloutFiles([home]);
+    expect(result.files).toHaveLength(1);
+    expect(result.files[0]).toMatchObject({ sessionId: T1, compressed: false, path: path.join(live, base) });
+    expect(result.duplicates).toEqual([
+      { sessionId: T1, kept: path.join(live, base), dropped: path.join(archived, `${base}.zst`) },
+    ]);
+    // The per-home count stays equal to the number of files that will actually be processed.
+    expect(result.homes).toEqual([{ path: home, exists: true, files: 1 }]);
+
+    // Deterministic: the winner is derived from the files, never from walk order, so removing the
+    // uncompressed copy (the rest of the compress-then-delete window) simply promotes the .zst,
+    // and progress carries over because state is keyed by sessionId rather than by path.
+    rmSync(path.join(live, base));
+    const after = await discoverRolloutFiles([home]);
+    expect(after.files).toHaveLength(1);
+    expect(after.files[0]).toMatchObject({ sessionId: T1, compressed: true });
+    expect(after.duplicates).toEqual([]);
+  });
+  it("breaks a same-compression duplicate by size, then by path, and reports every dropped file", () => {
+    const file = (over: Partial<DiscoveredFile>): DiscoveredFile => ({
+      fileTimestamp: "2026-08-30T10-00-00", fileTimestampMs: 0, threadId: T1, rolloutId: null, compressed: false,
+      path: "/a", codexHome: "/h", name: "n", sessionId: T1, size: 10, mtimeMs: 0, ...over,
+    });
+    const small = file({ path: "/a", size: 10 });
+    const big = file({ path: "/b", size: 99 });
+    const other = file({ path: "/c", size: 99, sessionId: T2, threadId: T2 });
+    const zst = file({ path: "/d", size: 500, compressed: true });
+    const byPath = file({ path: "/e", size: 99 });
+
+    // Bigger wins at equal compression; an uncompressed file wins even against a much larger .zst.
+    const three = dedupeBySession([small, big, other, zst]);
+    expect(three.files.map((f) => f.path)).toEqual(["/b", "/c"]);
+    expect(three.duplicates).toEqual([
+      { sessionId: T1, kept: "/b", dropped: "/a" },
+      { sessionId: T1, kept: "/b", dropped: "/d" },
+    ]);
+    // Equal size and compression: the lexicographically smaller path, so the pick never depends on
+    // the order the two were discovered in.
+    expect(dedupeBySession([byPath, big]).files.map((f) => f.path)).toEqual(["/b"]);
+    expect(dedupeBySession([big, byPath]).files.map((f) => f.path)).toEqual(["/b"]);
+    // Nothing to do: the input array is returned untouched.
+    const distinct = [big, other];
+    expect(dedupeBySession(distinct).files).toBe(distinct);
+    expect(dedupeBySession(distinct).duplicates).toEqual([]);
   });
   it("marks the result truncated when a later home is skipped exactly at the cap", async () => {
     const home1 = makeExactHome();
