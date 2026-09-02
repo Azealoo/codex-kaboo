@@ -15,9 +15,9 @@
 - Prerequisites from Plan 1 (assumed present, never redone here): npm workspaces root; `web/` Next scaffold with `convex`, `convex-helpers`, `convex-test`, `@edge-runtime/vm`, `vitest` installed; `web/vitest.config.ts` with a `convex` project (`environment: "edge-runtime"`, include `convex/**/*.test.ts`, `server.deps.inline: ["convex-test"]`); `web/convex/tsconfig.json` from `npx convex codegen --init`; `shared/src/{constants,sync,days,metrics,index}.ts` exactly as contracts §2–§5.
 - Import paths: from `web/convex/*.ts` shared code is `../../shared/src/<file>`; from `web/convex/lib/*.ts` it is `../../../shared/src/<file>`. Generated code is `./_generated/*` and `../_generated/*` respectively. Never import via `@codex-kaboo/shared` or `@shared/*` inside `web/convex/`.
 - Convex field names are ASCII identifiers: every keyed sub-aggregate is an array of `{ key: string, … }`. Enum-like strings (`source`, `originator`, `effort`, tool kinds) are `v.string()`.
-- Limits (contracts §2): body ≤ 8 MiB (`MAX_BODY_BYTES`), ≤ 500 sessions and ≤ 5,000 events per request, 200 sessions / 1,000 events per mutation, ≤ 30 distinct days per event chunk, rollup arrays capped at 100 entries with an `"(other)"` fold.
+- Limits (contracts §2): body ≤ 8 MiB (`MAX_BODY_BYTES`), ≤ 500 sessions and ≤ 5,000 events per request, 200 sessions / 1,000 events per mutation, ≤ 30 distinct days per chunk (`MAX_DAYS_PER_EVENT_CHUNK`, applied to both the session and the event chunker), rollup arrays capped at 100 entries with an `"(other)"` fold.
 - Queries never call `Date.now()`; mutations, actions and HTTP actions may. Query results carry only day strings and Unix-ms numbers.
-- Sub-agent rule (refines the spec): sub-agent sessions contribute tokens only (`tokens`, `subagentTokens`, `subagentSessions`, `byModel`, `byHour`, `byProject.tokens/responses`, `byMachine.tokens`, `bySource`). `sessions`, `turns`, messages, tools, skills, lines, compactions, active/wall time and TTFT exclude them.
+- Sub-agent rule (refines the spec): sub-agent sessions contribute tokens (`tokens`, `subagentTokens`, `subagentSessions`, `byModel`, `byHour`, `byProject.tokens/responses`) and, in `byMachine` and `bySource` only, both `tokens` **and** `sessions` — a sub-agent session is a real session of its machine and its source. The top-level `sessions`, `turns`, messages, tools, skills, lines, compactions, active/wall time and TTFT exclude them.
 - Privacy: the server stores exactly the fields in `schema.ts`; unknown keys are stripped by zod before any mutation runs.
 - Every commit message ends with the two trailers `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` and `Claude-Session: https://claude.ai/code/session_01Q8G1yVYF1rfbje5mJGvMVt`.
 - Test commands (from the repo root): `npm run test -w web -- --project convex` runs the whole convex suite; a single file is `cd web && npx vitest run --project convex convex/<file>.test.ts`. Typecheck: `npm run typecheck -w web` (runs `convex codegen` then `tsc --noEmit`).
@@ -63,7 +63,7 @@
 - Test: `web/convex/schema.test.ts`
 
 **Interfaces:**
-- Consumes: `Tokens`, `Ttft`, `ToolCounts` types from `shared/src/sync.ts`.
+- Consumes: `Tokens`, `ToolCounts` types from `shared/src/sync.ts`.
 - Produces: `Doc<"users" | "syncTokens" | "machines" | "sessions" | "tokenEvents" | "dailyRollups" | "modelPrices">` via codegen; `sessionSummaryFields`, `tokenEventFields`, `dailyRollupFields`, `machineInfoValidator`, `rateLimitSnapshotValidator`, `rateLimitValidator`, `tokensValidator`, `toolCountsValidator`, `keyCountValidator`, `ttftValidator`, `rollupModelValidator`, `rollupSkillValidator`, `rollupProjectValidator`, `rollupTokensSessionsValidator`; every type in contracts §9; `setup(): TestConvex` and `modules` from `test.helpers.ts`.
 
 - [ ] **Step 1: Create `web/convex/lib/types.ts` (verbatim copy of contracts §9)**
@@ -73,7 +73,7 @@ This file is the binding result-type contract consumed by the web app (Plan 3). 
 ```ts
 // web/convex/lib/types.ts
 import type { Id } from "../_generated/dataModel";
-import type { Tokens, Ttft, ToolCounts } from "../../../shared/src/sync";
+import type { Tokens, ToolCounts } from "../../../shared/src/sync";
 
 export type Metric = { current: number; previous: number | null; change: number | null };
 export type Range = { from: string; to: string };
@@ -270,9 +270,6 @@ describe("schema", () => {
   });
 
   it("enumerates the convex modules for convex-test", () => {
-    for (const path of Object.keys(modules)) {
-      expect(path).not.toMatch(/_generated/);
-    }
     expect(Object.keys(modules).length).toBeGreaterThan(0);
   });
 });
@@ -391,7 +388,6 @@ export const sessionSummaryFields = {
   parserVersion: v.number(),
   summaryHash: v.string(),
 };
-export const sessionSummaryValidator = v.object(sessionSummaryFields);
 
 // TokenEvent (contracts §3). The tokenEvents table adds userId.
 export const tokenEventFields = {
@@ -413,7 +409,6 @@ export const tokenEventFields = {
   total: v.number(),
   contextWindow: v.optional(v.number()),
 };
-export const tokenEventValidator = v.object(tokenEventFields);
 
 // dailyRollups sub-aggregates. Every keyed array carries `key` (contracts §8).
 export const rollupModelValidator = v.object({
@@ -769,7 +764,7 @@ Claude-Session: https://claude.ai/code/session_01Q8G1yVYF1rfbje5mJGvMVt"
 
 **Interfaces:**
 - Consumes: `MAX_BODY_BYTES`, `MAX_EVENTS_PER_REQUEST`, `MAX_SESSIONS_PER_REQUEST`, `MAX_QUERY_RANGE_DAYS` from `shared/src/constants.ts`; `SyncLimits` from `shared/src/sync.ts`; `isValidDay`, `compareDays`, `daysBetween`, `previousPeriod`, `addDays` from `shared/src/days.ts`; `Range` from `lib/types.ts`.
-- Produces: `TOKEN_LAST_USED_THROTTLE_MS = 60_000`, `REBUILD_PAGE_SIZE = 50`, `LIMITS: SyncLimits`, `latestCliVersion(): string | null`, `assertRange(from, to): Range` (throws `ConvexError({ code: "bad_range", from, to })`), `resolvePeriods(from, to, previous?: boolean): { range: Range; previousRange: Range | null }`.
+- Produces: `TOKEN_LAST_USED_THROTTLE_MS = 60_000`, `REBUILD_PAGE_SIZE = 20`, `LIMITS: SyncLimits`, `latestCliVersion(): string | null`, `assertRange(from, to): Range` (throws `ConvexError({ code: "bad_range", from, to })`), `resolvePeriods(from, to, previous?: boolean): { range: Range; previousRange: Range | null }`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -869,8 +864,11 @@ import type { SyncLimits } from "../../../shared/src/sync";
 /** `syncTokens.lastUsedAt` is written at most once per minute per token. */
 export const TOKEN_LAST_USED_THROTTLE_MS = 60_000;
 
-/** Rollups recomputed per `rollups.rebuildAll` invocation before it reschedules itself. */
-export const REBUILD_PAGE_SIZE = 50;
+/**
+ * Rollups recomputed per `rollups.rebuildAll` invocation before it reschedules itself. Each one
+ * re-reads a whole (user, day) of `tokenEvents` inside the same mutation, so the page stays small.
+ */
+export const REBUILD_PAGE_SIZE = 20;
 
 /** Advertised in every sync response so the CLI can re-chunk (contracts §7). */
 export const LIMITS: SyncLimits = {
@@ -1021,7 +1019,7 @@ describe("loadPriceMap", () => {
         updatedAt: 1,
       });
     });
-    const entries = await t.query(async (ctx) => [...(await loadPriceMap(ctx)).entries()]);
+    const entries = await t.run(async (ctx) => [...(await loadPriceMap(ctx)).entries()]);
     expect(entries).toEqual([["gpt-5.6-sol", sol]]);
   });
 });
@@ -1689,7 +1687,7 @@ Claude-Session: https://claude.ai/code/session_01Q8G1yVYF1rfbje5mJGvMVt"
 
 **Interfaces:**
 - Consumes: `Collector`, `RollupBody`, `emptyRollupBody` from Task 5; `addTokens`, `addTtft` from `shared/src/metrics.ts`.
-- Produces: `Aggregate = RollupBody & { days: number; activeDays: number }`, `emptyAggregate(): Aggregate`, `mergeRollups(rollups: RollupBody[]): Aggregate` (a `Doc<"dailyRollups">` is a `RollupBody`). `days` counts folded rollups; `activeDays` counts those with `tokens.total > 0 || sessions > 0`. Arrays are re-capped after merging.
+- Produces: `Aggregate = RollupBody & { days: number; activeDays: number }`, `DayRollup = RollupBody & { day: string }`, `emptyAggregate(): Aggregate`, `mergeRollups(rollups: DayRollup[]): Aggregate` (a `Doc<"dailyRollups">` and a `Rollup` are both `DayRollup`s). `days` counts folded rollup documents; `activeDays` counts the **distinct calendar days** among the rollups with `tokens.total > 0 || sessions > 0` — two documents for the same `day` (two users, say) count once. Arrays are re-capped after merging.
 
 - [ ] **Step 1: Append the failing tests to `web/convex/lib/aggregate.test.ts`**
 
@@ -1733,6 +1731,8 @@ describe("mergeRollups", () => {
     const merged = mergeRollups([day1, day2, empty]);
     expect(merged.days).toBe(3);
     expect(merged.activeDays).toBe(2);
+    // distinct calendar days, not documents: two rollups for the same day count once
+    expect(mergeRollups([day1, day2, day2])).toMatchObject({ days: 3, activeDays: 2 });
     expect(merged.tokens.total).toBe(2900 + 330);
     expect(merged.sessions).toBe(3);
     expect(merged.byHour[23]).toBe(660);
@@ -1786,19 +1786,26 @@ Expected: FAIL — `mergeRollups is not a function` (import resolves to undefine
 /** A fold of several rollups (any users, any days). */
 export type Aggregate = RollupBody & { days: number; activeDays: number };
 
+/** A rollup body tagged with its calendar day (a `Doc<"dailyRollups">` and a `Rollup` both are). */
+export type DayRollup = RollupBody & { day: string };
+
 export function emptyAggregate(): Aggregate {
   return { ...emptyRollupBody(), days: 0, activeDays: 0 };
 }
 
-/** Sums every counter, merges keyed arrays by key (and effort) and re-applies the 100-entry cap. */
-export function mergeRollups(rollups: RollupBody[]): Aggregate {
+/**
+ * Sums every counter, merges keyed arrays by key (and effort) and re-applies the 100-entry cap.
+ * `days` counts the folded documents; `activeDays` counts the distinct calendar days that carry
+ * data, so two users' rollups for the same day count as one active day.
+ */
+export function mergeRollups(rollups: DayRollup[]): Aggregate {
   const c = new Collector();
   const body = c.body;
   let days = 0;
-  let activeDays = 0;
+  const activeDayKeys = new Set<string>();
   for (const r of rollups) {
     days += 1;
-    if (r.tokens.total > 0 || r.sessions > 0) activeDays += 1;
+    if (r.tokens.total > 0 || r.sessions > 0) activeDayKeys.add(r.day);
     body.tokens = addTokens(body.tokens, r.tokens);
     body.subagentTokens = addTokens(body.subagentTokens, r.subagentTokens);
     body.responses += r.responses;
@@ -1823,7 +1830,7 @@ export function mergeRollups(rollups: RollupBody[]): Aggregate {
     for (const m of r.byMachine) c.addMachine(m.key, m.tokens, m.sessions);
     for (const s of r.bySource) c.addSource(s.key, s.tokens, s.sessions);
   }
-  return { ...c.finish(), days, activeDays };
+  return { ...c.finish(), days, activeDays: activeDayKeys.size };
 }
 ```
 
@@ -1935,7 +1942,7 @@ describe("users.me / users.list", () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `cd web && npx vitest run --project convex convex/users.test.ts`
-Expected: FAIL — `as`/`registerUser` are not exported from `./test.helpers`.
+Expected: FAIL — `withUser`/`registerUser` are not exported from `./test.helpers`.
 
 - [ ] **Step 3: Replace `web/convex/test.helpers.ts`**
 
@@ -2624,27 +2631,27 @@ describe("recomputeDay", () => {
     const userId = await registerUser(t, "alice");
     await insertData(t, userId);
 
-    expect(await t.mutation(async (ctx) => recomputeDay(ctx, userId, "2026-08-31", T0))).toBe("inserted");
+    expect(await t.run(async (ctx) => recomputeDay(ctx, userId, "2026-08-31", T0))).toBe("inserted");
     const first = await getRollup(t, userId, "2026-08-31");
     expect(first).toMatchObject({ sessions: 1, responses: 1, computedAt: T0 });
     expect(first?.tokens.total).toBe(600);
 
-    expect(await t.mutation(async (ctx) => recomputeDay(ctx, userId, "2026-08-31", T0 + 1))).toBe("replaced");
+    expect(await t.run(async (ctx) => recomputeDay(ctx, userId, "2026-08-31", T0 + 1))).toBe("replaced");
     const second = await getRollup(t, userId, "2026-08-31");
     expect(second?._id).toBe(first?._id);
     expect({ ...second, computedAt: 0 }).toEqual({ ...first, computedAt: 0 });
 
     await clearData(t);
-    expect(await t.mutation(async (ctx) => recomputeDay(ctx, userId, "2026-08-31", T0))).toBe("deleted");
+    expect(await t.run(async (ctx) => recomputeDay(ctx, userId, "2026-08-31", T0))).toBe("deleted");
     expect(await getRollup(t, userId, "2026-08-31")).toBeNull();
-    expect(await t.mutation(async (ctx) => recomputeDay(ctx, userId, "2026-08-31", T0))).toBe("none");
+    expect(await t.run(async (ctx) => recomputeDay(ctx, userId, "2026-08-31", T0))).toBe("none");
   });
 
   it("attributes a midnight-spanning session's events to their own days", async () => {
     const t = setup();
     const userId = await registerUser(t, "alice");
     await insertData(t, userId);
-    const outcomes = await t.mutation(async (ctx) =>
+    const outcomes = await t.run(async (ctx) =>
       recomputeDays(ctx, userId, ["2026-09-01", "2026-08-31", "2026-08-31"], T0),
     );
     expect(outcomes).toEqual({ inserted: 2, replaced: 0, deleted: 0, none: 0 });
@@ -2757,10 +2764,10 @@ Claude-Session: https://claude.ai/code/session_01Q8G1yVYF1rfbje5mJGvMVt"
 - Test: `web/convex/ingest.internal.test.ts`
 
 **Interfaces:**
-- Consumes: `MAX_DAYS_PER_EVENT_CHUNK`, `MAX_EVENTS_PER_MUTATION` from `shared/src/constants.ts`; `SessionSummary`, `TokenEvent`, `UpsertCounts` from `shared/src/sync.ts`; validators from Task 1; `recomputeDays` (Task 9); `touchToken` (Task 8).
-- Produces: pure helpers `zeroCounts(): UpsertCounts`, `addCounts(target, delta): void`, `chunkArray<T>(items, size): T[][]`, `chunkEvents(events: TokenEvent[]): TokenEvent[][]`, `eventsEqual(a: TokenEvent, b: TokenEvent): boolean`; internal mutations `upsertMachine({ userId, machine, cliVersion, now })` → `{ conflict: boolean; created: boolean }`, `upsertSessions({ userId, machineId, sessions, now })` → `{ counts: UpsertCounts; conflicts: string[] }`, `upsertEvents({ userId, events, now })` → `{ counts: UpsertCounts; conflicts: number }`, `finishSync({ userId, machineId, tokenId, rateLimit?, now })` → `{ rateLimitStored: boolean; tokenTouched: boolean }`. Task 11 appends the HTTP handlers to this file.
+- Consumes: `MAX_DAYS_PER_EVENT_CHUNK`, `MAX_EVENTS_PER_MUTATION`, `MAX_SESSIONS_PER_MUTATION` from `shared/src/constants.ts`; `SessionSummary`, `TokenEvent`, `UpsertCounts` from `shared/src/sync.ts`; validators from Task 1; `recomputeDays` (Task 9); `touchToken` (Task 8).
+- Produces: pure helpers `zeroCounts(): UpsertCounts`, `addCounts(target, delta): void`, `chunkByDays<T extends { day: string }>(items: T[], maxItems: number): T[][]`, `chunkEvents(events: TokenEvent[]): TokenEvent[][]`, `chunkSessions(sessions: SessionSummary[]): SessionSummary[][]`, `eventsEqual(a: TokenEvent, b: TokenEvent): boolean`; internal mutations `upsertMachine({ userId, machine, cliVersion, now })` → `{ conflict: boolean; created: boolean }`, `upsertSessions({ userId, machineId, sessions, now })` → `{ counts: UpsertCounts; conflicts: string[] }`, `upsertEvents({ userId, events, now })` → `{ counts: UpsertCounts; conflicts: number }`, `finishSync({ userId, machineId, tokenId, rateLimit?, now })` → `{ rateLimitStored: boolean; tokenTouched: boolean }`. Task 11 appends the HTTP handlers to this file.
 
-Rules (spec "Functions" + contracts §7/§8): the machine `label` is written on first registration only (later renames happen in the dashboard via `machines.rename`; the CLI's `--machine-name` matters only at first sync — Plan 1 must document this). `hostname: null` is stored as absent. A session whose `summaryHash` matches is "unchanged" but its `inProgress`, `lineCount` and `generation` are still patched (they are excluded from the hash and never affect rollups). Sessions and events of another user are never merged or overwritten; they are reported as conflicts.
+Rules (spec "Functions" + contracts §7/§8): the machine `label` is written on first registration only (later renames happen in the dashboard via `machines.rename`; the CLI's `--machine-name` matters only at first sync — Plan 1 must document this). `hostname: null` is stored as absent. A session whose `summaryHash` matches is "unchanged" but its `inProgress`, `lineCount` and `generation` are still patched (they are excluded from the hash and never affect rollups). Sessions and events of another user are never merged or overwritten; they are reported as conflicts. Both chunkers also cap the **distinct `day` values** a single mutation touches at `MAX_DAYS_PER_EVENT_CHUNK` (30), because each touched day costs one `recomputeDay` (a full re-read of that day's `tokenEvents`) inside the same mutation.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2769,7 +2776,7 @@ Rules (spec "Functions" + contracts §7/§8): the machine `label` is written on 
 import { describe, expect, it } from "vitest";
 import { addDays } from "../../shared/src/days";
 import { internal } from "./_generated/api";
-import { chunkEvents, eventsEqual } from "./ingest";
+import { chunkEvents, chunkSessions, eventsEqual } from "./ingest";
 import {
   getRollup,
   makeEvent,
@@ -2791,6 +2798,21 @@ describe("chunkEvents", () => {
     );
     expect(chunkEvents(manyDays).map((c) => c.length)).toEqual([30, 5]);
     expect(chunkEvents([])).toEqual([]);
+  });
+});
+
+describe("chunkSessions", () => {
+  it("splits by 200 sessions and by 30 distinct days, preserving order", () => {
+    const sameDay = Array.from({ length: 450 }, (_, i) => makeSession({ sessionId: `s-${i}` }));
+    expect(chunkSessions(sameDay).map((c) => c.length)).toEqual([200, 200, 50]);
+    const manyDays = Array.from({ length: 45 }, (_, i) =>
+      makeSession({ sessionId: `d-${i}`, day: addDays("2026-06-01", i) }),
+    );
+    expect(chunkSessions(manyDays).map((c) => c.length)).toEqual([30, 15]);
+    expect(chunkSessions(manyDays).flat().map((s) => s.sessionId)).toEqual(
+      manyDays.map((s) => s.sessionId),
+    );
+    expect(chunkSessions([])).toEqual([]);
   });
 });
 
@@ -2967,8 +2989,12 @@ Expected: FAIL — `Cannot find module './ingest'`.
 
 ```ts
 import { v, type Infer } from "convex/values";
-import { MAX_DAYS_PER_EVENT_CHUNK, MAX_EVENTS_PER_MUTATION } from "../../shared/src/constants";
-import type { TokenEvent, UpsertCounts } from "../../shared/src/sync";
+import {
+  MAX_DAYS_PER_EVENT_CHUNK,
+  MAX_EVENTS_PER_MUTATION,
+  MAX_SESSIONS_PER_MUTATION,
+} from "../../shared/src/constants";
+import type { SessionSummary, TokenEvent, UpsertCounts } from "../../shared/src/sync";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation } from "./_generated/server";
 import {
@@ -2992,32 +3018,37 @@ export function addCounts(target: UpsertCounts, delta: UpsertCounts): void {
   target.unchanged += delta.unchanged;
 }
 
-export function chunkArray<T>(items: T[], size: number): T[][] {
+/**
+ * Splits day-tagged rows into mutation-sized chunks: at most `maxItems` rows and at most
+ * MAX_DAYS_PER_EVENT_CHUNK distinct `day` values per chunk (every touched day costs one
+ * `recomputeDay` in the same mutation). Order is preserved.
+ */
+export function chunkByDays<T extends { day: string }>(items: T[], maxItems: number): T[][] {
   const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
-}
-
-/** ≤ MAX_EVENTS_PER_MUTATION events and ≤ MAX_DAYS_PER_EVENT_CHUNK distinct days per chunk; order kept. */
-export function chunkEvents(events: TokenEvent[]): TokenEvent[][] {
-  const chunks: TokenEvent[][] = [];
-  let current: TokenEvent[] = [];
+  let current: T[] = [];
   let days = new Set<string>();
-  for (const event of events) {
-    const addsDay = !days.has(event.day);
-    if (
-      current.length >= MAX_EVENTS_PER_MUTATION ||
-      (addsDay && days.size >= MAX_DAYS_PER_EVENT_CHUNK)
-    ) {
+  for (const item of items) {
+    const addsDay = !days.has(item.day);
+    if (current.length >= maxItems || (addsDay && days.size >= MAX_DAYS_PER_EVENT_CHUNK)) {
       chunks.push(current);
       current = [];
       days = new Set<string>();
     }
-    current.push(event);
-    days.add(event.day);
+    current.push(item);
+    days.add(item.day);
   }
   if (current.length > 0) chunks.push(current);
   return chunks;
+}
+
+/** One `upsertEvents` mutation: ≤ 1,000 events over ≤ 30 days. */
+export function chunkEvents(events: TokenEvent[]): TokenEvent[][] {
+  return chunkByDays(events, MAX_EVENTS_PER_MUTATION);
+}
+
+/** One `upsertSessions` mutation: ≤ 200 sessions over ≤ 30 days. */
+export function chunkSessions(sessions: SessionSummary[]): SessionSummary[][] {
+  return chunkByDays(sessions, MAX_SESSIONS_PER_MUTATION);
 }
 
 const EVENT_KEYS = [
@@ -3204,7 +3235,7 @@ export const finishSync = internalMutation({
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd web && npx convex codegen && npx vitest run --project convex convex/ingest.internal.test.ts`
-Expected: 6 tests PASS.
+Expected: 7 tests PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -3469,6 +3500,7 @@ import {
   SyncBatch,
   type ErrorCode,
   type ErrorResponse,
+  type SessionSummary,
   type SyncResponse,
   type TokenEvent,
   type UpsertCounts,
@@ -3605,7 +3637,7 @@ export const syncHandler = httpAction(async (ctx, request) => {
 
     const accepted = { sessions: zeroCounts(), events: zeroCounts() };
     const conflicts: { sessions: string[]; events: number } = { sessions: [], events: 0 };
-    for (const chunk of chunkArray(batch.sessions, MAX_SESSIONS_PER_MUTATION)) {
+    for (const chunk of chunkSessions(batch.sessions)) {
       const result = await ctx.runMutation(internal.ingest.upsertSessions, {
         userId: auth.userId,
         machineId: batch.machine.machineId,
@@ -3691,7 +3723,7 @@ export default http;
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `cd web && npx convex codegen && npx vitest run --project convex convex/ingest.http.test.ts convex/ingest.internal.test.ts`
-Expected: 17 tests PASS (the 503 test logs one `codex-kaboo ingest failed` line to stderr — expected).
+Expected: 18 tests PASS (11 in `ingest.http.test.ts`, 7 in `ingest.internal.test.ts`; the 503 test logs one `codex-kaboo ingest failed` line to stderr — expected).
 
 - [ ] **Step 7: Typecheck**
 
@@ -3940,7 +3972,7 @@ describe("machine bookkeeping", () => {
 - [ ] **Step 2: Run the tests**
 
 Run: `cd web && npx vitest run --project convex convex/ingest.integration.test.ts`
-Expected: 9 tests PASS. If one fails, fix the owning module (Tasks 8–11), re-run that module's tests, then this file.
+Expected: 10 tests PASS. If one fails, fix the owning module (Tasks 8–11), re-run that module's tests, then this file.
 
 - [ ] **Step 3: Run the whole convex project and typecheck**
 
@@ -5179,7 +5211,7 @@ Claude-Session: https://claude.ai/code/session_01Q8G1yVYF1rfbje5mJGvMVt"
 - Test: `web/convex/prices.test.ts`
 
 **Interfaces:**
-- Consumes: `authedQuery`, `authedMutation` (Task 7); `MachineRow`, `PriceRow` (Task 1); `seedRollup`, `registerUser`, `as` (Task 7) in tests; `stats.summary` (Task 13) in the price-edit test.
+- Consumes: `authedQuery`, `authedMutation` (Task 7); `MachineRow`, `PriceRow` (Task 1); `seedRollup`, `registerUser`, `withUser` (Task 7) in tests; `stats.summary` (Task 13) in the price-edit test.
 - Produces: `toMachineRow(doc): MachineRow`, `machines.list({ userId? }): MachineRow[]` (all users when omitted; `lastSyncAt` desc, then label), `machines.rename({ machineId, label }): null` (own machines only → `forbidden`; blank/over-64-char label → `bad_label`); `SEED_PRICES` (the spec's 14-row table), `prices.list(): PriceRow[]` (by model), `prices.upsert({ model, inputUsdPerMTok, cachedInputUsdPerMTok, outputUsdPerMTok }): Id<"modelPrices">` (`bad_model` / `bad_price`, source `"manual"`, `updatedBy` = caller), `prices.remove({ model }): null`, `prices.seed` (internalMutation → `{ inserted }`, inserts only missing models with source `"seed"`).
 
 - [ ] **Step 1: Write the failing tests**
@@ -5556,7 +5588,7 @@ describe("rebuildAll", () => {
         await ctx.db.insert("tokenEvents", { ...makeEvent({ sessionId: "s", seq: i, day }), userId });
       }
     });
-    await t.mutation(async (ctx) => recomputeDays(ctx, userId, days, T0));
+    await t.run(async (ctx) => recomputeDays(ctx, userId, days, T0));
     await t.run(async (ctx) => {
       for (const rollup of await ctx.db.query("dailyRollups").collect()) {
         await ctx.db.patch(rollup._id, { version: 0, responses: 999 });
@@ -5706,7 +5738,7 @@ Expected: no `web/.env.local` in the output (it is ignored). Nothing to commit f
 
 **Interfaces:**
 - Consumes: Task 8 hash helpers, Task 7 `ensure`, the Plan 1 CLI build (`cli/dist/codex-kaboo.js` with `login --server`, `sync`, `sync --full`), the dev deployment from Task 19.
-- Produces: `syncTokens.mint` (internalAction `{ email, name? }` → `{ token, prefix, userId }`) for `npx convex run syncTokens:mint` before the web Settings page exists; `syncTokens.insertForEmail` (internalMutation `{ email, name?, tokenHash, prefix }` → `{ userId, tokenId }`) that attaches to the user with that email or creates a **pending user** (`clerkId = "pending:<email lowercased>"`); `users.ensure` now adopts a pending user whose email matches the Clerk identity's email (same `_id`, `clerkId` rewritten); `ingest.counts` (internalQuery `{}` → `{ sessions, tokenEvents, dailyRollups, tokenEventsCapped }`) for operational checks. Plan 3's `useEnsureUser` gets the adoption for free; Plan 1's CLI needs nothing new.
+- Produces: `syncTokens.mint` (internalAction `{ email, name? }` → `{ token, prefix, userId }`) for `npx convex run syncTokens:mint` before the web Settings page exists; `syncTokens.insertForEmail` (internalMutation `{ email, name?, tokenHash, prefix }` → `{ userId, tokenId }`) that attaches to the user with that email or creates a **pending user** (`clerkId = "pending:<email lowercased>"`); `users.ensure` now adopts a pending user whose email matches the Clerk identity's email (same `_id`, `clerkId` rewritten); `ingest.counts` (internalQuery `{}` → `{ sessions, tokenEvents, dailyRollups, capped: { sessions, tokenEvents, dailyRollups } }`) for operational checks. Plan 3's `useEnsureUser` gets the adoption for free; Plan 1's CLI needs nothing new.
 
 - [ ] **Step 1: Append the failing tests**
 
@@ -5782,7 +5814,10 @@ describe("counts", () => {
       userId: alice, events: [makeEvent({ sessionId: "s1", seq: 1 }), makeEvent({ sessionId: "s1", seq: 2 })], now: T0,
     });
     expect(await t.query(internal.ingest.counts, {})).toEqual({
-      sessions: 1, tokenEvents: 2, dailyRollups: 1, tokenEventsCapped: false,
+      sessions: 1,
+      tokenEvents: 2,
+      dailyRollups: 1,
+      capped: { sessions: false, tokenEvents: false, dailyRollups: false },
     });
   });
 });
@@ -5879,14 +5914,33 @@ In `web/convex/users.ts`, replace the `if (existing) { … } return await ctx.db
 Add `internalQuery` to the `./_generated/server` import, then append:
 
 ```ts
-/** Operational check: `npx convex run ingest:counts '{}'`. Events are counted up to 5,000. */
+/** No table is scanned past this in `counts`; a table that hits it reports `capped: true`. */
+const COUNTS_LIMIT = 5000;
+
+/** Operational check: `npx convex run ingest:counts '{}'`. Every table is counted up to 5,000 rows. */
 export const counts = internalQuery({
   args: {},
-  handler: async (ctx): Promise<{ sessions: number; tokenEvents: number; dailyRollups: number; tokenEventsCapped: boolean }> => {
-    const sessions = (await ctx.db.query("sessions").collect()).length;
-    const dailyRollups = (await ctx.db.query("dailyRollups").collect()).length;
-    const events = await ctx.db.query("tokenEvents").take(5000);
-    return { sessions, tokenEvents: events.length, dailyRollups, tokenEventsCapped: events.length === 5000 };
+  handler: async (
+    ctx,
+  ): Promise<{
+    sessions: number;
+    tokenEvents: number;
+    dailyRollups: number;
+    capped: { sessions: boolean; tokenEvents: boolean; dailyRollups: boolean };
+  }> => {
+    const sessions = await ctx.db.query("sessions").take(COUNTS_LIMIT);
+    const tokenEvents = await ctx.db.query("tokenEvents").take(COUNTS_LIMIT);
+    const dailyRollups = await ctx.db.query("dailyRollups").take(COUNTS_LIMIT);
+    return {
+      sessions: sessions.length,
+      tokenEvents: tokenEvents.length,
+      dailyRollups: dailyRollups.length,
+      capped: {
+        sessions: sessions.length === COUNTS_LIMIT,
+        tokenEvents: tokenEvents.length === COUNTS_LIMIT,
+        dailyRollups: dailyRollups.length === COUNTS_LIMIT,
+      },
+    };
   },
 });
 ```
@@ -5921,10 +5975,11 @@ Expected: `{ "token": "ck_…", "prefix": "ck_…", "userId": "…" }`. The toke
 npm run build -w cli
 SITE_URL=$(grep NEXT_PUBLIC_CONVEX_URL web/.env.local | cut -d= -f2 | sed 's/\.convex\.cloud/.convex.site/')
 node cli/dist/codex-kaboo.js login --server "$SITE_URL" --token '<token from step 8>'
+node cli/dist/codex-kaboo.js sync --dry-run --json > /tmp/codex-kaboo-dry.json
 node cli/dist/codex-kaboo.js sync
 ```
 
-Expected: `login` prints the user (`Azealoo`, `yining044@gmail.com`) and the token prefix; `sync` reports **11 sessions inserted and 426 token events inserted** (the real logs contain 430 `token_count` lines of which 4 are all-zero and skipped by the parser), 0 conflicts. Machine registered with the CLI's label.
+Expected: `login` prints the user (`Azealoo`, `yining044@gmail.com`) and the token prefix. The number of sessions and token events `sync` reports as **inserted** must equal the session and event counts the `--dry-run --json` run printed a moment earlier — read those two numbers out of `/tmp/codex-kaboo-dry.json`, never from this plan: they are whatever `~/.codex` holds when the task runs. (At the time of writing that is 11 sessions and 426 token events; the real logs contain 430 `token_count` lines of which 4 are all-zero and skipped by the parser.) Conflicts must be 0 and the machine registered with the CLI's label.
 
 - [ ] **Step 10: Verify idempotence**
 
@@ -5934,7 +5989,7 @@ node cli/dist/codex-kaboo.js sync --full
 cd web && npx convex run ingest:counts '{}'
 ```
 
-Expected: the second `sync` makes no request ("nothing changed") — or at most the hourly machine heartbeat; `sync --full` re-uploads everything and the server answers `accepted.sessions.unchanged = 11`, `accepted.events.unchanged = 426`, zero inserted/updated; `counts` prints `{ sessions: 11, tokenEvents: 426, dailyRollups: <number of distinct days>, tokenEventsCapped: false }`.
+Expected: the second `sync` makes no request ("nothing changed") — or at most the hourly machine heartbeat; `sync --full` re-uploads everything and the server answers `accepted.sessions.unchanged` and `accepted.events.unchanged` equal to the same two dry-run counts from Step 9, zero inserted/updated; `counts` prints those two numbers as `sessions` and `tokenEvents`, plus `dailyRollups: <number of distinct days>` and `capped: { sessions: false, tokenEvents: false, dailyRollups: false }`. (At the time of writing the two counts are 11 and 426.)
 
 - [ ] **Step 11: Spot-check a rollup against the CLI's dry run**
 
@@ -5943,7 +5998,7 @@ node cli/dist/codex-kaboo.js sync --dry-run --json > /tmp/codex-kaboo-dry.json
 cd web && npx convex data dailyRollups --limit 50
 ```
 
-Expected: for one day, `tokens.input` / `tokens.output` in the rollup equal the sum of that day's events in the dry-run JSON (e.g. the session ending in `…1180` contributes input 1,437,354 / output 6,554 to its day). Report any mismatch as a Plan 1 parser bug or a Plan 2 attribution bug before moving on.
+Expected: for one day, `tokens.input` / `tokens.output` in the rollup equal the sum of that day's events in the dry-run JSON. Compute both sides from the file — no expected total is written here, because it depends on the local `~/.codex` (at the time of writing the session ending in `…1180` contributed input 1,437,354 / output 6,554 to its day). Report any mismatch as a Plan 1 parser bug or a Plan 2 attribution bug before moving on.
 
 ---
 

@@ -362,7 +362,7 @@ export interface ModelPrice { inputUsdPerMTok: number; cachedInputUsdPerMTok: nu
 export interface CostBreakdown { total: number; input: number; cached: number; output: number; reasoning: number }
 //   input     = (input − cachedInput) / 1e6 × inputUsdPerMTok
 //   cached    = cachedInput / 1e6 × cachedInputUsdPerMTok
-//   output    = (output − reasoning) / 1e6 × outputUsdPerMTok
+//   output    = max(0, output − reasoning) / 1e6 × outputUsdPerMTok   (clamped: malformed logs may report reasoning > output)
 //   reasoning = reasoning / 1e6 × outputUsdPerMTok
 //   total     = input + cached + output + reasoning
 export function costOf(tokens: Tokens, price: ModelPrice): CostBreakdown;
@@ -440,9 +440,14 @@ run yet). Range arguments are inclusive `YYYY-MM-DD` strings; the server validat
 the UI passes `previous: false` for the ALL preset. All money is USD numbers; all rates are
 fractions (0.42 = 42 %), `null` when undefined (division by zero or unpriced).
 
+Two `MetricKey` entries whose names do not fix their meaning are defined here and nowhere else:
+`activeDays` = the number of **distinct calendar days** in the range with `tokens.total > 0` or
+`sessions > 0` (days, never rollup documents: two users active on the same day count once);
+`tokensPerLine` = `tokens.total / linesAdded`, `null` when `linesAdded` is 0.
+
 ```ts
 import type { Id } from "../_generated/dataModel";
-import type { Tokens, Ttft, ToolCounts } from "../../../shared/src/sync";
+import type { Tokens, ToolCounts } from "../../../shared/src/sync";
 
 export type Metric = { current: number; previous: number | null; change: number | null };
 export type Range = { from: string; to: string };
@@ -627,7 +632,7 @@ export type MeResult = { _id: Id<"users">; clerkId: string; email: string | null
 | `prices.upsert` | authedMutation | `{ model, inputUsdPerMTok, cachedInputUsdPerMTok, outputUsdPerMTok }` | `Id<"modelPrices">`; all ≥ 0, source "manual" |
 | `prices.remove` | authedMutation | `{ model: string }` | `null` |
 | `prices.seed` | internalMutation | `{}` | `{ inserted: number }`; inserts the spec's table where the model is absent |
-| `rollups.rebuildAll` | internalMutation | `{ cursor?: string }` | `{ done: boolean }`; reschedules itself |
+| `rollups.rebuildAll` | internalMutation | `{ cursor?: string; pageSize?: number }` | `{ done: boolean; recomputed: number }`; reschedules itself until `done` |
 
 Cost rules used by every function: a `(model, tokens)` pair is priced with `costOf` when a
 `modelPrices` row with that exact `model` exists; otherwise it contributes 0 to `costUsd` and the
