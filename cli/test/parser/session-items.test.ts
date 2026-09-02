@@ -36,7 +36,7 @@ describe("reducer: items", () => {
         parsed_cmd: [{ type: "read", cmd: `cat ${SKILL_PATH}`, path: SKILL_PATH, name: "SKILL.md" }, { type: "search", cmd: "rg SECRET", query: "SECRET", path: "src" }, { type: "list_files", cmd: "ls", path: "." }, { type: "unknown", cmd: "SECRET command" }],
       }, 10),
       item({ type: "CommandExecution", id: "c2", command: ["true"], parsed_cmd: [] }, 11),
-      item({ type: "CommandExecution", id: "c3", command: ["type", "C:\\Users\\me\\.codex\\skills\\lark-apps\\SKILL.md"], parsed_cmd: [{ type: "unknown", cmd: "SECRET" }] }, 12),
+      item({ type: "CommandExecution", id: "c3", command: ["type", "C:\\Users\\me\\.codex\\skills\\skill-alpha\\SKILL.md"], parsed_cmd: [{ type: "unknown", cmd: "SECRET" }] }, 12),
       item({
         type: "FileChange", id: "f1", status: "completed", stdout: "SECRET",
         changes: {
@@ -67,7 +67,7 @@ describe("reducer: items", () => {
     expect(s).toMatchObject({
       userMessages: 2, agentMessages: 3, reasoningItems: 4, filesChanged: 3, linesAdded: 5, linesRemoved: 3, compactions: 2,
       mcpTools: [{ key: "context7/query-docs", count: 2 }],
-      skills: [{ key: "lark-apps", count: 1 }, { key: "openai-docs", count: 1 }],
+      skills: [{ key: "openai-docs", count: 1 }, { key: "skill-alpha", count: 1 }],
     });
     expect(s.toolCounts).toEqual({
       commandRead: 1, commandList: 1, commandSearch: 1, commandOther: 3, fileChange: 1, webSearch: 3, imageView: 1, mcpTool: 2, other: 2,

@@ -18,7 +18,7 @@ describe("classifyParsedCmdType", () => {
 describe("detectSkills", () => {
   it("extracts the parent directory of any SKILL.md path, with slashes or backslashes", () => {
     expect(detectSkills(["/Users/x/.codex/skills/.system/openai-docs/SKILL.md"])).toEqual(["openai-docs"]);
-    expect(detectSkills(["C:\\Users\\x\\.codex\\skills\\lark-apps\\SKILL.md"])).toEqual(["lark-apps"]);
+    expect(detectSkills(["C:\\Users\\x\\.codex\\skills\\skill-alpha\\SKILL.md"])).toEqual(["skill-alpha"]);
     expect(detectSkills(["cat", "skills/foo/SKILL.md", 42, null])).toEqual(["foo"]);
     expect(detectSkills(['cat "a/b/SKILL.md" && cat c/d/SKILL.md'])).toEqual(["b", "d"]);
     expect(detectSkills(["SKILL.md", "notes/skill.txt"])).toEqual([]);
