@@ -16,6 +16,7 @@ import type * as lib_days from "../lib/days.js";
 import type * as lib_hash from "../lib/hash.js";
 import type * as lib_types from "../lib/types.js";
 import type * as lib_validators from "../lib/validators.js";
+import type * as syncTokens from "../syncTokens.js";
 import type * as users from "../users.js";
 
 import type {
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   "lib/hash": typeof lib_hash;
   "lib/types": typeof lib_types;
   "lib/validators": typeof lib_validators;
+  syncTokens: typeof syncTokens;
   users: typeof users;
 }>;
 
