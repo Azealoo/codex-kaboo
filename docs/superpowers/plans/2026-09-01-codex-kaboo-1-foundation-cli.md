@@ -4996,7 +4996,7 @@ MSG
 - Consumes: shared constants (`SYNC_PATH`, `WHOAMI_PATH`, `HEALTH_PATH`, `CLI_VERSION_HEADER`), schemas `SyncResponse`, `ErrorResponse`, `WhoamiResponse`, type `SyncBatch`.
 - Produces: `type FetchLike`, `interface ClientOptions { server; token; cliVersion; fetch?; sleep?; timeoutMs?; maxAttempts?; random?; now? }`, `class SyncHttpError { status; code; body; retryAfterMs }`, `class SyncNetworkError { cause }`, `isAuthError(e)`, `isPayloadTooLarge(e)`, `isBadRequest(e)`, `backoffMs(attempt, random)`, `parseRetryAfter(header, now)`, `interface SyncClient { sync(batch): Promise<SyncResponse>; whoami(): Promise<WhoamiResponse>; health(): Promise<{ ok: boolean; serverTime: number | null }> }`, `createClient(opts)`.
 
-Policy (spec): `fetch` + `AbortSignal.timeout(30 s)`; up to 5 attempts with delays 1/2/4/8 s ± 25 % jitter, honouring `Retry-After`, on network errors and 408/425/429/5xx; 401/403, 413, 400/422 and every other 4xx throw immediately without retrying.
+Policy (spec): `fetch` + `AbortSignal.timeout(30 s)`; up to 6 attempts (5 retries) with delays 1/2/4/8/16 s ± 25 % jitter, honouring `Retry-After`, on network errors and 408/425/429/5xx; 401/403, 413, 400/422 and every other 4xx throw immediately without retrying.
 
 - [ ] **Step 1: Write the failing tests**
 
