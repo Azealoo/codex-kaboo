@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CRON_BEGIN, CRON_END, cronAdapter, removeCronBlock, renderCronLine, upsertCronBlock } from "../../src/schedule/cron";
+import { execFileSync } from "node:child_process";
+import { CRON_BEGIN, CRON_END, cronAdapter, cronQuote, removeCronBlock, renderCronLine, upsertCronBlock } from "../../src/schedule/cron";
 import { checkTargetPaths, pickScheduler, type ScheduleTarget, type Spawner, type SpawnResult } from "../../src/schedule/index";
 import { LAUNCHD_LABEL, launchdAdapter, plistPath, renderPlist, xmlEscape } from "../../src/schedule/launchd";
 import { parseSchtasksStatus, ps1Path, renderPowershellCommand, renderPs1, renderVbs, schtasksAdapter, schtasksCreateArgs, TASK_NAME, vbsQuote } from "../../src/schedule/schtasks";
@@ -87,7 +88,7 @@ describe("launchd", () => {
 describe("cron", () => {
   it("renders the line and keeps exactly one marker block", () => {
     const line = renderCronLine(target({ codexHome: "/srv/codex" }));
-    expect(line).toBe(`*/15 * * * * CODEX_KABOO_SCHEDULED=1 CODEX_HOME="/srv/codex" "/opt/node & co/bin/node" "/Users/me/.npm-global/lib/node_modules/codex-kaboo-cli/dist/codex-kaboo.js" sync --scheduled >> "/Users/me/.codex-kaboo/cron.log" 2>&1`);
+    expect(line).toBe(`*/15 * * * * CODEX_KABOO_SCHEDULED=1 CODEX_HOME='/srv/codex' '/opt/node & co/bin/node' '/Users/me/.npm-global/lib/node_modules/codex-kaboo-cli/dist/codex-kaboo.js' sync --scheduled >> '/Users/me/.codex-kaboo/cron.log' 2>&1`);
     const once = upsertCronBlock("0 * * * * echo hi\n", line);
     expect(once).toBe(`0 * * * * echo hi\n${CRON_BEGIN}\n${line}\n${CRON_END}\n`);
     const twice = upsertCronBlock(once, line.replace("*/15", "*/10"));
@@ -98,20 +99,50 @@ describe("cron", () => {
     expect(upsertCronBlock("", line)).toBe(`${CRON_BEGIN}\n${line}\n${CRON_END}\n`);
   });
 
-  it("escapes % and \" in every interpolated value (crontab(5) turns a bare % into a newline)", () => {
+  it("escapes % for cron and single-quotes every value against the shell", () => {
     const line = renderCronLine(target({
       nodePath: "/opt/node%5/bin/node",
       scriptPath: '/Users/me/weird"quote/dist/codex-kaboo.js',
       kabooHome: "/Users/me/.codex-kaboo%home",
-      codexHome: '/srv/codex"home%1',
+      codexHome: "/srv/codex'home%1",
     }));
-    expect(line).toContain("/opt/node\\%5/bin/node");
-    expect(line).toContain('/Users/me/weird\\"quote/dist/codex-kaboo.js');
-    expect(line).toContain("/Users/me/.codex-kaboo\\%home/cron.log");
-    expect(line).toContain('CODEX_HOME="/srv/codex\\"home\\%1"');
+    expect(line).toContain("'/opt/node\\%5/bin/node'");
+    expect(line).toContain(`'/Users/me/weird"quote/dist/codex-kaboo.js'`); // inert inside single quotes
+    expect(line).toContain("'/Users/me/.codex-kaboo\\%home/cron.log'");
+    expect(line).toContain(String.raw`CODEX_HOME='/srv/codex'\''home\%1'`); // the one character single quotes cannot hold
+    expect(cronQuote("a'b")).toBe(String.raw`'a'\''b'`);
     const installed = upsertCronBlock("0 * * * * echo hi\n", line);
     expect(removeCronBlock(installed)).toBe("0 * * * * echo hi\n");
     expect(upsertCronBlock(installed, line)).toBe(installed);
+  });
+
+  // Review finding: the values came from CODEX_HOME / CODEX_KABOO_HOME (both user-settable at
+  // install time) and were interpolated inside DOUBLE quotes, where `$VAR`, `$(…)` and backticks
+  // still expand and a trailing `\` escapes the closing quote — so such a path either broke the
+  // schedule silently (status still reported "installed") or command-substituted every 15 minutes.
+  // Proven end to end rather than by string comparison: a stub "node" living under a directory
+  // whose name holds each metacharacter prints its own argv, so the values must arrive byte for
+  // byte after a real /bin/sh has parsed the rendered command.
+  it.skipIf(process.platform === "win32")("passes $, a backtick and a backslash through /bin/sh unchanged", () => {
+    const root = freshTempDir("ck-cron-meta-");
+    const weird = path.join(root, String.raw`we$ird` + "`tick`" + String.raw`back\slash%pct`);
+    const kabooHome = path.join(weird, "kaboo");
+    mkdirSync(kabooHome, { recursive: true });
+    const nodeStub = path.join(weird, "node stub");
+    writeFileSync(nodeStub, '#!/bin/sh\nfor a in "$0" "$@"; do printf "%s\\n" "$a"; done\nprintf "CODEX_HOME=%s\\n" "$CODEX_HOME"\n');
+    chmodSync(nodeStub, 0o755);
+    const scriptPath = path.join(weird, "codex-kaboo.js");
+    const codexHome = path.join(weird, "codex");
+
+    const line = renderCronLine({ nodePath: nodeStub, scriptPath, kabooHome, homeDir: root, codexHome });
+    // Drop the five schedule fields and undo cron's own `\%` escape, which cron strips before
+    // /bin/sh ever sees the line — what is left is exactly what the shell is handed.
+    const command = line.replace(/^\S+ \S+ \S+ \S+ \S+ /, "").replace(/\\%/g, "%");
+    execFileSync("/bin/sh", ["-c", command]);
+
+    const printed = readFileSync(path.join(kabooHome, "cron.log"), "utf8").split("\n");
+    expect(printed.slice(0, 4)).toEqual([nodeStub, scriptPath, "sync", "--scheduled"]);
+    expect(printed[4]).toBe(`CODEX_HOME=${codexHome}`);
   });
 
   it("installs through crontab -l / crontab - and reports status", async () => {
@@ -137,7 +168,7 @@ describe("systemd", () => {
     const homeDir = freshTempDir("ck-systemd-");
     const t = target({ homeDir, codexHome: "/srv/codex" });
     expect(renderService(t)).toContain(`ExecStart="/opt/node & co/bin/node" "${t.scriptPath}" sync --scheduled`);
-    expect(renderService(t)).toContain("Environment=CODEX_HOME=/srv/codex");
+    expect(renderService(t)).toContain('Environment="CODEX_HOME=/srv/codex"');
     expect(renderTimer()).toContain("OnUnitActiveSec=15min");
     expect(renderTimer()).toContain("Persistent=true");
     const { spawner, calls } = mockSpawner(() => undefined);
@@ -153,8 +184,26 @@ describe("systemd", () => {
     const t = target({ nodePath: "/opt/node%5/bin/node", codexHome: "/srv/codex%home" });
     const service = renderService(t);
     expect(service).toContain('ExecStart="/opt/node%%5/bin/node"');
-    expect(service).toContain("Environment=CODEX_HOME=/srv/codex%%home");
+    expect(service).toContain('Environment="CODEX_HOME=/srv/codex%%home"');
     expect(systemdDir("/Users/me")).toBe("/Users/me/.config/systemd/user");
+  });
+
+  // Review finding: only `%` was escaped, so a `"` or `\` in a path broke the ExecStart line's
+  // quoting outright and a `$` was expanded from the unit's environment (usually to nothing).
+  // systemd execs directly, so a backtick is inert and must survive verbatim.
+  it("escapes backslash, quote and dollar in ExecStart, and leaves $ alone in Environment", () => {
+    const service = renderService(target({
+      nodePath: String.raw`/opt/no\de/bin/node`,
+      scriptPath: String.raw`/srv/we"ird/$HOME/back` + "`tick`" + "/codex-kaboo.js",
+      codexHome: String.raw`/srv/co"dex/$HOME/back\slash`,
+    }));
+    // \ doubled, " escaped, $ doubled (systemd expands $VAR in a command line), ` untouched.
+    expect(service).toContain(String.raw`ExecStart="/opt/no\\de/bin/node" "/srv/we\"ird/$$HOME/back` + "`tick`" + '/codex-kaboo.js"');
+    // Environment= is not variable-expanded (systemd documents Environment="VAR3=$word 5 6" as a
+    // literal $word), so `$` must stay single here — doubling it would corrupt the value.
+    expect(service).toContain(String.raw`Environment="CODEX_HOME=/srv/co\"dex/$HOME/back\\slash"`);
+    // Every line of the unit stays one line: nothing above can inject a second directive.
+    expect(service.split("\n").filter((l) => l.startsWith("ExecStart="))).toHaveLength(1);
   });
 });
 

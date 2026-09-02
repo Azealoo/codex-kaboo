@@ -9,13 +9,40 @@ export function systemdDir(homeDir: string): string {
   return path.posix.join(homeDir, ".config", "systemd", "user");
 }
 
-/** systemd unit files expand `%` specifiers (`%h`, `%%`, …); double a literal `%` so interpolated values pass through unchanged. */
+/**
+ * Escapes one value for the inside of a double-quoted systemd unit token. No shell is involved
+ * (systemd execs directly, so `$(…)` and backticks are inert), but the unit parser has three
+ * rewrites of its own that a raw path can trip:
+ *
+ *  - `%` introduces a specifier (`%h`, `%i`, …), so a literal one is written `%%`.
+ *  - inside double quotes, C-style escapes are processed, so a literal `\` is `\\` and a literal
+ *    `"` is `\"` — previously neither was escaped, and a path containing a backslash or a quote
+ *    silently mis-parsed the whole ExecStart line.
+ *
+ * Backslash first, so the backslashes this function itself introduces are not doubled again.
+ */
 function systemdEscape(value: string): string {
-  return value.replace(/%/g, "%%");
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/%/g, "%%");
+}
+
+/**
+ * As above, plus `$` → `$$`: systemd expands `$VAR` / `${VAR}` in an ExecStart command line from
+ * the unit's own environment, so an unescaped `$` in a path substituted a variable (usually an
+ * empty one) instead of reaching the process. `Environment=` values are NOT expanded this way —
+ * systemd documents `Environment="VAR3=$word 5 6"` as yielding a literal `$word` — so they use
+ * `systemdEscape` and doubling `$` there would corrupt the value.
+ */
+function systemdExecEscape(value: string): string {
+  return systemdEscape(value).replace(/\$/g, "$$$$"); // "$$$$" is a literal "$$" ($$ escapes $ in a replacement)
 }
 
 export function renderService(target: ScheduleTarget): string {
-  const env = ["Environment=CODEX_KABOO_SCHEDULED=1", ...(target.codexHome ? [`Environment=CODEX_HOME=${systemdEscape(target.codexHome)}`] : [])];
+  // The whole NAME=value assignment is quoted, per systemd's own `Environment="VAR1=word1 word2"`
+  // example: unquoted, a value containing a space would be split into extra assignments.
+  const env = [
+    "Environment=CODEX_KABOO_SCHEDULED=1",
+    ...(target.codexHome ? [`Environment="CODEX_HOME=${systemdEscape(target.codexHome)}"`] : []),
+  ];
   return [
     "[Unit]",
     "Description=codex-kaboo sync",
@@ -23,7 +50,7 @@ export function renderService(target: ScheduleTarget): string {
     "[Service]",
     "Type=oneshot",
     ...env,
-    `ExecStart="${systemdEscape(target.nodePath)}" "${systemdEscape(target.scriptPath)}" ${scheduledArgs().join(" ")}`,
+    `ExecStart="${systemdExecEscape(target.nodePath)}" "${systemdExecEscape(target.scriptPath)}" ${scheduledArgs().join(" ")}`,
     "",
   ].join("\n");
 }

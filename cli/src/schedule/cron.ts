@@ -5,19 +5,30 @@ export const CRON_BEGIN = "# BEGIN codex-kaboo";
 export const CRON_END = "# END codex-kaboo";
 
 /**
- * crontab(5): an unescaped `%` in the command field is turned into a newline (everything after it
- * becomes stdin to the job), so every `%` in an interpolated value must be escaped as `\%`. These
- * values are also wrapped in double quotes, so an embedded `"` must be escaped as `\"` too.
+ * Quotes one interpolated value for a crontab command field, which is two layers deep:
+ *
+ *  - cron reads the line first. An unescaped `%` becomes a newline (everything after it is fed to
+ *    the job as stdin), so every `%` is escaped as `\%`; cron strips that backslash again before
+ *    handing the line over.
+ *  - `/bin/sh -c` then executes what is left. Double quotes were not enough there: `$VAR`, `$(…)`
+ *    and backticks still expand inside them, and a trailing `\` escapes the closing quote — so a
+ *    `CODEX_HOME` or `CODEX_KABOO_HOME` containing any of those (both are user-settable at install
+ *    time) either silently broke the schedule or ran a command substitution every 15 minutes.
+ *    Single quotes suppress every shell expansion instead; the only character they cannot contain
+ *    is `'` itself, written as `'\''` — close, escaped quote, reopen.
+ *
+ * `%` is escaped last so it applies to the quoting punctuation too, and the backslash it introduces
+ * is removed by cron before the shell sees the (still correctly single-quoted) line.
  */
-function cronEscape(value: string): string {
-  return value.replace(/%/g, "\\%").replace(/"/g, '\\"');
+export function cronQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`.replace(/%/g, "\\%");
 }
 
 /** POSIX-only generator: `path.posix` so the crontab line is byte-identical wherever the tests run (Windows CI included). */
 export function renderCronLine(target: ScheduleTarget): string {
-  const env = ["CODEX_KABOO_SCHEDULED=1", ...(target.codexHome ? [`CODEX_HOME="${cronEscape(target.codexHome)}"`] : [])].join(" ");
-  const log = cronEscape(path.posix.join(target.kabooHome, "cron.log"));
-  return `*/15 * * * * ${env} "${cronEscape(target.nodePath)}" "${cronEscape(target.scriptPath)}" ${scheduledArgs().join(" ")} >> "${log}" 2>&1`;
+  const env = ["CODEX_KABOO_SCHEDULED=1", ...(target.codexHome ? [`CODEX_HOME=${cronQuote(target.codexHome)}`] : [])].join(" ");
+  const log = cronQuote(path.posix.join(target.kabooHome, "cron.log"));
+  return `*/15 * * * * ${env} ${cronQuote(target.nodePath)} ${cronQuote(target.scriptPath)} ${scheduledArgs().join(" ")} >> ${log} 2>&1`;
 }
 
 export function removeCronBlock(existing: string): string {
