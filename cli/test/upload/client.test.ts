@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { makeBatch } from "@codex-kaboo/shared/test-fixtures";
 import {
-  backoffMs, createClient, isAuthError, isBadRequest, isPayloadTooLarge, parseRetryAfter, SyncHttpError, SyncNetworkError,
+  backoffMs, createClient, isAuthError, isBadRequest, isPayloadTooLarge, parseRetryAfter, RETRY_AFTER_MAX_MS, SyncHttpError, SyncNetworkError,
 } from "../../src/upload/client";
 
 const okBody = {
@@ -119,6 +119,42 @@ describe("Retry-After edge cases", () => {
     await client.sync(makeBatch());
     expect(calls).toHaveLength(2);
     expect(sleeps).toEqual([3000]);
+  });
+
+  // `sleep` is a plain refed setTimeout: neither AbortSignal.timeout (fetch only) nor the run-budget
+  // deadline (checked between batches) can cut it short, so an unbounded Retry-After parks the whole
+  // process for as long as the server likes while cron keeps launching new ones.
+  it("clamps a huge numeric Retry-After to one minute instead of parking the process for a day", async () => {
+    expect(parseRetryAfter("86400", 0)).toBe(RETRY_AFTER_MAX_MS); // a full day
+    expect(parseRetryAfter("60", 0)).toBe(60_000); // exactly at the cap: untouched
+    expect(parseRetryAfter("30", 0)).toBe(30_000); // below the cap: still honoured verbatim
+    const { client, calls, sleeps } = stub([
+      json(503, { ok: false, error: "internal" }, { "Retry-After": "86400" }),
+      json(200, okBody),
+    ]);
+    await client.sync(makeBatch());
+    expect(calls).toHaveLength(2);
+    expect(sleeps).toEqual([RETRY_AFTER_MAX_MS]);
+  });
+
+  it("clamps a far-future HTTP-date Retry-After the same way", async () => {
+    const farFuture = new Date(1_000_000 + 7 * 24 * 60 * 60 * 1000).toUTCString(); // now() + 7 days
+    expect(parseRetryAfter(farFuture, 1_000_000)).toBe(RETRY_AFTER_MAX_MS);
+    expect(parseRetryAfter(new Date(1_000_000 - 5000).toUTCString(), 1_000_000)).toBe(0); // past date: no negative sleep
+    const { client, calls, sleeps } = stub([
+      json(503, { ok: false, error: "internal" }, { "Retry-After": farFuture }),
+      json(200, okBody),
+    ]);
+    await client.sync(makeBatch());
+    expect(calls).toHaveLength(2);
+    expect(sleeps).toEqual([RETRY_AFTER_MAX_MS]);
+  });
+
+  it("reports the clamped delay on the error too, so retryAfterMs never promises a wait we would not take", async () => {
+    // 400 is non-retryable, so the error surfaces on the first attempt with its parsed header.
+    const { client } = stub([json(400, { ok: false, error: "invalid_batch" }, { "Retry-After": "99999" })]);
+    const error = await client.sync(makeBatch()).catch((e: unknown) => e);
+    expect((error as SyncHttpError).retryAfterMs).toBe(RETRY_AFTER_MAX_MS);
   });
 });
 

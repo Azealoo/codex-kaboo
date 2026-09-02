@@ -60,12 +60,28 @@ export function backoffMs(attempt: number, random: () => number): number {
   return Math.round(base * (1 + jitter));
 }
 
+/**
+ * Upper bound on an honoured `Retry-After`, in ms.
+ *
+ * The header is attacker-adjacent input: it comes from whatever origin `--server` points at, and
+ * `sleep` is a plain refed `setTimeout` that neither `AbortSignal.timeout` (which bounds only the
+ * fetch) nor the run-budget deadline (checked only *between* batches) can interrupt. An unbounded
+ * value therefore parks the whole process: a `503` with `Retry-After: 86400` sleeps 24 h per retry,
+ * five times over, while cron keeps starting a fresh sync every 15 minutes, and the parked run
+ * eventually writes its own hours-stale in-memory state over everything the newer runs advanced.
+ * One minute is longer than any backoff this client would pick on its own (16 s max), so a server
+ * asking for a genuinely short pause is still honoured exactly; anything longer is treated as "come
+ * back next scheduled run" instead.
+ */
+export const RETRY_AFTER_MAX_MS = 60_000;
+
 export function parseRetryAfter(header: string | null, now: number): number | null {
   if (!header) return null;
+  const clamp = (ms: number): number => Math.min(Math.max(0, ms), RETRY_AFTER_MAX_MS);
   const seconds = Number(header);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+  if (Number.isFinite(seconds) && seconds >= 0) return clamp(Math.round(seconds * 1000));
   const date = Date.parse(header);
-  if (Number.isFinite(date)) return Math.max(0, date - now);
+  if (Number.isFinite(date)) return clamp(date - now);
   return null;
 }
 
