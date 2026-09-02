@@ -58,7 +58,9 @@ async function main() {
   const version = buildVersion(pkg.version, sha, now);
 
   if (!process.env.CODEX_KABOO_SERVER) {
-    console.warn("[pack-cli] CODEX_KABOO_SERVER is not set; the packed CLI will need `--server` at login.");
+    const msg = "[pack-cli] CODEX_KABOO_SERVER is not set; the packed CLI would need `--server` at login.";
+    if (process.env.CONVEX_DEPLOY_KEY || process.env.VERCEL) throw new Error(msg);
+    console.warn(`${msg} (local build — continuing)`);
   }
 
   try {
