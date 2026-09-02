@@ -363,7 +363,7 @@ export interface CostBreakdown { total: number; input: number; cached: number; o
 //   input     = (input − cachedInput) / 1e6 × inputUsdPerMTok
 //   cached    = cachedInput / 1e6 × cachedInputUsdPerMTok
 //   output    = max(0, output − reasoning) / 1e6 × outputUsdPerMTok   (clamped: malformed logs may report reasoning > output)
-//   reasoning = reasoning / 1e6 × outputUsdPerMTok
+//   reasoning = min(reasoning, output) / 1e6 × outputUsdPerMTok  (clamped, so input+cached+output+reasoning stays exact)
 //   total     = input + cached + output + reasoning
 export function costOf(tokens: Tokens, price: ModelPrice): CostBreakdown;
 export function cacheSavings(tokens: Tokens, price: ModelPrice): number; // cachedInput/1e6 × (input − cached price)
