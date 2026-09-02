@@ -189,6 +189,12 @@ export function createReducerState(ctx: ReducerContext): ReducerState {
  * keep-(cap - 1)-and-fold shape the rollup's `capEntries` uses, and within the wire's own cap on
  * `mcpTools` / `skills`, so `mergeKeyCounts` never has to fold again and cannot emit two
  * `(other)` rows.
+ *
+ * Which keys survive is deliberate and worth stating, because bounding here changed it: the kept
+ * set is the first (cap - 1) keys ENCOUNTERED, not the most-used ones. Folding by usage would mean
+ * keeping every key and its count until the session ends — exactly the unbounded map this exists
+ * to prevent — so insertion order is the price of the bound. It only bites a session that touches
+ * more than 63 distinct MCP tools or skills, where the tail is noise anyway.
  */
 export function bump(map: Map<string, number>, key: string): void {
   const clipped = key.length > MAX_STRING_LENGTH ? key.slice(0, MAX_STRING_LENGTH) : key;

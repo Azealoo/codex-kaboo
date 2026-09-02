@@ -419,6 +419,20 @@ describe("diagnostic maps are clipped and bounded", () => {
     expect(map["(other)"]).toBe(200 - 63);
   });
 
+  // Re-review NEW-7: bounding inside `bump` changed which keys survive — the fold used to happen
+  // at merge time over a complete map and dropped the LEAST-USED keys. It now keeps the first 63
+  // seen, so a key that arrives late and dominates the session is reported as `(other)`. That is
+  // the price of never holding an unbounded map; pinned here so it is a decision, not a surprise.
+  it("keeps the first keys it sees, not the most-used ones", () => {
+    const map = new Map<string, number>();
+    for (let i = 0; i < 63; i += 1) bump(map, `early${i}`);
+    for (let i = 0; i < 500; i += 1) bump(map, "late-and-busy");
+    expect(map.get("early0")).toBe(1);
+    expect(map.get("late-and-busy")).toBeUndefined();
+    expect(map.get("(other)")).toBe(500);
+    expect(map.size).toBe(64);
+  });
+
   it("still counts repeats of a key it already holds once the bound is reached", () => {
     const map = new Map<string, number>();
     for (let i = 0; i < 100; i += 1) bump(map, `k${i}`);
