@@ -16,12 +16,52 @@ const FORBIDDEN_KEYS = new Set([
   "command", "cwd", "path", "stdout", "stderr", "aggregated_output", "formatted_output", "unified_diff", "content",
   "message", "text", "query", "results", "arguments", "raw_content", "summary_text", "developer_instructions",
   "last_agent_message", "repository_url", "replacement_history",
+  // Raw-rollout privacy traps (spec): parsed_cmd[].cmd/.name are real shell text / file basenames;
+  // git.commit_hash is a real commit hash. None of these three collides with any field name in
+  // shared/src/sync.ts's TokenCounts, ToolCounts, KeyCount, Ttft, SessionSummary, TokenEvent,
+  // RateLimitSnapshot, MachineInfo or SyncBatch — the only schemas `report.batches` can contain —
+  // so adding them cannot flag a legitimate, allow-listed field.
+  "cmd", "name", "commit_hash",
 ]);
 const home = os.homedir();
 
+// A small denylist of generic account names that must NOT trip the username check on their own
+// (avoids flooding an audit with false positives for anyone whose OS account is a common word);
+// every other username at least 3 characters long is checked as a bare word below.
+const COMMON_WORDS = new Set([
+  "user", "users", "admin", "administrator", "test", "guest", "demo", "root", "home", "main",
+  "default", "local", "public", "shared", "team", "dev", "prod", "staging", "system", "owner",
+]);
+let osUsername = "";
+try {
+  osUsername = os.userInfo().username ?? "";
+} catch {
+  osUsername = ""; // some sandboxed/uid-less environments throw here; just skip this one check
+}
+const usernameRe =
+  osUsername.length >= 3 && !COMMON_WORDS.has(osUsername.toLowerCase())
+    ? new RegExp(`(^|[^A-Za-z0-9])${osUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^A-Za-z0-9])`, "i")
+    : null;
+const URL_RE = /https?:\/\//i;
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/;
+const POSIX_ABS_RE = /^\/(Users|home|etc|opt|root|var|tmp|private)\//;
+const WINDOWS_ABS_RE = /^[A-Za-z]:[\\/]/;
+
+/** Short leak-category label for a leaky string, or null. Callers must never echo the string itself. */
+function leakKind(str) {
+  if (str.includes(home) || /(^|[\\/])(Users|home)[\\/]/.test(str)) return "path-like string";
+  if (POSIX_ABS_RE.test(str)) return "absolute path";
+  if (WINDOWS_ABS_RE.test(str)) return "Windows-style path";
+  if (URL_RE.test(str)) return "URL";
+  if (EMAIL_RE.test(str)) return "email address";
+  if (usernameRe && usernameRe.test(str)) return "OS username";
+  return null;
+}
+
 function scan(value, trail) {
   if (typeof value === "string") {
-    if (value.includes(home) || /(^|[\\/])(Users|home)[\\/]/.test(value)) problems.push(`path-like string at ${trail}`);
+    const kind = leakKind(value);
+    if (kind) problems.push(`${kind} at ${trail}`);
     if (value.length > 256) problems.push(`string longer than 256 chars at ${trail}`);
     return;
   }
@@ -32,7 +72,12 @@ function scan(value, trail) {
   if (value && typeof value === "object") {
     for (const [key, v] of Object.entries(value)) {
       if (FORBIDDEN_KEYS.has(key)) problems.push(`forbidden key "${key}" at ${trail}`);
-      scan(v, `${trail}.${key}`);
+      // A real path/URL/email/username can also show up as an object KEY, not just a value (e.g. a
+      // dynamic-keyed map some future field introduces) — check it too, but never fold the leaky
+      // key itself into a message or into the trail used for whatever is nested under it.
+      const keyKind = leakKind(key);
+      if (keyKind) problems.push(`${keyKind} used as an object key under ${trail}`);
+      scan(v, `${trail}.${keyKind ? "<redacted-key>" : key}`);
     }
   }
 }

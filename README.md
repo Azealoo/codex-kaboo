@@ -16,7 +16,11 @@ Each teammate installs the collector once; it parses the local Codex rollout log
 effort, tool kinds, skill names, project folder name, git branch, timestamps, line counts,
 Codex/CLI versions, platform. It never uploads prompts, responses, command lines, file paths,
 diff contents, repository URLs or your hostname (unless you pass `login --hostname`).
-Audit exactly what would be sent with `codex-kaboo sync --dry-run --json`.
+Audit exactly what would be sent with `codex-kaboo sync --dry-run --json`. In that JSON, the
+`batches` field is exactly the upload payload (what's checked above); the report's other
+top-level fields, such as `homes[].path`, are local-only diagnostics for your own terminal and
+are never uploaded — so paste only the `batches` field if you share dry-run output publicly,
+since the full blob's `homes[].path` discloses your machine's Codex-home directory.
 
 ### Install
 

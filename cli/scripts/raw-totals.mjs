@@ -28,6 +28,15 @@ function walk(dir) {
 }
 for (const sub of ["sessions", "archived_sessions"]) walk(path.join(home, sub));
 
+// Mirrors parseLineTimestamp (cli/src/parser/time.ts): a line only carries a usable timestamp if
+// it is a non-negative finite number or a string Date.parse can read. pendingEventFrom discards
+// any event whose line timestamp doesn't parse, regardless of type.
+function lineTimestampParses(value) {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) return true;
+  if (typeof value === "string" && value.length > 0 && Number.isFinite(Date.parse(value))) return true;
+  return false;
+}
+
 const out = {};
 for (const file of files) {
   const m = RE.exec(path.basename(file));
@@ -52,23 +61,30 @@ for (const file of files) {
       continue;
     }
     let usage;
-    let totals;
+    let isUsageRecord = false;
     if (obj.type === "token_usage_record") {
       const payload = obj.payload ?? {};
       usage = payload.usage ?? payload.info?.last_token_usage ?? (typeof payload.input_tokens === "number" ? payload : null);
       if (!usage) continue; // unrecognised shape: the reducer ignores it and keeps the token_count events
-      hasUsageRecords = true;
-      totals = fromUsageRecord;
+      isUsageRecord = true;
     } else if (obj.type === "event_msg" && obj.payload?.type === "token_count") {
       usage = obj.payload.info?.last_token_usage;
       if (!usage) continue;
-      totals = fromTokenCount;
     } else {
       continue;
     }
     const values = [usage.input_tokens, usage.cached_input_tokens, usage.cache_write_input_tokens, usage.output_tokens, usage.reasoning_output_tokens]
       .map((v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0));
+    // A record only counts — and a token_usage_record only switches this file to usage-record mode
+    // — once it is proven non-degenerate: non-zero (checked here, before anything below reads or
+    // sets hasUsageRecords) AND, for a usage record, its own line timestamp parses. This mirrors
+    // pendingEventFrom/handleUsageRecord (cli/src/parser/session.ts:228-247,325-341): an all-zero
+    // or unparseable-timestamp usage record returns null there and therefore must never flip
+    // hasUsageRecords or suppress a file's real token_count totals here.
     if (values.every((v) => v === 0)) continue;
+    if (isUsageRecord && !lineTimestampParses(obj.timestamp)) continue;
+    if (isUsageRecord) hasUsageRecords = true;
+    const totals = isUsageRecord ? fromUsageRecord : fromTokenCount;
     totals.input += values[0];
     totals.cachedInput += values[1];
     totals.cacheWrite += values[2];
