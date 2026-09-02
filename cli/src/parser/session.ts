@@ -5,7 +5,10 @@ import { addTokens, emptyTokens, emptyToolCounts, emptyTtft, mergeKeyCounts, ttf
 import type { KeyCount, RateLimitSnapshot, SessionSummary, TokenEvent, ToolCounts, Ttft } from "@codex-kaboo/shared/sync";
 import { parseJsonLine } from "../core/jsonl-reader";
 import { summaryHashOf } from "../util/hash";
-import { asRecord, clipString, isSubagentSource, projectOf, sourceOf, toCount } from "./classify";
+import {
+  asRecord, classifyParsedCmdType, clipString, detectSkills, isSubagentSource, mcpKeyFromFunctionName, projectOf, sourceOf, toCount,
+} from "./classify";
+import { countDiffLines, countLines } from "./diff";
 import { dayHour, isValidZone, parseLineTimestamp, resolveZone, secondsToMs } from "./time";
 
 export interface ReducerContext {
@@ -172,6 +175,12 @@ export function reduce(state: ReducerState, seq: number, line: Record<string, un
     case "token_usage_record":
       handleUsageRecord(state, seq, payload, ts);
       break;
+    case "response_item":
+      handleResponseItem(state, payload);
+      break;
+    case "compacted":
+      state.counts.compactedLines += 1;
+      break;
     default:
       bump(state.unknownTypes, typeof line.type === "string" ? line.type : "(non-string type)");
   }
@@ -299,6 +308,15 @@ function handleEventMsg(state: ReducerState, seq: number, payload: Record<string
       if (rateLimits !== null && ts !== null) considerRateLimit(state, rateLimits, ts);
       break;
     }
+    case "item_completed":
+      handleItemCompleted(state, payload);
+      break;
+    case "user_message":
+      c.legacyUserMessages += 1;
+      break;
+    case "agent_message":
+      c.legacyAgentMessages += 1;
+      break;
     default:
       bump(state.unknownTypes, `event_msg/${typeof payload.type === "string" ? payload.type : "(none)"}`);
   }
@@ -312,14 +330,105 @@ function handleUsageRecord(state: ReducerState, seq: number, payload: Record<str
     bump(state.unknownTypes, "token_usage_record/unrecognised");
     return;
   }
-  state.hasUsageRecords = true;
   const event = pendingEventFrom(state, seq, ts, usage, info);
-  if (event === null) return;
+  if (event === null) return; // degenerate (all-zero or unparseable ts) — must not suppress token_count events
+  state.hasUsageRecords = true;
   const turnId = clipString(payload.turn_id);
   if (turnId) event.turnId = turnId;
   const model = clipString(payload.model);
   if (model) event.model = model;
   state.usageRecordEvents.push(event);
+}
+
+function handleItemCompleted(state: ReducerState, payload: Record<string, unknown>): void {
+  const item = asRecord(payload.item);
+  if (item === null) {
+    state.toolCounts.other += 1;
+    return;
+  }
+  const type = typeof item.type === "string" ? item.type : "(none)";
+  bump(state.itemTypes, type);
+  const c = state.counts;
+  switch (type) {
+    case "UserMessage":
+      c.userMessages += 1;
+      break;
+    case "AgentMessage":
+      c.agentMessages += 1;
+      break;
+    case "Reasoning":
+      c.reasoningItems += 1;
+      break;
+    case "CommandExecution":
+      handleCommandExecution(state, item);
+      break;
+    case "FileChange":
+      handleFileChange(state, item);
+      break;
+    case "Extension":
+      if (item.kind === "web.search") state.toolCounts.webSearch += 1;
+      else state.toolCounts.other += 1;
+      break;
+    case "WebSearch":
+      state.toolCounts.webSearch += 1;
+      break;
+    case "ImageView":
+      state.toolCounts.imageView += 1;
+      break;
+    case "McpToolCall": {
+      state.toolCounts.mcpTool += 1;
+      const server = clipString(item.server, 120) ?? "unknown";
+      const tool = clipString(item.tool, 120) ?? "unknown";
+      bump(state.mcpTools, `${server}/${tool}`);
+      break;
+    }
+    case "ContextCompaction":
+      c.contextCompactionItems += 1;
+      break;
+    default:
+      state.toolCounts.other += 1;
+  }
+}
+
+/** Counts parsed_cmd kinds and detects skills; the command text itself is matched, never stored. */
+function handleCommandExecution(state: ReducerState, item: Record<string, unknown>): void {
+  const parsed = Array.isArray(item.parsed_cmd) ? item.parsed_cmd : [];
+  if (parsed.length === 0) state.toolCounts.commandOther += 1;
+  const haystack: unknown[] = [];
+  for (const entry of parsed) {
+    const record = asRecord(entry);
+    state.toolCounts[classifyParsedCmdType(record?.type)] += 1;
+    if (record !== null) haystack.push(record.path, record.cmd);
+  }
+  if (Array.isArray(item.command)) haystack.push(...item.command);
+  for (const skill of detectSkills(haystack)) bump(state.skills, skill);
+}
+
+function handleFileChange(state: ReducerState, item: Record<string, unknown>): void {
+  state.toolCounts.fileChange += 1;
+  const changes = asRecord(item.changes) ?? {};
+  const c = state.counts;
+  c.filesChanged += Object.keys(changes).length;
+  for (const change of Object.values(changes)) {
+    const record = asRecord(change);
+    if (record === null) continue;
+    if (record.type === "update") {
+      const { added, removed } = countDiffLines(typeof record.unified_diff === "string" ? record.unified_diff : "");
+      c.linesAdded += added;
+      c.linesRemoved += removed;
+    } else if (record.type === "add") {
+      c.linesAdded += countLines(typeof record.content === "string" ? record.content : "");
+    } else if (record.type === "delete") {
+      c.linesRemoved += countLines(typeof record.content === "string" ? record.content : "");
+    }
+  }
+}
+
+/** Only `function_call` names are inspected (MCP fallback); arguments/outputs are never read. */
+function handleResponseItem(state: ReducerState, payload: Record<string, unknown>): void {
+  if (payload.type !== "function_call") return;
+  const key = mcpKeyFromFunctionName(payload.name);
+  if (key !== null) bump(state.mcpFallback, key);
 }
 
 function mapToKeyCounts(map: Map<string, number>): KeyCount[] {
