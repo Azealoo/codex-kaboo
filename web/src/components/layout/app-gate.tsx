@@ -3,6 +3,7 @@
 import { Authenticated, AuthLoading, Unauthenticated } from "convex/react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { EmptyState } from "@/components/primitives/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEnsureUser } from "@/hooks/use-ensure-user";
@@ -26,16 +27,17 @@ export function ShellSkeleton() {
 function EnsuredUser({ children }: { children: ReactNode }) {
   const { ready, error, retry } = useEnsureUser();
   if (error !== null) {
-    // Task 12 swaps this block for <EmptyState/> once the primitive exists.
     return (
       <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6">
-        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-6 py-10 text-center">
-          <p className="text-sm font-medium">Could not load your account</p>
-          <p className="max-w-md text-xs text-muted-foreground">{error}</p>
-          <Button variant="outline" size="sm" onClick={retry}>
-            Retry
-          </Button>
-        </div>
+        <EmptyState
+          title="Could not load your account"
+          description={error}
+          action={
+            <Button variant="outline" size="sm" onClick={retry}>
+              Retry
+            </Button>
+          }
+        />
       </div>
     );
   }
