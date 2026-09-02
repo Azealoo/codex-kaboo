@@ -19,6 +19,7 @@ import type * as lib_hash from "../lib/hash.js";
 import type * as lib_types from "../lib/types.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as rollups from "../rollups.js";
+import type * as sessions from "../sessions.js";
 import type * as stats from "../stats.js";
 import type * as syncTokens from "../syncTokens.js";
 import type * as users from "../users.js";
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   "lib/types": typeof lib_types;
   "lib/validators": typeof lib_validators;
   rollups: typeof rollups;
+  sessions: typeof sessions;
   stats: typeof stats;
   syncTokens: typeof syncTokens;
   users: typeof users;
