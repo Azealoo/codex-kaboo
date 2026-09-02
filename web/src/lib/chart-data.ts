@@ -110,6 +110,17 @@ export function trendSingle(trends: TrendsResult, metric: TrendMetric, color: st
   });
 }
 
+/**
+ * The trend card's "Unpriced: …" footer text for the Cost view, or `null` when nothing needs
+ * qualifying. Only `cost` can be understated by an unpriced model — `tokens` and `hours` are exact
+ * counts regardless of pricing. Matches the house style used by the overview cards and the cost
+ * structure card (`Unpriced: <models>`), so the same range reads the same way everywhere.
+ */
+export function unpricedFooter(metric: TrendMetric, unpricedModels: string[]): string | null {
+  if (metric !== "cost" || unpricedModels.length === 0) return null;
+  return `Unpriced: ${unpricedModels.join(", ")}`;
+}
+
 export function foldTopN<T extends { key: string; value: number }>(
   items: T[],
   n: number,

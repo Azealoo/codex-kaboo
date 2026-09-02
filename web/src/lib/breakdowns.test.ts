@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { OTHER_KEY, TOOL_KINDS } from "@shared/constants";
 import type { ModelRow } from "@convex/lib/types";
 import { OTHER_COLOR, assignSlots } from "./colors";
-import { TOOL_LABELS, modelSegments, modelTableRows, sourceSegments, toolSegments } from "./breakdowns";
+import { TOOL_LABELS, modelSegments, modelTableRows, sourceLabel, sourceSegments, toolSegments } from "./breakdowns";
 
 const modelRow = (key: string, input: number, cached: number, costUsd: number | null, responses = 1): ModelRow => ({
   key,
@@ -92,5 +92,37 @@ describe("breakdown helpers", () => {
     const cliWithExec = withExec.find((s) => s.key === "cli")?.color;
     const cliWithoutExec = withoutExec.find((s) => s.key === "cli")?.color;
     expect(cliWithoutExec).toBe(cliWithExec);
+  });
+  it("labels a sub-agent source with its kind, not the raw `subagent:<kind>` key", () => {
+    // sourceOf (cli/src/parser/classify.ts) always emits `subagent:<kind>`, never a bare
+    // "subagent" — sourceSegments used to index SOURCE_LABELS directly and print the raw key.
+    const segs = sourceSegments([{ key: "subagent:auto-review", tokens: 10, sessions: 1, share: 1 }]);
+    expect(segs[0]?.label).toBe("Sub-agent · auto-review");
+  });
+});
+
+describe("sourceLabel", () => {
+  it.each([
+    ["cli", false, "CLI"],
+    ["exec", false, "Exec"],
+    ["vscode", false, "VS Code"],
+    ["mcp", false, "MCP"],
+    ["subagent:review", true, "Sub-agent · review"],
+    ["custom", true, "Sub-agent"],
+    ["something_new", false, "something_new"],
+  ])("%s / subagent=%s → %s", (source, isSubagent, expected) => {
+    expect(sourceLabel(source, isSubagent)).toBe(expected);
+  });
+  it("defaults isSubagent to false for breakdown-row callers, which have no separate flag", () => {
+    expect(sourceLabel("cli")).toBe("CLI");
+    expect(sourceLabel("subagent:auto-review")).toBe("Sub-agent · auto-review");
+  });
+  it("renders the same source identically whether it reaches sourceLabel as a session row or a breakdown row", () => {
+    // This is the Fix 2 regression: the Breakdown tab's Sources table and the user's Sessions
+    // tab used to disagree on the same underlying source key.
+    const viaSessionRow = sourceLabel("subagent:auto-review", true);
+    const viaBreakdownRow = sourceSegments([{ key: "subagent:auto-review", tokens: 10, sessions: 1, share: 1 }])[0]?.label;
+    expect(viaSessionRow).toBe("Sub-agent · auto-review");
+    expect(viaBreakdownRow).toBe(viaSessionRow);
   });
 });

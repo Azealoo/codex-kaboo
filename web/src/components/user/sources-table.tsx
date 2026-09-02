@@ -6,7 +6,7 @@ import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { QuerySection } from "@/components/primitives/query-section";
 import { useBreakdowns } from "@/hooks/use-breakdowns";
-import { SOURCE_LABELS } from "@/lib/breakdowns";
+import { sourceLabel } from "@/lib/breakdowns";
 import { formatCompact, formatInt, formatPercent } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
 
@@ -15,7 +15,7 @@ type SourceRow = BreakdownsResult["bySource"][number];
 export function SourcesTable({ range, userId }: { range: ResolvedRange; userId: Id<"users"> }) {
   const { data, isStale } = useBreakdowns(range, userId);
   const columns: Column<SourceRow>[] = [
-    { key: "source", header: "Source", render: (r) => SOURCE_LABELS[r.key] ?? r.key },
+    { key: "source", header: "Source", render: (r) => sourceLabel(r.key) },
     { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
     { key: "sessions", header: "Sessions", align: "right", render: (r) => formatInt(r.sessions) },
     { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },

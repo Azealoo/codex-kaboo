@@ -17,7 +17,11 @@ function describeError(error: Error): string {
     if (code === "forbidden") return "You are not allowed to do that.";
     return `Request failed (${code ?? "unknown"}).`;
   }
-  return error.message || "Something went wrong.";
+  // Match the route-level boundary (app/(app)/error.tsx): never render `error.message`/`error.stack`
+  // verbatim. This page is shared by three people, and a non-ConvexError (a bug, not our own thrown
+  // data) could carry a stack frame, a file path, or another internal detail. The ConvexError codes
+  // above are safe because we chose those strings ourselves.
+  return "Something went wrong. Try again, or come back later.";
 }
 
 export class SectionErrorBoundary extends Component<Props, State> {

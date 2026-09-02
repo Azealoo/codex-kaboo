@@ -27,6 +27,7 @@ export function ChartCard({
   format,
   showPeak = true,
   legendShape = "rect",
+  footer,
   children,
 }: {
   title: string;
@@ -37,6 +38,9 @@ export function ChartCard({
   format: (value: number) => string;
   showPeak?: boolean;
   legendShape?: "rect" | "line";
+  /** Shown below the chart or table, in either mode — e.g. an "Unpriced: …" caveat that qualifies
+   *  dollar figures visible in both views. */
+  footer?: ReactNode;
   children: ReactNode;
 }) {
   const [mode, setMode] = useState<"chart" | "table">("chart");
@@ -76,6 +80,7 @@ export function ChartCard({
       ) : (
         <DataTable columns={columns} rows={stacked.rows} rowKey={(r) => r.x} />
       )}
+      {footer}
     </SectionCard>
   );
 }

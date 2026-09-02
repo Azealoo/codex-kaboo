@@ -14,8 +14,10 @@ export function tgzUrl(origin: string): string {
 export function installCommands(origin: string, token?: string) {
   const url = tgzUrl(origin);
   return {
-    install: `npm install -g ${url}`,
-    installNpm12: `npm install -g --allow-remote=all ${url}`,
+    // npm >= 12 refuses a remote tarball install without --allow-remote=all. A user copies
+    // whichever card is in front of them on first run (onboarding, Data Sync, or Settings), so
+    // there is no safe "plain" variant to offer alongside this one — always include the flag.
+    install: `npm install -g --allow-remote=all ${url}`,
     login: `codex-kaboo login --token ${token ?? "<token>"}`,
     schedule: "codex-kaboo install",
     status: "codex-kaboo status",
@@ -25,11 +27,11 @@ export function installCommands(origin: string, token?: string) {
 export type InstallStep = { title: string; command: string; note?: string };
 
 const INSTALL_NOTES: Record<InstallOs, string> = {
-  macos: "Needs Node 18+ (22+ recommended). With npm 12 or newer add --allow-remote=all.",
+  macos: "Needs Node 18+ (22+ recommended).",
   linux:
-    "Needs Node 18+. If you get EACCES with a system Node, use nvm/fnm or `npm config set prefix ~/.npm-global` and add it to PATH. With npm 12 or newer add --allow-remote=all.",
+    "Needs Node 18+. If you get EACCES with a system Node, use nvm/fnm or `npm config set prefix ~/.npm-global` and add it to PATH.",
   windows:
-    "Needs Node 18+. Make sure %AppData%\\npm is on PATH and, in PowerShell, that the execution policy allows npm scripts (`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`). With npm 12 or newer add --allow-remote=all.",
+    "Needs Node 18+. Make sure %AppData%\\npm is on PATH and, in PowerShell, that the execution policy allows npm scripts (`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`).",
 };
 
 const SCHEDULE_NOTES: Record<InstallOs, string> = {

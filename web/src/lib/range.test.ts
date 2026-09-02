@@ -59,6 +59,34 @@ describe("resolveRange ALL", () => {
     expect(r?.days).toBe(1100);
     expect(r?.from).toBe("2023-08-29");
   });
+  it("never inverts when a machine-local firstDay is ahead of the viewer's today", () => {
+    // Reviewer's case: a teammate in UTC+13/+14 can legitimately own the only rollup, dated
+    // `today + 1` from this viewer's browser clock. Unclamped, `from` (bounds.firstDay) landed
+    // after `to` (today), and the server's assertRange throws `bad_range` for every query on the
+    // page. `from` must never be pushed past `today`, and `to` must extend to cover a day that is
+    // genuinely ahead of the viewer rather than silently dropping it.
+    const r = resolveRange(preset("ALL"), "2026-09-02", { firstDay: "2026-09-03", lastDay: "2026-09-03" });
+    expect(r).toEqual({
+      kind: "ALL",
+      from: "2026-09-02",
+      to: "2026-09-03",
+      days: 2,
+      previous: false,
+      label: "All time",
+    });
+    expect(r!.from <= r!.to).toBe(true);
+  });
+  it("leaves the ordinary case where firstDay is before today unchanged", () => {
+    const r = resolveRange(preset("ALL"), "2026-09-02", { firstDay: "2026-08-01", lastDay: "2026-09-01" });
+    expect(r).toEqual({
+      kind: "ALL",
+      from: "2026-08-01",
+      to: "2026-09-02",
+      days: 33,
+      previous: false,
+      label: "All time",
+    });
+  });
 });
 
 describe("resolveRange custom", () => {

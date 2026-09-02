@@ -1,16 +1,14 @@
 "use client";
 
 import { heatColor } from "@/lib/colors";
-import { formatCompact, formatDay, formatUsd } from "@/lib/format";
-import { ACTIVITY_THRESHOLDS, WEEKDAY_LABELS, type ActivityCell, type ActivityGrid } from "@/lib/heatmap";
+import { formatCompact } from "@/lib/format";
+import { ACTIVITY_THRESHOLDS, describeCell, WEEKDAY_LABELS, type ActivityGrid } from "@/lib/heatmap";
 import { CellTooltip, useCellTooltip } from "./cell-tooltip";
 
-function describeCell(c: ActivityCell): string {
-  return `${formatDay(c.day)}: ${formatCompact(c.tokens)} tokens, ${c.sessions} sessions, ${formatUsd(c.costUsd)}`;
-}
-
-/** GitHub-style weeks × 7 grid with fixed bins (<10M, <100M, <1B, ≥1B tokens). */
-export function ActivityHeatmap({ grid }: { grid: ActivityGrid }) {
+/** GitHub-style weeks × 7 grid with fixed bins (<10M, <100M, <1B, ≥1B tokens).
+ *  `unpriced` flags the query's `unpricedModels.length > 0`, so every cell's dollar figure is
+ *  qualified when the range's cost total is known to understate true list-price spend. */
+export function ActivityHeatmap({ grid, unpriced }: { grid: ActivityGrid; unpriced: boolean }) {
   const { tip, show, hide } = useCellTooltip();
   const columns = grid.weeks.length;
   return (
@@ -37,7 +35,7 @@ export function ActivityHeatmap({ grid }: { grid: ActivityGrid }) {
             {grid.weeks.map((week, col) => {
               const c = week[row]!;
               if (!c.inRange) return <div key={col} className="size-[11px]" aria-hidden="true" />;
-              const text = describeCell(c);
+              const text = describeCell(c, unpriced);
               return (
                 <button
                   key={col}

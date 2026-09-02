@@ -10,7 +10,7 @@ import { SectionCard } from "@/components/primitives/section-card";
 import { SegmentedControl } from "@/components/primitives/segmented-control";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStableQuery } from "@/hooks/use-stable-query";
-import { trendSingle, type TrendMetric } from "@/lib/chart-data";
+import { trendSingle, unpricedFooter, type TrendMetric } from "@/lib/chart-data";
 import { CATEGORICAL } from "@/lib/colors";
 import { formatCompact, formatUsd } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
@@ -55,8 +55,10 @@ export function TokenTrendCard({ range, userId }: { range: ResolvedRange; userId
     );
   }
   const stacked = trendSingle(data, metric, CATEGORICAL[0]);
+  const footerText = unpricedFooter(metric, data.unpricedModels);
+  const footer = footerText ? <p className="text-xs text-muted-foreground">{footerText}</p> : undefined;
   return (
-    <ChartCard title="Token trend" stacked={stacked} format={format} actions={actions} legendShape="line">
+    <ChartCard title="Token trend" stacked={stacked} format={format} actions={actions} legendShape="line" footer={footer}>
       <TrendChart stacked={stacked} format={format} variant={variant} />
     </ChartCard>
   );

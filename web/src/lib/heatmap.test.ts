@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityLevel, buildActivityGrid, heatLevel, hourLabel, WEEKDAY_LABELS } from "./heatmap";
+import { activityLevel, buildActivityGrid, describeCell, heatLevel, hourLabel, type ActivityCell, WEEKDAY_LABELS } from "./heatmap";
 
 describe("activityLevel", () => {
   it.each([
@@ -51,5 +51,21 @@ describe("heatLevel", () => {
     expect(WEEKDAY_LABELS).toEqual(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
     expect(hourLabel(0)).toBe("00");
     expect(hourLabel(13)).toBe("13");
+  });
+});
+
+describe("describeCell", () => {
+  const cell: ActivityCell = { day: "2026-09-01", level: 2, tokens: 1_500_000, sessions: 3, costUsd: 3, inRange: true };
+
+  it("describes tokens, sessions and cost with no qualification when everything in range is priced", () => {
+    expect(describeCell(cell, false)).toBe("Sep 1, 2026: 1.5M tokens, 3 sessions, $3.00");
+  });
+
+  it("flags the dollar figure when the range has unpriced models, so the cell never reads as a silent, complete $0-inclusive total", () => {
+    // Reviewer's case: a priced main session plus an unpriced codex-auto-review sub-agent still
+    // sums to a real dollar figure that understates true list-price spend for the day.
+    const text = describeCell(cell, true);
+    expect(text).toBe("Sep 1, 2026: 1.5M tokens, 3 sessions, $3.00 (unpriced)");
+    expect(text).not.toBe(describeCell(cell, false));
   });
 });

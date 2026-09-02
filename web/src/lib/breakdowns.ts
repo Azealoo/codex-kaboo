@@ -43,14 +43,33 @@ export function modelSegments(byModel: BreakdownsResult["byModel"], colors: Colo
   );
 }
 
-/** Display names for `bySource` keys and session sources; unknown keys render verbatim. */
+/** Display names for the fixed, non-interpolated `bySource`/session source keys. */
 export const SOURCE_LABELS: Record<string, string> = {
   cli: "CLI",
   exec: "Exec",
   vscode: "VS Code",
   mcp: "MCP",
-  subagent: "Sub-agent",
 };
+
+/**
+ * The single entry point for turning a source key into a display string — used by both the
+ * Breakdown tab's Sources table/chart and the user page's Sessions tab, so the two never disagree
+ * on the same key again. `sourceOf` (cli/src/parser/classify.ts) always returns `subagent:<kind>`
+ * for a sub-agent, never a bare `subagent`, so that shape is matched directly rather than through
+ * `SOURCE_LABELS` (which cannot express the interpolated `<kind>` anyway — there is deliberately no
+ * `subagent` entry in that table: no producer emits the bare key, and this prefix check would
+ * shadow it even if one did). `isSubagent` exists for session rows, which carry their own boolean
+ * alongside `source`; breakdown rows have only a key, so it defaults to `false` — safe, because a
+ * real sub-agent key already starts with `subagent:` and is caught by the branch above first.
+ */
+export function sourceLabel(source: string, isSubagent = false): string {
+  if (source.startsWith("subagent:")) {
+    const kind = source.slice("subagent:".length);
+    return kind ? `Sub-agent · ${kind}` : "Sub-agent";
+  }
+  if (isSubagent) return "Sub-agent";
+  return SOURCE_LABELS[source] ?? source;
+}
 
 /** Fixed slots for the sources Codex can emit, so a source's colour never depends on the range. */
 const SOURCE_ORDER = ["cli", "exec", "vscode", "mcp", "custom", "internal"] as const;
@@ -75,7 +94,7 @@ export function sourceSegments(bySource: BreakdownsResult["bySource"], topN = 8)
   const total = folded.reduce((acc, i) => acc + i.value, 0);
   return folded.map((i) => ({
     key: i.key,
-    label: i.key === OTHER_KEY ? "Other" : (SOURCE_LABELS[i.key] ?? i.key),
+    label: i.key === OTHER_KEY ? "Other" : sourceLabel(i.key),
     value: i.value,
     share: total > 0 ? i.value / total : 0,
     color: i.key === OTHER_KEY ? OTHER_COLOR : colorFor(colors, i.key),

@@ -1,5 +1,6 @@
 import { addDays, compareDays, weekStart } from "@shared/days";
 import type { ActivityHeatmapResult } from "@convex/lib/types";
+import { formatCompact, formatDay, formatUsd } from "./format";
 
 export type HeatLevel = 0 | 1 | 2 | 3 | 4;
 export type ActivityDay = ActivityHeatmapResult["days"][number];
@@ -72,4 +73,15 @@ export function heatLevel(value: number, max: number): HeatLevel {
 
 export function hourLabel(hour: number): string {
   return String(hour).padStart(2, "0");
+}
+
+/**
+ * The heatmap's cell tooltip/`aria-label` text — one function so the two always agree. `unpriced`
+ * is the range's `unpricedModels.length > 0`, not a per-cell fact: a day's `costUsd` sums across
+ * every model active that day, so a day with an unpriced model still shows a real (understated)
+ * dollar figure, never a $0 that would look complete. Flag it rather than print it silently.
+ */
+export function describeCell(c: ActivityCell, unpriced: boolean): string {
+  const cost = unpriced ? `${formatUsd(c.costUsd)} (unpriced)` : formatUsd(c.costUsd);
+  return `${formatDay(c.day)}: ${formatCompact(c.tokens)} tokens, ${c.sessions} sessions, ${cost}`;
 }

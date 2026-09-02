@@ -10,6 +10,7 @@ import {
   trendByModel,
   trendByUser,
   trendSingle,
+  unpricedFooter,
 } from "./chart-data";
 
 const tokens = (total: number) => ({ input: total, cachedInput: 0, cacheWrite: 0, output: 0, reasoning: 0, total });
@@ -106,6 +107,25 @@ describe("trendSingle", () => {
     expect(trendSingle(trends, "tokens", "#000").series).toEqual([
       { key: "s0", label: "Tokens", color: "#000", entity: "total" },
     ]);
+  });
+});
+
+describe("unpricedFooter", () => {
+  it("qualifies the cost metric's dollar total when the range has unpriced models", () => {
+    // Reviewer's case: a priced main session plus an unpriced codex-auto-review sub-agent still
+    // sums to a real $3.00 total that understates true list-price spend — the trend card's Cost
+    // view must say so, not print $3.00 unqualified.
+    expect(unpricedFooter("cost", ["codex-auto-review"])).toBe("Unpriced: codex-auto-review");
+    expect(unpricedFooter("cost", ["codex-auto-review", "gpt-9-preview"])).toBe(
+      "Unpriced: codex-auto-review, gpt-9-preview",
+    );
+  });
+  it("says nothing when every model in range is priced", () => {
+    expect(unpricedFooter("cost", [])).toBeNull();
+  });
+  it("says nothing for the tokens/hours metrics, which are exact regardless of pricing", () => {
+    expect(unpricedFooter("tokens", ["codex-auto-review"])).toBeNull();
+    expect(unpricedFooter("hours", ["codex-auto-review"])).toBeNull();
   });
 });
 

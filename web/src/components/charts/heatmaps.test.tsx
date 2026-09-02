@@ -10,7 +10,7 @@ describe("ActivityHeatmap", () => {
     const grid = buildActivityGrid("2026-08-03", "2026-08-16", [
       { day: "2026-08-04", tokens: 25_000_000, sessions: 2, costUsd: 1.5 },
     ]);
-    render(<ActivityHeatmap grid={grid} />);
+    render(<ActivityHeatmap grid={grid} unpriced={false} />);
     const cells = screen.getAllByRole("gridcell");
     expect(cells).toHaveLength(14);
     const cell = screen.getByLabelText("Aug 4, 2026: 25M tokens, 2 sessions, $1.50");
@@ -22,11 +22,22 @@ describe("ActivityHeatmap", () => {
     const grid = buildActivityGrid("2026-08-03", "2026-08-16", [
       { day: "2026-08-04", tokens: 25_000_000, sessions: 2, costUsd: 1.5 },
     ]);
-    render(<ActivityHeatmap grid={grid} />);
+    render(<ActivityHeatmap grid={grid} unpriced={false} />);
     const gridEl = screen.getByRole("grid", { name: "Daily token usage heatmap" });
     expect(
       within(gridEl).getByRole("gridcell", { name: "Aug 4, 2026: 25M tokens, 2 sessions, $1.50" }),
     ).toBeInTheDocument();
+  });
+
+  it("qualifies every cell's aria-label (and identically, its hover tooltip) when the range has unpriced models", () => {
+    // Fix 1: the heatmap used to print formatUsd(c.costUsd) unqualified even when the query's
+    // unpricedModels was non-empty, so a real-but-understated total read as the whole story.
+    const grid = buildActivityGrid("2026-08-03", "2026-08-16", [
+      { day: "2026-08-04", tokens: 25_000_000, sessions: 2, costUsd: 1.5 },
+    ]);
+    render(<ActivityHeatmap grid={grid} unpriced={true} />);
+    const cell = screen.getByLabelText("Aug 4, 2026: 25M tokens, 2 sessions, $1.50 (unpriced)");
+    expect(cell).toBeInTheDocument();
   });
 });
 

@@ -42,4 +42,16 @@ describe("ChartCard", () => {
     expect(screen.getByText("No data in this range")).toBeInTheDocument();
     expect(screen.queryByTestId("chart")).not.toBeInTheDocument();
   });
+  it("keeps a footer visible in both chart and table mode", async () => {
+    // The token trend card's "Unpriced: …" caveat must stay visible when the viewer switches to
+    // the table — the dollar figures it qualifies are shown there too.
+    render(
+      <ChartCard title="Token trend" stacked={stacked} format={formatCompact} footer={<p>Unpriced: codex-auto-review</p>}>
+        <div data-testid="chart" />
+      </ChartCard>,
+    );
+    expect(screen.getByText("Unpriced: codex-auto-review")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "Table" }));
+    expect(screen.getByText("Unpriced: codex-auto-review")).toBeInTheDocument();
+  });
 });

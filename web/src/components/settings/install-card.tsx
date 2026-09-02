@@ -4,11 +4,10 @@ import { CopyBox } from "@/components/primitives/copy-box";
 import { SectionCard } from "@/components/primitives/section-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useOrigin } from "@/hooks/use-origin";
-import { INSTALL_OS, installCommands, installSteps } from "@/lib/install";
+import { INSTALL_OS, installSteps } from "@/lib/install";
 
 export function InstallCard() {
   const origin = useOrigin() ?? "https://<this dashboard>";
-  const npm12 = installCommands(origin).installNpm12;
   return (
     <SectionCard
       title="Install the collector"
@@ -30,10 +29,7 @@ export function InstallCard() {
                 {step.note ? <p className="text-xs text-muted-foreground">{step.note}</p> : null}
               </div>
             ))}
-            <p className="text-xs text-muted-foreground">
-              npm 12 or newer refuses remote tarballs by default; use <code className="font-mono">{npm12}</code>.
-              Re-running the install command upgrades the collector in place.
-            </p>
+            <p className="text-xs text-muted-foreground">Re-running the install command upgrades the collector in place.</p>
           </TabsContent>
         ))}
       </Tabs>

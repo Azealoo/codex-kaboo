@@ -11,8 +11,8 @@ import { SectionErrorBoundary } from "@/components/primitives/section-error-boun
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { sourceLabel } from "@/lib/breakdowns";
 import { formatCompact, formatDateTime, formatDurationMs, formatInt, formatPercent, formatUsd } from "@/lib/format";
-import { sourceLabel } from "@/lib/sessions";
 
 const PAGE_SIZE = 20;
 

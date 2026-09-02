@@ -76,13 +76,24 @@ export function resolveRange(
   if (params.range === "ALL") {
     if (bounds === undefined || bounds === null) return null;
     const earliest = addDays(today, -(MAX_QUERY_RANGE_DAYS - 1));
-    const first = bounds.firstDay ?? today;
-    const from = compareDays(first, earliest) < 0 ? earliest : first;
+    // `bounds` are machine-local days; `today` is the viewer's browser day. A teammate whose
+    // machine clock runs ahead of the viewer's (UTC+13/+14 vs. e.g. a US zone) can legitimately
+    // own the only rollup dated `today + 1` from this viewer, which would otherwise leave `from`
+    // after `to` and make every query on the page throw `bad_range` (assertRange is correct to
+    // throw on that — the bug is that this function ever produced it). Clamp both ends against
+    // `today` so ALL can never invert: `from` never starts after `today`, and `to` extends to
+    // cover a day that is genuinely ahead of the viewer instead of silently dropping it. Do not
+    // simplify this back to `to: today` — that reintroduces the silent exclusion.
+    const firstDay = bounds.firstDay ?? today;
+    const cappedFirst = compareDays(firstDay, today) > 0 ? today : firstDay;
+    const from = compareDays(cappedFirst, earliest) < 0 ? earliest : cappedFirst;
+    const lastDay = bounds.lastDay ?? today;
+    const to = compareDays(lastDay, today) > 0 ? lastDay : today;
     return {
       kind: "ALL",
       from,
-      to: today,
-      days: daysBetween(from, today),
+      to,
+      days: daysBetween(from, to),
       previous: false,
       label: presetLabel("ALL"),
     };
