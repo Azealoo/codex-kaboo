@@ -45,6 +45,19 @@ function makeSmallHome(): string {
   return home;
 }
 
+// A home with exactly two matching rollout files and nothing more — used to land the cap
+// (maxFiles: 2) precisely, with no local overflow entry to trip the materialisation loop's own
+// truncation check.
+function makeExactHome(): string {
+  const home = mkdtempSync(path.join(os.tmpdir(), "ck-codex-exact-"));
+  tmpDirs.push(home);
+  const day = path.join(home, "sessions", "2026", "08", "30");
+  mkdirSync(day, { recursive: true });
+  writeFileSync(path.join(day, `rollout-2026-08-30T10-00-00-${T1}.jsonl`), "{}\n");
+  writeFileSync(path.join(day, `rollout-2026-08-30T11-00-00-${T1}_${R1}.jsonl`), "{}\n{}\n");
+  return home;
+}
+
 describe("parseRolloutName", () => {
   it("accepts plain, forked and compressed names only", () => {
     expect(parseRolloutName(`rollout-2026-08-30T10-00-00-${T1}.jsonl`)).toEqual({
@@ -82,6 +95,15 @@ describe("discoverRolloutFiles", () => {
     expect(capped.files).toHaveLength(2);
     expect(capped.files.map((f) => f.sessionId)).toEqual([T1, `${T1}_${R1}`]);
     expect(capped.files.every((f) => f.codexHome === home1)).toBe(true);
+    expect(capped.truncated).toBe(true);
+    expect(capped.homes[1]).toEqual({ path: home2, exists: true, files: 0 });
+  });
+  it("marks the result truncated when a later home is skipped exactly at the cap", async () => {
+    const home1 = makeExactHome();
+    const home2 = makeSmallHome();
+    const capped = await discoverRolloutFiles([home1, home2], { maxFiles: 2 });
+    expect(capped.files).toHaveLength(2);
+    expect(capped.files.map((f) => f.sessionId)).toEqual([T1, `${T1}_${R1}`]);
     expect(capped.truncated).toBe(true);
     expect(capped.homes[1]).toEqual({ path: home2, exists: true, files: 0 });
   });

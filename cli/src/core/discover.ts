@@ -78,8 +78,12 @@ export async function discoverRolloutFiles(
       exists = false;
     }
     const found: string[] = [];
-    if (exists && files.length < maxFiles) {
-      for (const sub of SUBDIRS) await walk(path.join(home, sub), found, maxFiles + 1 - files.length);
+    if (exists) {
+      if (files.length < maxFiles) {
+        for (const sub of SUBDIRS) await walk(path.join(home, sub), found, maxFiles + 1 - files.length);
+      } else {
+        truncated = true; // an existing home reached after the cap is already full is never examined
+      }
     }
     let count = 0;
     for (const full of found) {
