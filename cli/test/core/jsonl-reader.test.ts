@@ -79,4 +79,12 @@ describe("readJsonlLines", () => {
     expect(lines.map((l) => l.text)).toEqual(['{"a":1}', '{"b":2}']);
     expect(result).toMatchObject({ lines: 2, partial: false, tail: "" });
   });
+  // Same code path as the zstd test above (readJsonlLines throws ZstdUnsupportedError, not
+  // ENOENT, before ever touching the filesystem when zstd is unavailable), so gate it the same way.
+  it.skipIf(!zstdSupported())("rejects with ENOENT when the .zst source file is missing", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ck-reader-"));
+    tmpDirs.push(dir);
+    const missing = path.join(dir, "missing.jsonl.zst");
+    await expect(readJsonlLines(missing, () => {}, { compressed: true })).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });

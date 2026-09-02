@@ -28,7 +28,9 @@ export class ZstdUnsupportedError extends Error {
   }
 }
 
-type ZlibWithZstd = { createZstdDecompress?: () => NodeJS.ReadWriteStream };
+type ZlibWithZstd = {
+  createZstdDecompress?: () => NodeJS.ReadWriteStream & { destroy(error?: Error): void };
+};
 
 export function zstdSupported(): boolean {
   return typeof (zlib as unknown as ZlibWithZstd).createZstdDecompress === "function";
@@ -104,8 +106,14 @@ export async function readJsonlLines(
   if (opts.compressed) {
     const factory = (zlib as unknown as ZlibWithZstd).createZstdDecompress;
     if (typeof factory !== "function") throw new ZstdUnsupportedError();
-    const stream = createReadStream(filePath).pipe(factory());
-    for await (const chunk of stream) splitter.push(chunk as Buffer);
+    const decompressor = factory();
+    const source = createReadStream(filePath);
+    // .pipe() does not forward 'error' from the source: without this listener, a missing or
+    // unreadable .zst file raises an unhandled 'error' on `source` (crash) instead of rejecting.
+    // Destroying the decompressor with that error makes the `for await` below reject with it.
+    source.on("error", (err) => decompressor.destroy(err));
+    source.pipe(decompressor);
+    for await (const chunk of decompressor) splitter.push(chunk as Buffer);
     return { consumed: splitter.consumed, lines: splitter.seq, tail: "", partial: splitter.partial, bytes: splitter.bytes };
   }
   const chunkSize = opts.chunkSize ?? 256 * 1024;
