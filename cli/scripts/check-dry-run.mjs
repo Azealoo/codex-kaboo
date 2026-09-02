@@ -47,20 +47,29 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/;
 const POSIX_ABS_RE = /^\/(Users|home|etc|opt|root|var|tmp|private)\//;
 const WINDOWS_ABS_RE = /^[A-Za-z]:[\\/]/;
 
+// `project`, `gitBranch`, the machine `label`, and the `key` of an `mcpTools`/`skills` entry are
+// uploaded BY DESIGN (spec: project folder name, git branch, machine label, MCP/skill names) and
+// very commonly contain the operator's own handle (a folder like "alice-notes", a branch like
+// "alice/feature-x") — that is expected, not a leak. This allow-list exempts only the VALUES at
+// these trail keys from the username check specifically; every other check (paths, URLs, emails,
+// forbidden keys) still applies to them, and object KEYS and every other field's values still get
+// the full username check.
+const USERNAME_EXEMPT_TRAIL_RE = /(?:\.project|\.gitBranch|\.label|\.(?:mcpTools|skills)\[\d+\]\.key)$/;
+
 /** Short leak-category label for a leaky string, or null. Callers must never echo the string itself. */
-function leakKind(str) {
+function leakKind(str, usernameExempt) {
   if (str.includes(home) || /(^|[\\/])(Users|home)[\\/]/.test(str)) return "path-like string";
   if (POSIX_ABS_RE.test(str)) return "absolute path";
   if (WINDOWS_ABS_RE.test(str)) return "Windows-style path";
   if (URL_RE.test(str)) return "URL";
   if (EMAIL_RE.test(str)) return "email address";
-  if (usernameRe && usernameRe.test(str)) return "OS username";
+  if (!usernameExempt && usernameRe && usernameRe.test(str)) return "OS username";
   return null;
 }
 
 function scan(value, trail) {
   if (typeof value === "string") {
-    const kind = leakKind(value);
+    const kind = leakKind(value, USERNAME_EXEMPT_TRAIL_RE.test(trail));
     if (kind) problems.push(`${kind} at ${trail}`);
     if (value.length > 256) problems.push(`string longer than 256 chars at ${trail}`);
     return;
@@ -73,9 +82,10 @@ function scan(value, trail) {
     for (const [key, v] of Object.entries(value)) {
       if (FORBIDDEN_KEYS.has(key)) problems.push(`forbidden key "${key}" at ${trail}`);
       // A real path/URL/email/username can also show up as an object KEY, not just a value (e.g. a
-      // dynamic-keyed map some future field introduces) — check it too, but never fold the leaky
-      // key itself into a message or into the trail used for whatever is nested under it.
-      const keyKind = leakKind(key);
+      // dynamic-keyed map some future field introduces) — check it too (keys are never exempt from
+      // the username check, unlike the specific values above), but never fold the leaky key itself
+      // into a message or into the trail used for whatever is nested under it.
+      const keyKind = leakKind(key, false);
       if (keyKind) problems.push(`${keyKind} used as an object key under ${trail}`);
       scan(v, `${trail}.${keyKind ? "<redacted-key>" : key}`);
     }

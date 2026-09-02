@@ -75,14 +75,18 @@ for (const file of files) {
     }
     const values = [usage.input_tokens, usage.cached_input_tokens, usage.cache_write_input_tokens, usage.output_tokens, usage.reasoning_output_tokens]
       .map((v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0));
-    // A record only counts — and a token_usage_record only switches this file to usage-record mode
-    // — once it is proven non-degenerate: non-zero (checked here, before anything below reads or
-    // sets hasUsageRecords) AND, for a usage record, its own line timestamp parses. This mirrors
-    // pendingEventFrom/handleUsageRecord (cli/src/parser/session.ts:228-247,325-341): an all-zero
-    // or unparseable-timestamp usage record returns null there and therefore must never flip
-    // hasUsageRecords or suppress a file's real token_count totals here.
+    // A record only counts — of either kind — once it is proven non-degenerate: non-zero (checked
+    // here, before anything below reads or sets hasUsageRecords) AND its own line timestamp
+    // parses. This mirrors pendingEventFrom (cli/src/parser/session.ts:228-247), which is called
+    // identically for both token_count (session.ts:303-304) and token_usage_record (session.ts:333)
+    // and returns null — dropping the event entirely, for either kind — whenever `ts === null`. A
+    // token_usage_record additionally only switches this file to usage-record mode once it clears
+    // both checks, matching handleUsageRecord (session.ts:325-341): an all-zero or
+    // unparseable-timestamp usage record must never flip hasUsageRecords or suppress a file's real
+    // token_count totals; an unparseable-timestamp token_count line must be dropped too, exactly
+    // like the reducer drops it, not silently counted here.
     if (values.every((v) => v === 0)) continue;
-    if (isUsageRecord && !lineTimestampParses(obj.timestamp)) continue;
+    if (!lineTimestampParses(obj.timestamp)) continue;
     if (isUsageRecord) hasUsageRecords = true;
     const totals = isUsageRecord ? fromUsageRecord : fromTokenCount;
     totals.input += values[0];
