@@ -51,6 +51,12 @@ export async function runLogin(opts: LoginOptions, deps: LoginDeps): Promise<Log
   if (server === null) return fail(`invalid server URL "${rawServer}": expected https://<deployment>.convex.site (--server)`);
 
   const token = (opts.token ?? (await deps.prompt("Paste your sync token (ck_…): "))).trim();
+  // An empty value is what a non-interactive caller gets when stdin is at EOF (`login < /dev/null`
+  // in a provisioning script): say so explicitly instead of complaining about a missing `ck_`
+  // prefix, which reads as "you typed the wrong thing" when nothing was typed at all.
+  if (token.length === 0) {
+    return fail(`no token provided: pass --token ck_… or run \`codex-kaboo login\` interactively (stdin was empty)`, server);
+  }
   if (!token.startsWith(TOKEN_PREFIX) || token.length <= TOKEN_PREFIX.length) {
     return fail(`invalid token: expected a token starting with ${TOKEN_PREFIX} (create one in the dashboard under Settings → Sync tokens)`, server);
   }

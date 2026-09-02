@@ -1,5 +1,5 @@
 import { execFile, execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
@@ -281,6 +281,42 @@ describe("promptToken (non-TTY fallback)", () => {
       }
       expect(output).toContain("warning: stdin is not a TTY");
       expect(output).not.toContain("ck_pipedNonTtyToken");
+    } finally {
+      rmSync(kabooHome, { recursive: true, force: true });
+    }
+  });
+
+  it("fails loudly instead of exiting 0 silently when stdin is at EOF", () => {
+    // Regression: `rl.question`'s callback was the ONLY thing that could settle promptToken's
+    // promise, but at EOF readline emits `close` and never calls it — so runLogin never returned,
+    // the --json result was never printed, process.exitCode was never assigned, and Node exited 0
+    // with empty stdout having written no config. A provisioning script read that as success.
+    const kabooHome = mkdtempSync(path.join(os.tmpdir(), "ck-eof-home-"));
+    try {
+      let stdout = "";
+      let stderr = "";
+      let status: number | null = 0;
+      try {
+        stdout = execFileSync(process.execPath, [distEntry, "login", "--server", "https://example.invalid", "--json"], {
+          input: "", // EOF immediately
+          encoding: "utf8",
+          env: { ...process.env, CODEX_KABOO_HOME: kabooHome },
+          timeout: 15_000,
+        });
+      } catch (error) {
+        const e = error as { stdout?: string; stderr?: string; status?: number | null; signal?: string | null };
+        stdout = e.stdout ?? "";
+        stderr = e.stderr ?? "";
+        status = e.status ?? null;
+        expect(e.signal ?? null).toBeNull(); // it must exit on its own, not be killed by the timeout
+      }
+      expect(status).toBe(2);
+      const parsed = JSON.parse(stdout) as { ok: boolean; exitCode: number; error?: string };
+      expect(parsed.ok).toBe(false);
+      expect(parsed.exitCode).toBe(2);
+      expect(parsed.error).toContain("no token provided");
+      expect(stderr).not.toContain("no token provided"); // --json puts the result on stdout
+      expect(existsSync(path.join(kabooHome, "config.json"))).toBe(false);
     } finally {
       rmSync(kabooHome, { recursive: true, force: true });
     }

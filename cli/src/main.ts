@@ -98,9 +98,24 @@ function promptToken(question: string): Promise<string> {
     if (!isTTY) {
       output.write("warning: stdin is not a TTY; input cannot be hidden and may be echoed by your terminal or shell\n");
       const rl = readline.createInterface({ input, output, terminal: false });
+      // `rl.question`'s callback is NOT the only way this prompt can end: when stdin is already at
+      // EOF (`login --json < /dev/null`, a provisioning script with no input) readline emits `close`
+      // and the question callback never fires. Without the `close` handler below this promise never
+      // settled — `runLogin` never returned, the `--json` result was never printed and
+      // `process.exitCode` was never assigned, so Node exited 0 having silently done nothing and a
+      // calling script read that as a successful login. Resolving with "" on close makes the caller
+      // take its normal "invalid token" path (exit 2 with a message). `settle` guards against both
+      // paths firing (readline always emits `close` after `question` resolves, too).
+      let settled = false;
+      const settle = (answer: string): void => {
+        if (settled) return;
+        settled = true;
+        resolve(answer);
+      };
+      rl.on("close", () => settle(""));
       rl.question(question, (answer) => {
         rl.close();
-        resolve(answer);
+        settle(answer);
       });
       return;
     }
