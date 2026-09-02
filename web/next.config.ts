@@ -2,8 +2,11 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const nextConfig: NextConfig = {
-  // The repo root, so `../shared/src` can be compiled by Turbopack.
-  turbopack: { root: path.resolve(process.cwd(), "..") },
+  reactStrictMode: true,
+  turbopack: {
+    // The npm workspace root holds the lockfile and `shared/`.
+    root: path.join(__dirname, ".."),
+  },
 };
 
 export default nextConfig;

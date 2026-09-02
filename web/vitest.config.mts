@@ -7,6 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const alias = {
   "@": path.resolve(here, "src"),
   "@shared": path.resolve(here, "../shared/src"),
+  "@convex": path.resolve(here, "convex"),
 };
 
 export default defineConfig({
@@ -33,7 +34,7 @@ export default defineConfig({
           name: "dom",
           environment: "jsdom",
           include: ["src/**/*.test.tsx"],
-          setupFiles: ["./vitest.setup.ts"],
+          setupFiles: ["./vitest.setup.dom.ts"],
         },
       },
     ],
