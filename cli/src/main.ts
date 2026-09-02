@@ -197,11 +197,12 @@ program
   .option("--server <url>", "dashboard API origin, https://<deployment>.convex.site")
   .option("--machine-name <name>", "label shown in the dashboard")
   .option("--hostname", "also upload this machine's hostname")
+  .option("--no-hostname", "stop uploading this machine's hostname (clears a previous opt-in)")
   .action(async (o: { token?: string; server?: string; machineName?: string; hostname?: boolean }) => {
     const g = globals();
     const cliVersion = CLI_VERSION;
     const result = await runLogin(
-      { ...(o.token ? { token: o.token } : {}), ...(o.server ? { server: o.server } : {}), ...(o.machineName ? { machineName: o.machineName } : {}), hostname: o.hostname === true, json: g.json },
+      { ...(o.token ? { token: o.token } : {}), ...(o.server ? { server: o.server } : {}), ...(o.machineName ? { machineName: o.machineName } : {}), hostname: o.hostname, json: g.json },
       { paths, env: process.env, bakedServer: BAKED_SERVER, cliVersion, prompt: promptToken, createClient: clientFor(cliVersion), newId: () => randomUUID(), now: () => Date.now(), log: makeLogger({ verbose: g.verbose }) },
     );
     emit(g.json, result, result.ok

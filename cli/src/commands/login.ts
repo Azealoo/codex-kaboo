@@ -10,7 +10,8 @@ export interface LoginOptions {
   token?: string;
   server?: string;
   machineName?: string;
-  hostname: boolean;
+  /** true = `--hostname`, false = `--no-hostname`, undefined = neither flag was passed. */
+  hostname?: boolean;
   json: boolean;
 }
 
@@ -41,6 +42,14 @@ export interface LoginResult {
 export function normalizeServer(url: string): string | null {
   const trimmed = url.trim().replace(/\/+$/, "");
   return /^https?:\/\/[^\s/]+/.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * `--hostname` → true, `--no-hostname` → false, neither flag → keep whatever was already
+ * configured (false for a first-ever login). The only way back from an opt-in short of `logout`.
+ */
+export function resolveHostnameOptIn(flag: boolean | undefined, existing: boolean | undefined): boolean {
+  return flag ?? existing ?? false;
 }
 
 export async function runLogin(opts: LoginOptions, deps: LoginDeps): Promise<LoginResult> {
@@ -77,7 +86,7 @@ export async function runLogin(opts: LoginOptions, deps: LoginDeps): Promise<Log
     token,
     machineId,
     label,
-    hostnameOptIn: opts.hostname || (existing?.hostnameOptIn ?? false),
+    hostnameOptIn: resolveHostnameOptIn(opts.hostname, existing?.hostnameOptIn),
     codexHomes: existing?.codexHomes ?? [],
     userId: who.userId,
     userName: who.name,

@@ -26,7 +26,8 @@ export function detectSkills(values: readonly unknown[]): string[] {
     const re = new RegExp(SKILL_RE.source, "gi");
     let m: RegExpExecArray | null;
     while ((m = re.exec(value)) !== null) {
-      if (m[1]) found.add(m[1]);
+      const name = clipString(m[1]);
+      if (name) found.add(name);
     }
   }
   return [...found].sort();
@@ -54,6 +55,14 @@ export function mcpKeyFromFunctionName(name: unknown): string | null {
   return null;
 }
 
+/** A short, closed-set-looking token — the shape of an enum tag Codex writes itself, not arbitrary log content. */
+const ENUM_TOKEN_RE = /^[A-Za-z0-9_-]{1,32}$/;
+
+/** `key` only if it looks like an enum member; `undefined` otherwise. Never forwards an arbitrary log-key string. */
+function enumToken(key: string | undefined): string | undefined {
+  return key !== undefined && ENUM_TOKEN_RE.test(key) ? key : undefined;
+}
+
 /** session_meta.source → "cli" | "exec" | "vscode" | … | "subagent:<kind>" | "unknown". */
 export function sourceOf(source: unknown): string {
   if (typeof source === "string") return clipString(source) ?? "unknown";
@@ -66,14 +75,16 @@ export function sourceOf(source: unknown): string {
     const firstKey = subRecord ? Object.keys(subRecord)[0] : undefined;
     if (subRecord && firstKey !== undefined) {
       const inner = subRecord[firstKey];
-      const kind = typeof inner === "string" && inner.length > 0 ? inner : firstKey;
-      return `subagent:${clipString(kind, 200)}`;
+      // `inner` is Codex's own value when it gave one; otherwise `firstKey` is serde's externally-tagged
+      // enum tag, not log content — but only when it actually looks like a tag (see ENUM_TOKEN_RE above).
+      const kind = typeof inner === "string" && inner.length > 0 ? inner : enumToken(firstKey);
+      return `subagent:${clipString(kind, 200) ?? "unknown"}`;
     }
     return "subagent:unknown";
   }
   const keys = Object.keys(record);
-  if (keys.length === 1 && keys[0]) return clipString(keys[0]) ?? "unknown";
-  return "unknown";
+  const key = keys.length === 1 ? enumToken(keys[0]) : undefined;
+  return clipString(key) ?? "unknown";
 }
 
 export function isSubagentSource(source: string): boolean {

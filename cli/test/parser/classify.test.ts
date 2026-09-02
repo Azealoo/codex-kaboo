@@ -1,8 +1,30 @@
 import { describe, expect, it } from "vitest";
+import { SessionSummary } from "@codex-kaboo/shared/sync";
 import {
   asRecord, classifyParsedCmdType, clipString, detectSkills, isSubagentSource, mcpKeyFromFunctionName,
   projectOf, sourceOf, toCount,
 } from "../../src/parser/classify";
+
+/** Smallest object that satisfies `SessionSummary`, for asserting a fix's output still validates on the wire. */
+function minimalSessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    sessionId: "s1", threadId: "s1", startedAt: Date.UTC(2026, 0, 15), endedAt: Date.UTC(2026, 0, 15),
+    wallMs: 0, day: "2026-01-15", project: "(unknown)", originator: "codex-tui", source: "cli",
+    isSubagent: false, model: "(unknown)", turns: 0, completedTurns: 0, userMessages: 0, agentMessages: 0,
+    reasoningItems: 0,
+    toolCounts: {
+      commandRead: 0, commandList: 0, commandSearch: 0, commandOther: 0, fileChange: 0,
+      webSearch: 0, imageView: 0, mcpTool: 0, other: 0,
+    },
+    mcpTools: [], skills: [],
+    linesAdded: 0, linesRemoved: 0, filesChanged: 0, compactions: 0, activeMs: 0,
+    ttft: { count: 0, sumMs: 0, hist: Array(16).fill(0) },
+    tokens: { input: 0, cachedInput: 0, cacheWrite: 0, output: 0, reasoning: 0, total: 0 },
+    responses: 0, eventOrigin: "count", inProgress: false, lineCount: 0, generation: 0, parseErrors: 0, parserVersion: 1,
+    summaryHash: "a".repeat(40),
+    ...overrides,
+  };
+}
 
 describe("classifyParsedCmdType", () => {
   it("maps the four parsed_cmd types and everything else to Other", () => {
@@ -23,6 +45,16 @@ describe("detectSkills", () => {
     expect(detectSkills(['cat "a/b/SKILL.md" && cat c/d/SKILL.md'])).toEqual(["b", "d"]);
     expect(detectSkills(["SKILL.md", "notes/skill.txt"])).toEqual([]);
     expect(detectSkills(["/x/y/skill.MD"])).toEqual(["y"]);
+  });
+
+  it("clips a skill directory name over 256 characters, like every other extractor, so the session still validates", () => {
+    const longName = "a".repeat(300);
+    const clipped = longName.slice(0, 256);
+    expect(detectSkills([`/x/${longName}/SKILL.md`])).toEqual([clipped]);
+    expect(clipped).toHaveLength(256);
+
+    const summary = minimalSessionSummary({ skills: [{ key: clipped, count: 1 }] });
+    expect(SessionSummary.safeParse(summary).success).toBe(true);
   });
 });
 
@@ -51,6 +83,18 @@ describe("sourceOf / projectOf", () => {
     expect(sourceOf(undefined)).toBe("unknown");
     expect(isSubagentSource("subagent:guardian")).toBe(true);
     expect(isSubagentSource("cli")).toBe(false);
+  });
+  it("never copies an unvalidated object key onto the wire: only a short enum-like token survives", () => {
+    // Real Codex shapes still resolve exactly as before.
+    expect(sourceOf({ subagent: { other: "guardian" } })).toBe("subagent:guardian");
+    expect(sourceOf({ subagent: "auto-review" })).toBe("subagent:auto-review");
+    expect(sourceOf({ exec: {} })).toBe("exec");
+    // A single-key object whose key is a path must not reach `source` as that key.
+    expect(sourceOf({ "/Users/victim/CANARYSOURCEKEYAAA": true })).toBe("unknown");
+    // Same guard on the subagent inner-key fallback, used when the inner value isn't a string.
+    expect(sourceOf({ subagent: { "/Users/victim/CANARYINNERKEYAAA": 123 } })).toBe("subagent:unknown");
+    // The guard is a real bound, not just a charset check: an overlong token-shaped key also falls back.
+    expect(sourceOf({ [`custom_${"a".repeat(40)}`]: 1 })).toBe("unknown");
   });
   it("keeps only the last path segment of cwd", () => {
     expect(projectOf("/Users/me/Documents/codex-kaboo")).toBe("codex-kaboo");

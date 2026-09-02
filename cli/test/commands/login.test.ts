@@ -23,7 +23,9 @@ function deps(overrides: Partial<LoginDeps> = {}): LoginDeps {
     createClient: () => client, newId: () => `machine-${++ids}`, now: () => 1234, log: silentLogger, ...overrides,
   };
 }
-const base = { hostname: false, json: false };
+// `hostname: undefined` means "neither --hostname nor --no-hostname was passed" — the tri-state
+// commander produces for a negatable pair. Individual tests override it with true/false.
+const base = { hostname: undefined, json: false };
 
 describe("runLogin", () => {
   it("writes a 0600 config with a fresh machine id and a random label, then keeps both", async () => {
@@ -42,6 +44,23 @@ describe("runLogin", () => {
     const renamed = await runLogin({ ...base, token: "ck_third", machineName: "work-laptop" }, d);
     expect(renamed.label).toBe("work-laptop");
     expect((await readConfig(d.paths))?.hostnameOptIn).toBe(true); // sticky
+  });
+  it("resolves hostname opt-in explicitly: --hostname sets it, --no-hostname clears it, neither flag preserves it", async () => {
+    const d = deps();
+    await runLogin({ ...base, token: "ck_a", hostname: true }, d);
+    expect((await readConfig(d.paths))?.hostnameOptIn).toBe(true);
+
+    // A bare re-login (neither flag passed) must not silently reset a chosen opt-in.
+    await runLogin({ ...base, token: "ck_b" }, d);
+    expect((await readConfig(d.paths))?.hostnameOptIn).toBe(true);
+
+    // --no-hostname is the only way back short of `logout`.
+    await runLogin({ ...base, token: "ck_c", hostname: false }, d);
+    expect((await readConfig(d.paths))?.hostnameOptIn).toBe(false);
+
+    // Once cleared, a bare re-login keeps it cleared — sticky in both directions.
+    await runLogin({ ...base, token: "ck_d" }, d);
+    expect((await readConfig(d.paths))?.hostnameOptIn).toBe(false);
   });
   it("prompts for the token, prefers --server, then the env, then the baked server", async () => {
     const d0 = deps();
