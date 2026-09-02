@@ -38,7 +38,9 @@ export type CostSummary = {
  * Folds a by-model token list into cost; unpriced models contribute 0 and are listed (sorted).
  * The single place `unpricedModels` is assembled, so it is also the single place OTHER_KEY is
  * excluded: `(other)` is the 100-entry keyed-array fold, not a model, and the dashboard renders
- * these strings as model names.
+ * these strings as model names. Note the blind spot this creates: `byModel` is capped at 100
+ * (model, effort) PAIRS, so the fold — and with it a silently unflagged $0 — becomes reachable at
+ * roughly 21 distinct models, not 100. See the comment on `addModel` in ./aggregate.ts.
  */
 export function sumCost(byModel: { key: string; tokens: Tokens }[], prices: PriceMap): CostSummary {
   const byKind: CostByKind = { input: 0, cached: 0, output: 0, reasoning: 0 };
