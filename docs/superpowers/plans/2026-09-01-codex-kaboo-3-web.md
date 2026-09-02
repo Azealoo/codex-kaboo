@@ -46,16 +46,19 @@ web/
   src/app/(app)/users/[userId]/page.tsx  User page (Task 26)
   src/app/(app)/settings/page.tsx     Settings (Task 28)
   src/lib/{format,range,search-params,colors,metrics,chart-data,heatmap,install}.ts + *.test.ts (Tasks 3–10)
-  src/hooks/{use-today,use-now,use-range,use-stable-query,use-me,use-entity-colors,use-ensure-user}.ts (Tasks 2, 11)
+  src/hooks/{use-today,use-now,use-range,use-stable-query,use-me,use-entity-colors,use-ensure-user,
+             use-async-action}.ts (Tasks 2, 11), use-breakdowns.ts (Task 21)
   src/components/ui/*                 shadcn (Task 1)
   src/components/layout/{app-gate,top-nav,range-picker,user-menu,page-header}.tsx (Tasks 2, 14, 15)
   src/components/primitives/*         StatCard, DeltaPill, Num, SegmentedControl, DataTable, BarCell, Podium, RankMovement,
-                                      SectionCard, EmptyState, SectionErrorBoundary, InfoTooltip, CopyBox, AvatarName (Tasks 12–13)
+                                      SectionCard, EmptyState, InlineError, SectionErrorBoundary, InfoTooltip, CopyBox,
+                                      AvatarName (Tasks 12–13), QuerySection (Task 21)
   src/components/charts/*             ChartCard, SeriesTooltip, TrendChart, StackedBarChart, StackedShareBar, QuotaGauge,
                                       ActivityHeatmap, DayHourHeatmap (Tasks 16–18)
   src/components/home/*               overview cards, quota card, cost structure, users/models/tools/projects/skills sections,
-                                      trend section, onboarding card (Tasks 19–22)
-  src/components/user/*               overview/breakdown/efficiency/sessions tabs, data sync card (Tasks 23–26)
+                                      shared per-model table columns, trend section, onboarding card (Tasks 19–22)
+  src/components/user/*               overview/breakdown/efficiency/sessions tabs, machines and sources tables,
+                                      data sync card (Tasks 23–26)
   src/components/settings/*           tokens, install, machines, prices (Tasks 27–28)
 ```
 
@@ -69,6 +72,7 @@ web/
 - Modify: `web/next.config.ts` (replace)
 - Modify: `web/tsconfig.json` (add `@convex/*` path)
 - Modify: `web/vitest.config.ts` (replace), Create: `web/vitest.setup.dom.ts`
+- Modify: `web/package.json` (dev dependencies added by Steps 1 and 6: `tw-animate-css`, `@testing-library/user-event`)
 - Create: `web/src/components/ui/*` via the shadcn CLI
 - Test: `web/src/lib/smoke.test.ts` (alias resolution)
 
@@ -390,7 +394,7 @@ Expected: the default Next page renders on an off-white `#f8f9fb` background wit
 - [ ] **Step 10: Commit**
 
 ```bash
-git add web/src/app/globals.css web/src/app/layout.tsx web/next.config.ts web/tsconfig.json web/vitest.config.ts web/vitest.setup.dom.ts web/src/components/ui web/src/lib/smoke.test.ts web/package.json web/package-lock.json package-lock.json
+git add web/src/app/globals.css web/src/app/layout.tsx web/next.config.ts web/tsconfig.json web/vitest.config.ts web/vitest.setup.dom.ts web/src/components/ui web/src/lib/smoke.test.ts web/package.json package-lock.json
 git commit -m "$(cat <<'MSG'
 Add design tokens, fonts, path aliases and shadcn components to web
 
@@ -416,7 +420,7 @@ MSG
 
 **Interfaces:**
 - Consumes: Convex `api.users.ensure` (mutation → `Id<"users">`), `api.users.me` (→ `MeResult`) from contracts §9.
-- Produces: `useEnsureUser(): Id<"users"> | null`; `useMe(): MeResult | null | undefined` (`undefined` = loading); `useCurrentUserId(): Id<"users">` (context, throws outside `AppGate`); `<AppGate>` (renders children only when authenticated and ensured); the `(app)` route group whose pages are always authenticated.
+- Produces: `useEnsureUser(): { ready: Id<"users"> | null; error: string | null; retry: () => void }`; `useMe(): MeResult | null | undefined` (`undefined` = loading); `useCurrentUserId(): Id<"users">` (context, throws outside `AppGate`); `<AppGate>` (renders children only when authenticated and ensured, and renders the `users.ensure` failure with a Retry button instead of a permanent skeleton); the `(app)` route group whose pages are always authenticated.
 
 - [ ] **Step 1: Create `web/src/proxy.ts`**
 
@@ -521,35 +525,54 @@ export default function SignUpPage() {
 "use client";
 
 import { useConvexAuth, useMutation } from "convex/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 
-/** Calls `users.ensure` once per sign-in and returns the Convex user id once known. */
-export function useEnsureUser(): Id<"users"> | null {
+export type EnsureUserState = {
+  /** The Convex user id once `users.ensure` resolved; `null` while pending or after a failure. */
+  ready: Id<"users"> | null;
+  /** The message of the last `users.ensure` failure, `null` when there was none. */
+  error: string | null;
+  /** Runs `users.ensure` again and clears the error. */
+  retry: () => void;
+};
+
+/** Calls `users.ensure` once per sign-in and surfaces the id, the failure and a retry. */
+export function useEnsureUser(): EnsureUserState {
   const { isAuthenticated } = useConvexAuth();
   const ensure = useMutation(api.users.ensure);
-  const [userId, setUserId] = useState<Id<"users"> | null>(null);
+  const [ready, setReady] = useState<Id<"users"> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!isAuthenticated) {
-      setUserId(null);
+      setReady(null);
+      setError(null);
       return;
     }
     let cancelled = false;
     ensure({})
       .then((id) => {
-        if (!cancelled) setUserId(id);
+        if (cancelled) return;
+        setReady(id);
+        setError(null);
       })
-      .catch((error: unknown) => {
-        console.error("users.ensure failed", error);
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       });
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, ensure]);
+  }, [isAuthenticated, ensure, attempt]);
 
-  return userId;
+  const retry = useCallback(() => {
+    setError(null);
+    setAttempt((n) => n + 1);
+  }, []);
+
+  return { ready, error, retry };
 }
 ```
 
@@ -604,6 +627,7 @@ export function useCurrentUserId(): Id<"users"> {
 import { Authenticated, AuthLoading, Unauthenticated } from "convex/react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEnsureUser } from "@/hooks/use-ensure-user";
 import { CurrentUserProvider } from "./current-user";
@@ -624,9 +648,23 @@ export function ShellSkeleton() {
 }
 
 function EnsuredUser({ children }: { children: ReactNode }) {
-  const userId = useEnsureUser();
-  if (userId === null) return <ShellSkeleton />;
-  return <CurrentUserProvider userId={userId}>{children}</CurrentUserProvider>;
+  const { ready, error, retry } = useEnsureUser();
+  if (error !== null) {
+    // Task 12 swaps this block for <EmptyState/> once the primitive exists.
+    return (
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6">
+        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-6 py-10 text-center">
+          <p className="text-sm font-medium">Could not load your account</p>
+          <p className="max-w-md text-xs text-muted-foreground">{error}</p>
+          <Button variant="outline" size="sm" onClick={retry}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  if (ready === null) return <ShellSkeleton />;
+  return <CurrentUserProvider userId={ready}>{children}</CurrentUserProvider>;
 }
 
 /** Renders children only for a signed-in user whose Convex `users` row exists. */
@@ -654,7 +692,8 @@ export function AppGate({ children }: { children: ReactNode }) {
 
 - [ ] **Step 7: Create the `(app)` route group layout and a first page**
 
-Run: `git mv web/src/app/page.tsx "web/src/app/(app)/page.tsx" 2>/dev/null || mkdir -p "web/src/app/(app)"`
+Run: `mkdir -p "web/src/app/(app)" && git mv web/src/app/page.tsx "web/src/app/(app)/page.tsx"`
+Expected: exits 0 and `web/src/app/page.tsx` no longer exists — leaving it in place would give two pages resolving to `/` and fail `next build`. Verify with `ls web/src/app/page.tsx` → `No such file or directory`.
 
 `web/src/app/(app)/layout.tsx`:
 ```tsx
@@ -695,8 +734,8 @@ Append to `web/.env.local` (keep the `CONVEX_DEPLOYMENT` and `NEXT_PUBLIC_CONVEX
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 CLERK_SECRET_KEY=sk_test_...
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
-NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 ```
+(The sign-up URL is not an env var: `<ClerkProvider signUpUrl="/sign-up">` in Step 3 is its single source of truth, and contracts §11 lists no sign-up env name.)
 This step needs the user's Clerk keys and cannot be automated; if they are not available yet, continue with Tasks 3–13 (pure code) and come back.
 
 - [ ] **Step 9: Run the checks**
@@ -714,7 +753,8 @@ Run: `npm run dev -w web`, then:
 - [ ] **Step 11: Commit**
 
 ```bash
-git add web/src/proxy.ts web/src/app/providers.tsx web/src/app/layout.tsx web/src/app/sign-in web/src/app/sign-up web/src/hooks/use-ensure-user.ts web/src/hooks/use-me.ts web/src/components/layout "web/src/app/(app)"
+git add web/src/proxy.ts web/src/hooks/use-ensure-user.ts web/src/hooks/use-me.ts web/src/components/layout
+git add -A web/src/app   # stages the new (app)/ pages, providers.tsx, sign-in/sign-up and the deletion of web/src/app/page.tsx
 git commit -m "$(cat <<'MSG'
 Add Clerk proxy, Convex providers, auth routes and the authenticated app gate
 
@@ -1321,8 +1361,11 @@ describe("rangeHref", () => {
       "/settings?from=2026-08-01&to=2026-08-15",
     );
   });
-  it("never carries page-local params", () => {
-    expect(rangeHref("/", { range: "90D", from: null, to: null })).not.toContain("section");
+  it("carries only the range keys, never anything else", () => {
+    const preset = new URL(rangeHref("/", { range: "90D", from: null, to: null }), "https://x.test");
+    expect([...preset.searchParams.keys()]).toEqual(["range"]);
+    const custom = new URL(rangeHref("/", customParams("2026-08-01", "2026-08-15")), "https://x.test");
+    expect([...custom.searchParams.keys()].sort()).toEqual(["from", "to"]);
   });
 });
 ```
@@ -1447,10 +1490,15 @@ describe("userColorMap", () => {
     expect(b.get("u1")).toBe(CATEGORICAL[0]);
     expect(a.get("u3")).toBe(b.get("u3"));
   });
-  it("does not repaint survivors when a user is filtered out", () => {
+  it("keeps a survivor's slot when the view reorders, and repaints when the list is filtered", () => {
     const all = userColorMap(["u1", "u2", "u3"]);
-    const some = userColorMap(["u1", "u2", "u3"]); // the registry is always the full user list
-    expect(some.get("u3")).toBe(all.get("u3"));
+    expect(all.get("u3")).toBe(CATEGORICAL[2]);
+    // Reordering the same registry cannot repaint anyone.
+    expect(userColorMap(["u3", "u1", "u2"]).get("u3")).toBe(all.get("u3"));
+    // Filtering does repaint — which is why `useUserColors` builds the map from `api.users.list`
+    // (the full registry) and never from the rows currently on screen.
+    expect(userColorMap(["u3"]).get("u3")).toBe(CATEGORICAL[0]);
+    expect(userColorMap(["u3"]).get("u3")).not.toBe(all.get("u3"));
   });
 });
 
@@ -1604,7 +1652,8 @@ MSG
 
 **Interfaces:**
 - Consumes: `MetricKey`, `Metric`, `SummaryResult` from `@convex/lib/types`; formatters from Task 3.
-- Produces: `type MetricKind`, `type MetricDef = { key: MetricKey; label: string; kind: MetricKind; goodDirection: "up" | "down"; help: string }`, `METRIC_DEFS: Record<MetricKey, MetricDef>`, `VOLUME_CARD_KEYS`, `EFFICIENCY_CARD_KEYS`, `USER_OVERVIEW_KEYS` (13 keys), `formatMetricValue(kind, value)`, `deltaTone(change, goodDirection)`, `metricOf(summary, key)`, `safeRatio(n, d)`.
+- Produces: `type MetricKind`, `type GoodDirection = "up" | "down" | "neutral"`, `type MetricDef = { key: MetricKey; label: string; kind: MetricKind; goodDirection: GoodDirection; help: string }`, `METRIC_DEFS: Record<MetricKey, MetricDef>`, `VOLUME_CARD_KEYS`, `EFFICIENCY_CARD_KEYS`, `USER_OVERVIEW_KEYS` (13 keys), `formatMetricValue(kind, value)`, `deltaTone(change, goodDirection)`, `metricOf(summary, key)`.
+- Never redefines shared math: division guards come from `ratio` in `@shared/metrics` (contracts §5), which every caller imports directly.
 
 - [ ] **Step 1: Write the failing tests `web/src/lib/metrics.test.ts`**
 
@@ -1617,7 +1666,6 @@ import {
   VOLUME_CARD_KEYS,
   deltaTone,
   formatMetricValue,
-  safeRatio,
 } from "./metrics";
 
 describe("METRIC_DEFS", () => {
@@ -1634,6 +1682,10 @@ describe("METRIC_DEFS", () => {
     expect(METRIC_DEFS.compactions.goodDirection).toBe("down");
     expect(METRIC_DEFS.cacheHitRate.goodDirection).toBe("up");
     expect(METRIC_DEFS.totalTokens.goodDirection).toBe("up");
+  });
+  it("marks metrics with no better direction as neutral", () => {
+    expect(METRIC_DEFS.costUsd.goodDirection).toBe("neutral");
+    expect(METRIC_DEFS.linesRemoved.goodDirection).toBe("neutral");
   });
 });
 
@@ -1665,12 +1717,9 @@ describe("deltaTone", () => {
     expect(deltaTone(0, "up")).toEqual({ tone: "flat", good: null });
     expect(deltaTone(null, "up")).toEqual({ tone: "flat", good: null });
   });
-});
-
-describe("safeRatio", () => {
-  it("guards division by zero", () => {
-    expect(safeRatio(10, 0)).toBeNull();
-    expect(safeRatio(10, 4)).toBe(2.5);
+  it("keeps the direction but no verdict for neutral metrics", () => {
+    expect(deltaTone(0.2, "neutral")).toEqual({ tone: "up", good: null });
+    expect(deltaTone(-0.2, "neutral")).toEqual({ tone: "down", good: null });
   });
 });
 ```
@@ -1695,7 +1744,8 @@ import {
 } from "./format";
 
 export type MetricKind = "tokens" | "usd" | "percent" | "duration" | "hours" | "count" | "ratio";
-export type GoodDirection = "up" | "down";
+/** `"neutral"` = the direction carries no verdict (spending more is neither good nor bad). */
+export type GoodDirection = "up" | "down" | "neutral";
 export type MetricDef = {
   key: MetricKey;
   label: string;
@@ -1715,9 +1765,9 @@ export const METRIC_DEFS: Record<MetricKey, MetricDef> = {
   outputTokens: def("outputTokens", "Output tokens", "tokens", "up", "Tokens generated by the model (reasoning included)."),
   reasoningTokens: def("reasoningTokens", "Reasoning tokens", "tokens", "up", "Hidden reasoning tokens, a subset of output tokens."),
   subagentTokens: def("subagentTokens", "Sub-agent tokens", "tokens", "up", "Tokens used by sub-agent threads such as the auto-review guardian."),
-  costUsd: def("costUsd", "Estimated cost", "usd", "up", "Tokens priced at OpenAI API list prices from the Settings page. Unpriced models count as $0."),
+  costUsd: def("costUsd", "Estimated cost", "usd", "neutral", "Tokens priced at OpenAI API list prices from the Settings page. Unpriced models count as $0."),
   linesAdded: def("linesAdded", "Generated lines", "count", "up", "Lines added by file changes (diff '+' lines plus new-file contents)."),
-  linesRemoved: def("linesRemoved", "Removed lines", "count", "up", "Lines removed by file changes."),
+  linesRemoved: def("linesRemoved", "Removed lines", "count", "neutral", "Lines removed by file changes."),
   filesChanged: def("filesChanged", "Files changed", "count", "up", "Files touched by file-change items."),
   sessions: def("sessions", "Sessions", "count", "up", "Codex threads started in the period (sub-agent threads excluded)."),
   turns: def("turns", "Turns", "count", "up", "User turns (task_started events) in main threads."),
@@ -1787,17 +1837,17 @@ export type DeltaTone = "up" | "down" | "flat";
 export function deltaTone(change: number | null, goodDirection: GoodDirection): { tone: DeltaTone; good: boolean | null } {
   if (change === null || !Number.isFinite(change) || change === 0) return { tone: "flat", good: null };
   const tone: DeltaTone = change > 0 ? "up" : "down";
+  // A neutral metric keeps its arrow but gets no better/worse verdict.
+  if (goodDirection === "neutral") return { tone, good: null };
   return { tone, good: tone === goodDirection };
 }
 
 export function metricOf(summary: SummaryResult | undefined, key: MetricKey): Metric | null {
   return summary ? summary.metrics[key] : null;
 }
-
-export function safeRatio(numerator: number, denominator: number): number | null {
-  return denominator > 0 ? numerator / denominator : null;
-}
 ```
+
+Division guards use `ratio` from `@shared/metrics` (contracts §5: `ratio(numerator, denominator)`, `denominator ≤ 0 → null`); this module never redefines it.
 
 - [ ] **Step 4: Run the tests**
 
@@ -1826,7 +1876,7 @@ MSG
 - Test: `web/src/lib/chart-data.test.ts`
 
 **Interfaces:**
-- Consumes: `TrendsResult`, `CostByKind` from `@convex/lib/types`; `ColorMap`, `colorFor`, `OTHER_COLOR`, `CATEGORICAL` from Task 6; `formatDayShort`, `formatMonth` from Task 3.
+- Consumes: `TrendsResult`, `CostByKind` from `@convex/lib/types`; `OTHER_KEY` from `@shared/constants` (contracts §2 — never redeclared here); `ColorMap`, `colorFor`, `OTHER_COLOR`, `CATEGORICAL` from Task 6; `formatDayShort`, `formatMonth` from Task 3.
 - Produces: `type SeriesDef = { key: string; label: string; color: string; entity: string }`, `type ChartRow = { x: string; label: string } & Record<string, number | string>`, `type Stacked = { rows: ChartRow[]; series: SeriesDef[]; peak: { x: string; label: string; total: number } | null; total: number }`, `type Segment = { key: string; label: string; value: number; share: number; color: string }`, `bucketLabel(bucket, granularity)`, `trendByUser(trends, colors)`, `trendByModel(trends, colors, topN?)`, `trendSingle(trends, metric, color)`, `foldTopN(items, n, otherKey?)`, `costStructureSegments(costByKind)`, `shareSegments(items, colors, topN?)`.
 
 - [ ] **Step 1: Write the failing tests `web/src/lib/chart-data.test.ts`**
@@ -1988,6 +2038,7 @@ Expected: FAIL with `Failed to resolve import "./chart-data"`.
 - [ ] **Step 3: Implement `web/src/lib/chart-data.ts`**
 
 ```ts
+import { OTHER_KEY } from "@shared/constants";
 import type { CostByKind, TrendsResult } from "@convex/lib/types";
 import { CATEGORICAL, OTHER_COLOR, colorFor, type ColorMap } from "./colors";
 import { formatDayShort, formatMonth } from "./format";
@@ -1997,8 +2048,6 @@ export type ChartRow = { x: string; label: string } & Record<string, number | st
 export type Peak = { x: string; label: string; total: number } | null;
 export type Stacked = { rows: ChartRow[]; series: SeriesDef[]; peak: Peak; total: number };
 export type Segment = { key: string; label: string; value: number; share: number; color: string };
-
-export const OTHER_ENTITY = "(other)";
 
 export function bucketLabel(bucket: string, granularity: "day" | "week" | "month"): string {
   return granularity === "month" ? formatMonth(bucket) : formatDayShort(bucket);
@@ -2036,7 +2085,7 @@ function assemble(
     entity,
   }));
   if (otherEntities.length > 0) {
-    series.push({ key: "other", label: "Other", color: OTHER_COLOR, entity: OTHER_ENTITY });
+    series.push({ key: "other", label: "Other", color: OTHER_COLOR, entity: OTHER_KEY });
   }
   let peak: Peak = null;
   let total = 0;
@@ -2104,7 +2153,7 @@ export function trendSingle(trends: TrendsResult, metric: TrendMetric, color: st
 export function foldTopN<T extends { key: string; value: number }>(
   items: T[],
   n: number,
-  otherKey = OTHER_ENTITY,
+  otherKey = OTHER_KEY,
 ): { key: string; value: number }[] {
   const sorted = [...items].sort((a, b) => b.value - a.value || (a.key < b.key ? -1 : 1));
   if (sorted.length <= n) return sorted.map(({ key, value }) => ({ key, value }));
@@ -2136,10 +2185,10 @@ export function shareSegments(items: { key: string; value: number }[], colors: C
   const total = folded.reduce((acc, i) => acc + i.value, 0);
   return folded.map((i) => ({
     key: i.key,
-    label: i.key === OTHER_ENTITY ? "Other" : i.key,
+    label: i.key === OTHER_KEY ? "Other" : i.key,
     value: i.value,
     share: total > 0 ? i.value / total : 0,
-    color: i.key === OTHER_ENTITY ? OTHER_COLOR : colorFor(colors, i.key),
+    color: i.key === OTHER_KEY ? OTHER_COLOR : colorFor(colors, i.key),
   }));
 }
 ```
@@ -2506,12 +2555,12 @@ MSG
 ### Task 11: Hooks — `useToday`, `useNow`, `useRange`, `useStableQuery`, entity colors
 
 **Files:**
-- Create: `web/src/hooks/use-today.ts`, `web/src/hooks/use-now.ts`, `web/src/hooks/use-range.ts`, `web/src/hooks/use-stable-query.ts`, `web/src/hooks/use-entity-colors.ts`
-- Test: `web/src/hooks/use-today.test.ts`, `web/src/hooks/use-stable-query.test.tsx`
+- Create: `web/src/hooks/use-today.ts`, `web/src/hooks/use-now.ts`, `web/src/hooks/use-range.ts`, `web/src/hooks/use-stable-query.ts`, `web/src/hooks/use-entity-colors.ts`, `web/src/hooks/use-async-action.ts`
+- Test: `web/src/hooks/use-today.test.ts`, `web/src/hooks/use-stable-query.test.tsx`, `web/src/hooks/use-async-action.test.tsx`
 
 **Interfaces:**
-- Consumes: `resolveRange`/`RangeParams`/`ResolvedRange`/`Preset` (Task 4), `rangeParsers`/`rangeHref` (Task 5), `userColorMap`/`modelColorMap`/`ColorMap` (Task 6), Convex `api.stats.bounds`, `api.users.list`, `api.prices.list`.
-- Produces: `localDay(date: Date): string`; `useToday(): string | null`; `useNow(): number | null`; `useRange(): { params: RangeParams; resolved: ResolvedRange | null; today: string | null; setPreset(preset: Preset): void; setCustom(from: string, to: string): void }`; `useRangeHref(): (pathname: string) => string`; `useStableQuery(query, args): { data, isStale }`; `useUserColors(): ColorMap`; `useModelColors(seenModels: readonly string[]): ColorMap`.
+- Consumes: `resolveRange`/`isCustom`/`RangeParams`/`ResolvedRange`/`Preset` (Task 4), `rangeParsers`/`rangeHref` (Task 5), `userColorMap`/`modelColorMap`/`ColorMap` (Task 6), Convex `api.stats.bounds`, `api.users.list`, `api.prices.list`.
+- Produces: `localDay(date: Date): string`; `useToday(): string | null`; `useNow(): number | null`; `useRange(): { params: RangeParams; resolved: ResolvedRange | null; today: string | null; setPreset(preset: Preset): void; setCustom(from: string, to: string): void }`; `useRangeHref(): (pathname: string) => string`; `useStableQuery(query, args): { data, isStale }`; `useUserColors(): ColorMap`; `useModelColors(seenModels: readonly string[]): ColorMap`; `useAsyncAction<TArgs extends unknown[]>(fn: (...args: TArgs) => Promise<unknown>): { run: (...args: TArgs) => Promise<void>; pending: boolean; error: string | null; reset: () => void }` — the single wrapper every mutation/action call site uses so failures are rendered, never swallowed.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2562,9 +2611,63 @@ describe("useStableQuery", () => {
 });
 ```
 
+`web/src/hooks/use-async-action.test.tsx`:
+```tsx
+import { act, renderHook } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { useAsyncAction } from "./use-async-action";
+
+describe("useAsyncAction", () => {
+  it("toggles pending and stores the message of a rejected call", async () => {
+    let reject: ((reason: unknown) => void) | undefined;
+    const fn = () =>
+      new Promise<void>((_resolve, r) => {
+        reject = r;
+      });
+    const { result } = renderHook(() => useAsyncAction(fn));
+    expect(result.current.pending).toBe(false);
+    expect(result.current.error).toBeNull();
+
+    act(() => {
+      void result.current.run();
+    });
+    expect(result.current.pending).toBe(true);
+
+    await act(async () => {
+      reject?.(new Error("revoke failed"));
+    });
+    expect(result.current.pending).toBe(false);
+    expect(result.current.error).toBe("revoke failed");
+
+    act(() => {
+      result.current.reset();
+    });
+    expect(result.current.error).toBeNull();
+  });
+
+  it("stringifies a non-Error rejection and clears the error on a later success", async () => {
+    let fail = true;
+    const { result } = renderHook(() =>
+      useAsyncAction(() => (fail ? Promise.reject("nope") : Promise.resolve())),
+    );
+    await act(async () => {
+      await result.current.run();
+    });
+    expect(result.current.error).toBe("nope");
+
+    fail = false;
+    await act(async () => {
+      await result.current.run();
+    });
+    expect(result.current.error).toBeNull();
+    expect(result.current.pending).toBe(false);
+  });
+});
+```
+
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cd web && npx vitest run --project unit src/hooks/use-today.test.ts && npx vitest run --project dom src/hooks/use-stable-query.test.tsx`
+Run: `cd web && npx vitest run --project unit src/hooks/use-today.test.ts && npx vitest run --project dom src/hooks/use-stable-query.test.tsx src/hooks/use-async-action.test.tsx`
 Expected: both FAIL with `Failed to resolve import`.
 
 - [ ] **Step 3: Implement the hooks**
@@ -2687,7 +2790,7 @@ import { useQuery } from "convex/react";
 import { useQueryStates } from "nuqs";
 import { useCallback, useMemo } from "react";
 import { api } from "@convex/_generated/api";
-import { resolveRange, type Preset, type RangeParams, type ResolvedRange } from "@/lib/range";
+import { isCustom, resolveRange, type Preset, type RangeParams, type ResolvedRange } from "@/lib/range";
 import { rangeHref, rangeParsers } from "@/lib/search-params";
 import { useToday } from "./use-today";
 
@@ -2700,7 +2803,9 @@ export function useRange(): {
 } {
   const [params, setParams] = useQueryStates(rangeParsers);
   const today = useToday();
-  const needBounds = params.range === "ALL" && params.from === null && today !== null;
+  // Exactly the inverse of `resolveRange`'s ALL branch: a half-filled custom range
+  // (`?range=ALL&from=<day>` with no `to`) must still fetch bounds, or the page never resolves.
+  const needBounds = !isCustom(params) && params.range === "ALL" && today !== null;
   const bounds = useQuery(api.stats.bounds, needBounds ? {} : "skip");
   const resolved = useMemo(
     () => (today === null ? null : resolveRange(params, today, needBounds ? (bounds ?? null) : undefined)),
@@ -2756,17 +2861,62 @@ export function useModelColors(seenModels: readonly string[]): ColorMap {
 }
 ```
 
+`web/src/hooks/use-async-action.ts`:
+```ts
+"use client";
+
+import { useCallback, useState } from "react";
+
+export type AsyncAction<TArgs extends unknown[]> = {
+  /** Runs `fn`; never rejects — a failure lands in `error` instead. */
+  run: (...args: TArgs) => Promise<void>;
+  pending: boolean;
+  error: string | null;
+  reset: () => void;
+};
+
+/**
+ * Wraps a Convex mutation/action (or any promise-returning call) so the UI can render its
+ * failure. Put success side effects inside `fn` — they only run when `fn` resolves.
+ */
+export function useAsyncAction<TArgs extends unknown[]>(
+  fn: (...args: TArgs) => Promise<unknown>,
+): AsyncAction<TArgs> {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = useCallback(
+    async (...args: TArgs) => {
+      setPending(true);
+      setError(null);
+      try {
+        await fn(...args);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setPending(false);
+      }
+    },
+    [fn],
+  );
+
+  const reset = useCallback(() => setError(null), []);
+
+  return { run, pending, error, reset };
+}
+```
+
 - [ ] **Step 4: Run the tests and the type check**
 
-Run: `cd web && npx vitest run --project unit src/hooks/use-today.test.ts && npx vitest run --project dom src/hooks/use-stable-query.test.tsx && cd .. && npm run typecheck -w web`
-Expected: both test files PASS; typecheck exits 0. If `OptionalRestArgsOrSkip` is not exported by the installed `convex/react`, type the second parameter as `args: FunctionArgs<Q> | "skip"` (import `FunctionArgs` from `convex/server`) and call `useQuery(query, args as never)`; the behaviour and the test stay the same.
+Run: `cd web && npx vitest run --project unit src/hooks/use-today.test.ts && npx vitest run --project dom src/hooks/use-stable-query.test.tsx src/hooks/use-async-action.test.tsx && cd .. && npm run typecheck -w web`
+Expected: all three test files PASS; typecheck exits 0. If `OptionalRestArgsOrSkip` is not exported by the installed `convex/react`, type the second parameter as `args: FunctionArgs<Q> | "skip"` (import `FunctionArgs` from `convex/server`) and call `useQuery(query, args as never)`; the behaviour and the test stay the same.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add web/src/hooks
 git commit -m "$(cat <<'MSG'
-Add client-only clock, range, stable query and entity color hooks
+Add client-only clock, range, stable query, async action and entity color hooks
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01Q8G1yVYF1rfbje5mJGvMVt
@@ -2779,12 +2929,13 @@ MSG
 ### Task 12: Primitives A — `Num`, `DeltaPill`, `StatCard`, `SectionCard`, `EmptyState`, `InfoTooltip`, `AvatarName`
 
 **Files:**
-- Create: `web/src/components/primitives/num.tsx`, `delta-pill.tsx`, `stat-card.tsx`, `section-card.tsx`, `empty-state.tsx`, `info-tooltip.tsx`, `avatar-name.tsx`
+- Create: `web/src/components/primitives/num.tsx`, `delta-pill.tsx`, `stat-card.tsx`, `section-card.tsx`, `empty-state.tsx`, `inline-error.tsx`, `info-tooltip.tsx`, `avatar-name.tsx`
+- Modify: `web/src/components/layout/app-gate.tsx` (render the `users.ensure` failure through `<EmptyState>`)
 - Test: `web/src/components/primitives/stat-card.test.tsx`
 
 **Interfaces:**
-- Consumes: `formatMetricValue`, `deltaTone`, `MetricKind`, `GoodDirection` (Task 7), `formatDeltaPercent` (Task 3), shadcn `Card`, `Tooltip`, `Badge`.
-- Produces: `<Num value kind className? />`; `<DeltaPill change goodDirection previousLabel? />`; `<StatCard label value kind? change? goodDirection? help? badge? footer? size? />` (`value` may be a `number | null` with `kind`, or a `ReactNode`); `<SectionCard title description? help? actions? children />`; `<EmptyState title description? action? />`; `<InfoTooltip text />`; `<AvatarName name imageUrl color? size? hideName? />`.
+- Consumes: `formatMetricValue`, `deltaTone`, `MetricKind`, `GoodDirection` (Task 7), `formatDeltaPercent` (Task 3), shadcn `Card`, `Tooltip`, `Badge`, `Button`.
+- Produces: `<Num value kind className? />`; `<DeltaPill change goodDirection previousLabel? />` (a `goodDirection` of `"neutral"` renders gray with the direction arrow and no better/worse verdict); `<StatCard label value kind? change? goodDirection? help? badge? footer? size? />` (`value` may be a `number | null` with `kind`, or a `ReactNode`); `<SectionCard title description? help? actions? children />`; `<EmptyState title description? action? />`; `<InlineError message className? />` (12 px red line with `role="alert"`, `null` message renders nothing); `<InfoTooltip text />`; `<AvatarName name imageUrl color? size? hideName? />`.
 
 - [ ] **Step 1: Write the failing test `web/src/components/primitives/stat-card.test.tsx`**
 
@@ -2792,6 +2943,7 @@ MSG
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { DeltaPill } from "./delta-pill";
+import { InlineError } from "./inline-error";
 import { StatCard } from "./stat-card";
 
 describe("StatCard", () => {
@@ -2820,6 +2972,24 @@ describe("DeltaPill", () => {
   it("renders a flat pill for zero", () => {
     render(<DeltaPill change={0} goodDirection="up" />);
     expect(screen.getByLabelText("0.0% vs previous period")).toHaveAttribute("data-tone", "flat");
+  });
+  it("keeps the arrow but passes no verdict for a neutral metric", () => {
+    render(<DeltaPill change={0.2} goodDirection="neutral" />);
+    const pill = screen.getByLabelText("+20.0% vs previous period");
+    expect(pill).toHaveAttribute("data-tone", "up");
+    expect(pill).not.toHaveAttribute("data-good");
+    expect(pill).toHaveClass("bg-[#f3f4f6]", "text-[#4b5563]");
+  });
+});
+
+describe("InlineError", () => {
+  it("renders the message as an alert", () => {
+    render(<InlineError message="Network request failed" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Network request failed");
+  });
+  it("renders nothing when there is no message", () => {
+    const { container } = render(<InlineError message={null} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });
 ```
@@ -2872,7 +3042,8 @@ export function DeltaPill({
         "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-medium tabular",
         good === true && "bg-delta-up-bg text-delta-up-fg",
         good === false && "bg-delta-down-bg text-delta-down-fg",
-        good === null && "bg-muted text-muted-foreground",
+        // Neutral metrics (goodDirection "neutral") and flat changes: gray, arrow unchanged.
+        good === null && "bg-[#f3f4f6] text-[#4b5563]",
       )}
     >
       <Icon className="size-3" aria-hidden="true" />
@@ -3017,6 +3188,21 @@ export function EmptyState({ title, description, action }: { title: string; desc
 }
 ```
 
+`web/src/components/primitives/inline-error.tsx`:
+```tsx
+import { cn } from "@/lib/utils";
+
+/** One red 12 px line for a failed mutation/action; renders nothing when there is no error. */
+export function InlineError({ message, className }: { message: string | null; className?: string }) {
+  if (message === null) return null;
+  return (
+    <p role="alert" className={cn("text-xs text-destructive", className)}>
+      {message}
+    </p>
+  );
+}
+```
+
 `web/src/components/primitives/avatar-name.tsx`:
 ```tsx
 /* eslint-disable @next/next/no-img-element */
@@ -3065,15 +3251,38 @@ export function AvatarName({
 }
 ```
 
-- [ ] **Step 4: Run the test, typecheck and lint**
+- [ ] **Step 4: Point `AppGate`'s error branch at `EmptyState`**
+
+In `web/src/components/layout/app-gate.tsx`, replace the placeholder error markup written in Task 2
+(the `<div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed …">`
+block and its comment) with the primitive, and add `import { EmptyState } from "@/components/primitives/empty-state";`:
+```tsx
+  if (error !== null) {
+    return (
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6">
+        <EmptyState
+          title="Could not load your account"
+          description={error}
+          action={
+            <Button variant="outline" size="sm" onClick={retry}>
+              Retry
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+```
+
+- [ ] **Step 5: Run the test, typecheck and lint**
 
 Run: `cd web && npx vitest run --project dom src/components/primitives/stat-card.test.tsx && cd .. && npm run typecheck -w web && npm run lint -w web`
-Expected: PASS; typecheck and lint exit 0.
+Expected: PASS (6 tests); typecheck and lint exit 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add web/src/components/primitives
+git add web/src/components/primitives web/src/components/layout/app-gate.tsx
 git commit -m "$(cat <<'MSG'
 Add stat card, delta pill and layout primitives
 
@@ -3092,7 +3301,7 @@ MSG
 - Test: `web/src/components/primitives/data-table.test.tsx`, `web/src/components/primitives/segmented-control.test.tsx`
 
 **Interfaces:**
-- Consumes: shadcn `ToggleGroup`, `Table`, `Button`; `AvatarName` and `EmptyState` (Task 12).
+- Consumes: shadcn `ToggleGroup`, `Table`, `Button`; `AvatarName`, `EmptyState` and `InlineError` (Task 12); `useAsyncAction` (Task 11).
 - Produces: `<SegmentedControl options value onChange ariaLabel size? className? />`; `type Column<T> = { key: string; header: string; align?: "left" | "right"; render: (row: T) => ReactNode; bar?: (row: T) => number; width?: string }`; `<DataTable columns rows rowKey scale? emptyLabel? onRowClick? barColor? />`; `<BarCell value max scale color?>{children}</BarCell>`; `barWidth(value, max, scale): number` (0–1); `<Podium entries />` with `entries: { rank: 1 | 2 | 3; name: string; imageUrl: string | null; color: string; value: string; sub?: string; href?: string }[]`; `<RankMovement rank previousRank />`; `<SectionErrorBoundary title?>` (class component); `<CopyBox value label? />`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -3497,9 +3706,16 @@ export class SectionErrorBoundary extends Component<Props, State> {
 import { Check, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useAsyncAction } from "@/hooks/use-async-action";
+import { InlineError } from "./inline-error";
 
 export function CopyBox({ value, label }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false);
+  // `writeText` rejects in an insecure context or when the permission is denied — show that.
+  const copy = useAsyncAction(async () => {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+  });
   useEffect(() => {
     if (!copied) return;
     const t = setTimeout(() => setCopied(false), 1500);
@@ -3516,13 +3732,12 @@ export function CopyBox({ value, label }: { value: string; label?: string }) {
           size="icon"
           className="size-7"
           aria-label={copied ? "Copied" : "Copy"}
-          onClick={() => {
-            void navigator.clipboard.writeText(value).then(() => setCopied(true));
-          }}
+          onClick={() => void copy.run()}
         >
           {copied ? <Check className="size-3.5" aria-hidden="true" /> : <Copy className="size-3.5" aria-hidden="true" />}
         </Button>
       </div>
+      <InlineError message={copy.error} />
     </div>
   );
 }
@@ -3747,10 +3962,11 @@ MSG
 - Create: `web/src/components/layout/top-nav.tsx`, `web/src/components/layout/user-menu.tsx`, `web/src/components/layout/page-header.tsx`
 - Modify: `web/src/app/(app)/layout.tsx`
 - Create: `web/src/app/(app)/settings/page.tsx` (placeholder, replaced in Task 28)
+- Test: `web/src/components/layout/top-nav.test.tsx`
 
 **Interfaces:**
 - Consumes: `useRangeHref` (Task 11), `useCurrentUserId` (Task 2), `RangePicker` (Task 14), Clerk `UserButton`.
-- Produces: `<TopNav />`, `<UserMenu />`, `<PageHeader title description? actions? />`.
+- Produces: `<TopNav />`, `<TopNavFallback />`, `<UserMenu />`, `<PageHeader title description? actions? />`.
 
 - [ ] **Step 1: Create `web/src/components/layout/user-menu.tsx`**
 
@@ -3880,16 +4096,58 @@ export default function SettingsPage() {
 }
 ```
 
-- [ ] **Step 6: Typecheck, lint and check in the browser**
+- [ ] **Step 6: Write and run `web/src/components/layout/top-nav.test.tsx`**
+
+The range-preserving hrefs are the one non-obvious behaviour here, so they get a dom test. `next/link`,
+the range picker and the Clerk-backed user menu are stubbed; only the href building and the active
+state are under test.
+```tsx
+import { render, screen } from "@testing-library/react";
+import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
+import type { ComponentProps } from "react";
+import { describe, expect, it, vi } from "vitest";
+import type { Id } from "@convex/_generated/dataModel";
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: ComponentProps<"a">) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
+vi.mock("./current-user", () => ({ useCurrentUserId: () => "u1" as Id<"users"> }));
+vi.mock("./range-picker", () => ({ RangePicker: () => <div data-testid="range-picker" /> }));
+vi.mock("./user-menu", () => ({ UserMenu: () => <div data-testid="user-menu" /> }));
+
+import { TopNav } from "./top-nav";
+
+describe("TopNav", () => {
+  it("carries the selected range on every link and marks the active one", () => {
+    render(<TopNav />, { wrapper: withNuqsTestingAdapter({ searchParams: "?range=7D" }) });
+    const insights = screen.getByRole("link", { name: "Insights" });
+    const myPage = screen.getByRole("link", { name: "My Page" });
+    expect(insights).toHaveAttribute("href", "/?range=7D");
+    expect(myPage).toHaveAttribute("href", "/users/u1?range=7D");
+    expect(insights).toHaveAttribute("aria-current", "page");
+    expect(myPage).not.toHaveAttribute("aria-current");
+  });
+});
+```
+
+Run: `cd web && npx vitest run --project dom src/components/layout/top-nav.test.tsx && cd ..`
+Expected: PASS (1 test).
+
+- [ ] **Step 7: Typecheck, lint and check in the browser**
 
 Run: `npm run typecheck -w web && npm run lint -w web`
 Expected: both exit 0.
 Then with `npm run dev -w web` running, open `http://localhost:3000/?range=7D`: the nav shows the green dot logo, `Insights` highlighted, `My Page`, the range pill reading `Last 7 days`, and the Clerk avatar. Click `My Page`: the URL becomes `/users/<id>?range=7D` (range survives, page content is the 404 from Next until Task 26 — acceptable). Open the avatar menu: `Settings` navigates to `/settings` and shows the placeholder header. Open the range pill, choose `Today`: the URL becomes `?range=1D`.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add web/src/components/layout/top-nav.tsx web/src/components/layout/user-menu.tsx web/src/components/layout/page-header.tsx "web/src/app/(app)/layout.tsx" "web/src/app/(app)/settings/page.tsx"
+git add web/src/components/layout/top-nav.tsx web/src/components/layout/top-nav.test.tsx web/src/components/layout/user-menu.tsx web/src/components/layout/page-header.tsx "web/src/app/(app)/layout.tsx" "web/src/app/(app)/settings/page.tsx"
 git commit -m "$(cat <<'MSG'
 Add the top navigation with range picker and user menu
 
@@ -5165,20 +5423,30 @@ MSG
 ### Task 21: Home — Models, Tools, Projects and Skills sections
 
 **Files:**
-- Create: `web/src/lib/breakdowns.ts`, `web/src/components/home/models-section.tsx`, `web/src/components/home/tools-section.tsx`, `web/src/components/home/projects-section.tsx`, `web/src/components/home/skills-section.tsx`
+- Create: `web/src/hooks/use-breakdowns.ts`, `web/src/components/primitives/query-section.tsx`, `web/src/lib/breakdowns.ts`, `web/src/components/home/model-columns.tsx`, `web/src/components/home/models-section.tsx`, `web/src/components/home/tools-section.tsx`, `web/src/components/home/projects-section.tsx`, `web/src/components/home/skills-section.tsx`
 - Test: `web/src/lib/breakdowns.test.ts`
 
 **Interfaces:**
-- Consumes: `api.stats.breakdowns` (→ `BreakdownsResult`); `useStableQuery`, `useModelColors` (Task 11); `StackedShareBar` (Task 17); `DataTable`, `SectionCard`, `SegmentedControl`, `EmptyState`, `StatCard` (Tasks 12–13); `shareSegments` (Task 8); `TOOL_KINDS`/`ToolKind` from `@shared/constants`.
-- Produces: `TOOL_LABELS: Record<ToolKind, string>`; `toolSegments(byTool): Segment[]` (fixed order and colors); `modelSegments(byModel, colors): Segment[]`; `<ModelsSection range userId? />`, `<ToolsSection range userId? />`, `<ProjectsSection range userId? />`, `<SkillsSection range userId? />` (all accept an optional `userId: Id<"users">` so the user page reuses them).
+- Consumes: `api.stats.breakdowns` (→ `BreakdownsResult`); `useStableQuery`, `useModelColors` (Task 11); `StackedShareBar` (Task 17); `DataTable`, `SectionCard`, `SegmentedControl`, `EmptyState`, `StatCard` (Tasks 12–13); `shareSegments` (Task 8); `TOOL_KINDS`/`ToolKind` from `@shared/constants`; `cacheHitRate`/`ratio` from `@shared/metrics` (contracts §5 — the cache-hit and $/M-token math is never re-implemented).
+- Produces: `useBreakdowns(range: ResolvedRange | null, userId?: Id<"users">): { data: BreakdownsResult | undefined; isStale: boolean }` — **the only `stats.breakdowns` call site in the app**; `<QuerySection title info? description? actions? data isStale bodyClassName? skeletonClassName?>{(data) => …}</QuerySection>` (renders the `SectionCard` + `Skeleton` loading state and the `isStale` dimming once, for every breakdown card); `TOOL_LABELS: Record<ToolKind, string>`; `SOURCE_LABELS: Record<string, string>`; `toolSegments(byTool): Segment[]` (fixed order and colors); `modelSegments(byModel, colors): Segment[]`; `sourceSegments(bySource): Segment[]`; `type ModelTableRow`, `modelTableRows(byModel): ModelTableRow[]` and `modelTableColumns({ responses?, usdPerMTok? }): Column<ModelTableRow>[]` — the single per-model table definition, reused by Task 25; `<ModelsSection range userId? />`, `<ToolsSection range userId? />`, `<ProjectsSection range userId? />`, `<SkillsSection range userId? />` (all accept an optional `userId: Id<"users">` so the user page reuses them).
 
 - [ ] **Step 1: Write the failing test `web/src/lib/breakdowns.test.ts`**
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { TOOL_KINDS } from "@shared/constants";
+import type { ModelRow } from "@convex/lib/types";
 import { assignSlots } from "./colors";
-import { TOOL_LABELS, modelSegments, toolSegments } from "./breakdowns";
+import { TOOL_LABELS, modelSegments, modelTableRows, sourceSegments, toolSegments } from "./breakdowns";
+
+const modelRow = (key: string, input: number, cached: number, costUsd: number | null, responses = 1): ModelRow => ({
+  key,
+  effort: null,
+  tokens: { input, cachedInput: cached, cacheWrite: 0, output: 0, reasoning: 0, total: input },
+  responses,
+  costUsd,
+  share: 0.5,
+});
 
 describe("breakdown helpers", () => {
   it("labels every tool kind", () => {
@@ -5203,6 +5471,20 @@ describe("breakdown helpers", () => {
     );
     expect(segs).toEqual([{ key: "gpt-5.6-sol", label: "gpt-5.6-sol", value: 100, share: 1, color: "#008300" }]);
   });
+  it("derives the shared per-model row with cache hit and $ per million tokens", () => {
+    const rows = modelTableRows([modelRow("a", 2_000_000, 500_000, 3, 4), modelRow("b", 1_000_000, 0, null)]);
+    expect(rows[0]).toEqual({ model: "a", tokens: 2_000_000, share: 0.5, responses: 4, cacheHitRate: 0.25, costUsd: 3, usdPerMTok: 1.5 });
+    expect(rows[1]).toEqual({ model: "b", tokens: 1_000_000, share: 0.5, responses: 1, cacheHitRate: 0, costUsd: null, usdPerMTok: null });
+  });
+  it("labels source shares and gives each source its own color", () => {
+    const segs = sourceSegments([
+      { key: "cli", tokens: 80, sessions: 4, share: 0.8 },
+      { key: "something_new", tokens: 20, sessions: 1, share: 0.2 },
+    ]);
+    expect(segs.map((s) => s.label)).toEqual(["CLI", "something_new"]);
+    expect(segs[0]?.value).toBe(80);
+    expect(segs[0]?.color).not.toBe(segs[1]?.color);
+  });
 });
 ```
 
@@ -5211,10 +5493,11 @@ describe("breakdown helpers", () => {
 Run: `cd web && npx vitest run --project unit src/lib/breakdowns.test.ts`
 Expected: FAIL with `Failed to resolve import "./breakdowns"`.
 
-- [ ] **Step 3: Implement `web/src/lib/breakdowns.ts`**
+- [ ] **Step 3: Implement `web/src/lib/breakdowns.ts`, the shared `useBreakdowns` hook, `<QuerySection>` and the per-model columns**
 
 ```ts
 import { TOOL_KINDS, type ToolKind } from "@shared/constants";
+import { cacheHitRate, ratio } from "@shared/metrics";
 import type { BreakdownsResult } from "@convex/lib/types";
 import { CATEGORICAL, OTHER_COLOR, type ColorMap } from "./colors";
 import { shareSegments, type Segment } from "./chart-data";
@@ -5257,56 +5540,141 @@ export function modelSegments(byModel: BreakdownsResult["byModel"], colors: Colo
     colors,
   );
 }
+
+/** Display names for `bySource` keys and session sources; unknown keys render verbatim. */
+export const SOURCE_LABELS: Record<string, string> = {
+  cli: "CLI",
+  exec: "Exec",
+  vscode: "VS Code",
+  mcp: "MCP",
+  subagent: "Sub-agent",
+};
+
+const SOURCE_COLORS = [CATEGORICAL[1], CATEGORICAL[0], CATEGORICAL[4], CATEGORICAL[3], CATEGORICAL[5]] as const;
+
+export function sourceSegments(bySource: BreakdownsResult["bySource"]): Segment[] {
+  return bySource.map((s, i) => ({
+    key: s.key,
+    label: SOURCE_LABELS[s.key] ?? s.key,
+    value: s.tokens,
+    share: s.share,
+    color: SOURCE_COLORS[i % SOURCE_COLORS.length]!,
+  }));
+}
+
+export type ModelTableRow = {
+  model: string;
+  tokens: number;
+  share: number;
+  responses: number;
+  cacheHitRate: number | null;
+  costUsd: number | null;
+  usdPerMTok: number | null;
+};
+
+/** The one row shape behind every per-model table (Home → Models and the user Efficiency tab). */
+export function modelTableRows(byModel: BreakdownsResult["byModel"]): ModelTableRow[] {
+  return byModel.map((m) => ({
+    model: m.key,
+    tokens: m.tokens.total,
+    share: m.share,
+    responses: m.responses,
+    cacheHitRate: cacheHitRate(m.tokens),
+    costUsd: m.costUsd,
+    usdPerMTok: m.costUsd === null ? null : ratio(m.costUsd * 1e6, m.tokens.total),
+  }));
+}
 ```
 
-- [ ] **Step 4: Implement the four sections**
+`web/src/hooks/use-breakdowns.ts` (the only `stats.breakdowns` call site in the app):
+```ts
+"use client";
 
-`web/src/components/home/models-section.tsx`:
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
+import type { BreakdownsResult } from "@convex/lib/types";
+import type { ResolvedRange } from "@/lib/range";
+import { useStableQuery } from "./use-stable-query";
+
+export function useBreakdowns(
+  range: ResolvedRange | null,
+  userId?: Id<"users">,
+): { data: BreakdownsResult | undefined; isStale: boolean } {
+  return useStableQuery(
+    api.stats.breakdowns,
+    range === null ? "skip" : { from: range.from, to: range.to, userId },
+  );
+}
+```
+
+`web/src/components/primitives/query-section.tsx` (the one loading/stale scaffold for data sections):
 ```tsx
 "use client";
 
-import { useState } from "react";
-import { api } from "@convex/_generated/api";
-import type { Id } from "@convex/_generated/dataModel";
-import type { ModelRow } from "@convex/lib/types";
-import { StackedShareBar } from "@/components/charts/stacked-share-bar";
-import { DataTable, type Column } from "@/components/primitives/data-table";
-import { EmptyState } from "@/components/primitives/empty-state";
-import { SectionCard } from "@/components/primitives/section-card";
-import { SegmentedControl } from "@/components/primitives/segmented-control";
-import { Badge } from "@/components/ui/badge";
+import type { ReactNode } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useModelColors } from "@/hooks/use-entity-colors";
-import { useStableQuery } from "@/hooks/use-stable-query";
-import { modelSegments } from "@/lib/breakdowns";
-import { colorFor } from "@/lib/colors";
-import { formatCompact, formatInt, formatNullable, formatPercent, formatUsd } from "@/lib/format";
-import type { ResolvedRange } from "@/lib/range";
 import { cn } from "@/lib/utils";
+import { SectionCard } from "./section-card";
 
-const GRAINS = [
-  { value: "model", label: "By model" },
-  { value: "effort", label: "By effort" },
-] as const;
+export function QuerySection<T>({
+  title,
+  info,
+  description,
+  actions,
+  data,
+  isStale,
+  bodyClassName,
+  skeletonClassName = "h-48",
+  children,
+}: {
+  title: string;
+  info?: string;
+  /** A plain string, or one derived from the loaded data. */
+  description?: string | ((data: T) => string);
+  actions?: ReactNode;
+  data: T | undefined;
+  isStale: boolean;
+  bodyClassName?: string;
+  skeletonClassName?: string;
+  children: (data: T) => ReactNode;
+}) {
+  const resolvedDescription =
+    typeof description === "function" ? (data === undefined ? undefined : description(data)) : description;
+  return (
+    <SectionCard
+      title={title}
+      description={resolvedDescription}
+      help={info}
+      actions={actions}
+      bodyClassName={cn(bodyClassName, isStale && "opacity-60 transition-opacity")}
+    >
+      {data === undefined ? <Skeleton className={skeletonClassName} /> : children(data)}
+    </SectionCard>
+  );
+}
+```
 
-export function ModelsSection({ range, userId }: { range: ResolvedRange; userId?: Id<"users"> }) {
-  const { data, isStale } = useStableQuery(api.stats.breakdowns, { from: range.from, to: range.to, userId });
-  const [grain, setGrain] = useState<"model" | "effort">("model");
-  const colors = useModelColors(data ? data.byModel.map((m) => m.key) : []);
-  const actions = <SegmentedControl ariaLabel="Model grain" options={GRAINS} value={grain} onChange={setGrain} />;
-  if (!data) {
-    return (
-      <SectionCard title="Models" actions={actions}>
-        <Skeleton className="h-48" />
-      </SectionCard>
-    );
-  }
-  const modelColumns: Column<ModelRow>[] = [
-    { key: "model", header: "Model", render: (r) => r.key },
-    { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens.total, render: (r) => formatCompact(r.tokens.total) },
+`web/src/components/home/model-columns.tsx` (used by Task 21 and Task 25 — never copied):
+```tsx
+import type { Column } from "@/components/primitives/data-table";
+import { Badge } from "@/components/ui/badge";
+import type { ModelTableRow } from "@/lib/breakdowns";
+import { EM_DASH, formatCompact, formatInt, formatPercent, formatUsd } from "@/lib/format";
+
+/** The single per-model table definition. `responses` and `usdPerMTok` are opt-in columns. */
+export function modelTableColumns(
+  options: { responses?: boolean; usdPerMTok?: boolean } = {},
+): Column<ModelTableRow>[] {
+  const columns: Column<ModelTableRow>[] = [
+    { key: "model", header: "Model", render: (r) => r.model },
+    { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
     { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },
-    { key: "responses", header: "Responses", align: "right", render: (r) => formatInt(r.responses) },
-    { key: "cache", header: "Cache hit", align: "right", render: (r) => formatPercent(r.tokens.input > 0 ? r.tokens.cachedInput / r.tokens.input : null) },
+  ];
+  if (options.responses) {
+    columns.push({ key: "responses", header: "Responses", align: "right", render: (r) => formatInt(r.responses) });
+  }
+  columns.push(
+    { key: "cache", header: "Cache hit", align: "right", render: (r) => formatPercent(r.cacheHitRate) },
     {
       key: "cost",
       header: "Est. cost",
@@ -5320,33 +5688,90 @@ export function ModelsSection({ range, userId }: { range: ResolvedRange; userId?
           formatUsd(r.costUsd)
         ),
     },
-  ];
-  const effortRows = data.byEffort;
-  const effortColumns: Column<(typeof effortRows)[number]>[] = [
+  );
+  if (options.usdPerMTok) {
+    columns.push({
+      key: "rate",
+      header: "$ / M tokens",
+      align: "right",
+      render: (r) => (r.usdPerMTok === null ? EM_DASH : formatUsd(r.usdPerMTok)),
+    });
+  }
+  return columns;
+}
+```
+
+- [ ] **Step 4: Implement the four sections**
+
+`web/src/components/home/models-section.tsx`:
+```tsx
+"use client";
+
+import { useState } from "react";
+import type { Id } from "@convex/_generated/dataModel";
+import type { BreakdownsResult } from "@convex/lib/types";
+import { StackedShareBar } from "@/components/charts/stacked-share-bar";
+import { DataTable, type Column } from "@/components/primitives/data-table";
+import { EmptyState } from "@/components/primitives/empty-state";
+import { QuerySection } from "@/components/primitives/query-section";
+import { SegmentedControl } from "@/components/primitives/segmented-control";
+import { useBreakdowns } from "@/hooks/use-breakdowns";
+import { useModelColors } from "@/hooks/use-entity-colors";
+import { modelSegments, modelTableRows, sourceSegments } from "@/lib/breakdowns";
+import { colorFor } from "@/lib/colors";
+import { formatCompact, formatInt, formatNullable, formatPercent } from "@/lib/format";
+import type { ResolvedRange } from "@/lib/range";
+import { modelTableColumns } from "./model-columns";
+
+const GRAINS = [
+  { value: "model", label: "By model" },
+  { value: "effort", label: "By effort" },
+] as const;
+
+type EffortRow = BreakdownsResult["byEffort"][number];
+
+export function ModelsSection({ range, userId }: { range: ResolvedRange; userId?: Id<"users"> }) {
+  const { data, isStale } = useBreakdowns(range, userId);
+  const [grain, setGrain] = useState<"model" | "effort">("model");
+  const colors = useModelColors(data ? data.byModel.map((m) => m.key) : []);
+  const modelColumns = modelTableColumns({ responses: true });
+  const effortColumns: Column<EffortRow>[] = [
     { key: "effort", header: "Effort", render: (r) => r.key },
     { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
     { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },
     { key: "responses", header: "Responses", align: "right", render: (r) => formatInt(r.responses) },
   ];
   return (
-    <SectionCard
+    <QuerySection
       title="Models"
-      help="Tokens per model (and per reasoning effort) for the range. Cost uses the price table on the Settings page."
-      actions={actions}
-      bodyClassName={cn("flex flex-col gap-4", isStale && "opacity-60 transition-opacity")}
+      info="Tokens per model (and per reasoning effort) for the range. Cost uses the price table on the Settings page."
+      actions={<SegmentedControl ariaLabel="Model grain" options={GRAINS} value={grain} onChange={setGrain} />}
+      data={data}
+      isStale={isStale}
+      bodyClassName="flex flex-col gap-4"
     >
-      {data.byModel.length === 0 ? (
-        <EmptyState title="No model usage in this range" />
-      ) : grain === "model" ? (
+      {(b) => (
         <>
-          <StackedShareBar segments={modelSegments(data.byModel, colors)} format={formatCompact} showLegend={false} />
-          <DataTable columns={modelColumns} rows={data.byModel} rowKey={(r) => r.key} barColor={(r) => colorFor(colors, r.key)} />
+          {b.byModel.length === 0 ? (
+            <EmptyState title="No model usage in this range" />
+          ) : grain === "model" ? (
+            <>
+              <StackedShareBar segments={modelSegments(b.byModel, colors)} format={formatCompact} showLegend={false} />
+              <DataTable columns={modelColumns} rows={modelTableRows(b.byModel)} rowKey={(r) => r.model} barColor={(r) => colorFor(colors, r.model)} />
+            </>
+          ) : (
+            <DataTable columns={effortColumns} rows={b.byEffort} rowKey={(r) => r.key} />
+          )}
+          {b.bySource.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs text-muted-foreground">By source</p>
+              <StackedShareBar segments={sourceSegments(b.bySource)} format={formatCompact} />
+            </div>
+          ) : null}
+          <p className="text-xs text-muted-foreground">{formatNullable(b.totalTokens, formatCompact)} tokens in total</p>
         </>
-      ) : (
-        <DataTable columns={effortColumns} rows={effortRows} rowKey={(r) => r.key} />
       )}
-      <p className="text-xs text-muted-foreground">{formatNullable(data.totalTokens, formatCompact)} tokens in total</p>
-    </SectionCard>
+    </QuerySection>
   );
 }
 ```
@@ -5355,59 +5780,51 @@ export function ModelsSection({ range, userId }: { range: ResolvedRange; userId?
 ```tsx
 "use client";
 
-import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { StackedShareBar } from "@/components/charts/stacked-share-bar";
 import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
-import { SectionCard } from "@/components/primitives/section-card";
+import { QuerySection } from "@/components/primitives/query-section";
 import { StatCard } from "@/components/primitives/stat-card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useStableQuery } from "@/hooks/use-stable-query";
+import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { toolSegments } from "@/lib/breakdowns";
 import { formatInt, formatPercent } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
-import { cn } from "@/lib/utils";
 
 type McpRow = { key: string; count: number };
 
 export function ToolsSection({ range, userId }: { range: ResolvedRange; userId?: Id<"users"> }) {
-  const { data, isStale } = useStableQuery(api.stats.breakdowns, { from: range.from, to: range.to, userId });
-  if (!data) {
-    return (
-      <SectionCard title="Tools">
-        <Skeleton className="h-48" />
-      </SectionCard>
-    );
-  }
-  const segments = toolSegments(data.byTool);
+  const { data, isStale } = useBreakdowns(range, userId);
   const mcpColumns: Column<McpRow>[] = [
     { key: "tool", header: "MCP tool (server/tool)", render: (r) => r.key },
     { key: "count", header: "Calls", align: "right", bar: (r) => r.count, render: (r) => formatInt(r.count) },
   ];
   return (
-    <SectionCard
+    <QuerySection
       title="Tools"
-      description={`${formatInt(data.toolCalls)} tool calls`}
-      help="Tool calls by kind: commands are classified by Codex (read, list, search, other); file changes, web search, image views and MCP tools are counted from completed items."
-      bodyClassName={cn("flex flex-col gap-4", isStale && "opacity-60 transition-opacity")}
+      description={(b) => `${formatInt(b.toolCalls)} tool calls`}
+      info="Tool calls by kind: commands are classified by Codex (read, list, search, other); file changes, web search, image views and MCP tools are counted from completed items."
+      data={data}
+      isStale={isStale}
+      bodyClassName="flex flex-col gap-4"
     >
-      {data.toolCalls === 0 ? (
-        <EmptyState title="No tool calls in this range" />
-      ) : (
-        <>
-          <StackedShareBar segments={segments} format={formatInt} showLegend={false} />
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {segments.map((s) => (
-              <StatCard key={s.key} label={s.label} value={s.value} kind="count" size="sm" footer={formatPercent(s.share)} />
-            ))}
-          </div>
-          {data.byMcpTool.length > 0 ? (
-            <DataTable columns={mcpColumns} rows={data.byMcpTool} rowKey={(r) => r.key} />
-          ) : null}
-        </>
-      )}
-    </SectionCard>
+      {(b) => {
+        const segments = toolSegments(b.byTool);
+        return b.toolCalls === 0 ? (
+          <EmptyState title="No tool calls in this range" />
+        ) : (
+          <>
+            <StackedShareBar segments={segments} format={formatInt} showLegend={false} />
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {segments.map((s) => (
+                <StatCard key={s.key} label={s.label} value={s.value} kind="count" size="sm" footer={formatPercent(s.share)} />
+              ))}
+            </div>
+            {b.byMcpTool.length > 0 ? <DataTable columns={mcpColumns} rows={b.byMcpTool} rowKey={(r) => r.key} /> : null}
+          </>
+        );
+      }}
+    </QuerySection>
   );
 }
 ```
@@ -5416,29 +5833,19 @@ export function ToolsSection({ range, userId }: { range: ResolvedRange; userId?:
 ```tsx
 "use client";
 
-import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type { BreakdownsResult } from "@convex/lib/types";
 import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
-import { SectionCard } from "@/components/primitives/section-card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useStableQuery } from "@/hooks/use-stable-query";
+import { QuerySection } from "@/components/primitives/query-section";
+import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { formatCompact, formatInt, formatPercent } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
-import { cn } from "@/lib/utils";
 
 type ProjectRow = BreakdownsResult["byProject"][number];
 
 export function ProjectsSection({ range, userId }: { range: ResolvedRange; userId?: Id<"users"> }) {
-  const { data, isStale } = useStableQuery(api.stats.breakdowns, { from: range.from, to: range.to, userId });
-  if (!data) {
-    return (
-      <SectionCard title="Projects">
-        <Skeleton className="h-48" />
-      </SectionCard>
-    );
-  }
+  const { data, isStale } = useBreakdowns(range, userId);
   const columns: Column<ProjectRow>[] = [
     { key: "project", header: "Project", render: (r) => r.key },
     { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
@@ -5448,13 +5855,14 @@ export function ProjectsSection({ range, userId }: { range: ResolvedRange; userI
     { key: "lines", header: "Lines +/−", align: "right", render: (r) => `+${formatInt(r.linesAdded)} / −${formatInt(r.linesRemoved)}` },
   ];
   return (
-    <SectionCard
+    <QuerySection
       title="Projects"
-      help="Project = the last path segment of the session's working directory. Full paths are never uploaded."
-      bodyClassName={cn(isStale && "opacity-60 transition-opacity")}
+      info="Project = the last path segment of the session's working directory. Full paths are never uploaded."
+      data={data}
+      isStale={isStale}
     >
-      {data.byProject.length === 0 ? <EmptyState title="No projects in this range" /> : <DataTable columns={columns} rows={data.byProject} rowKey={(r) => r.key} />}
-    </SectionCard>
+      {(b) => (b.byProject.length === 0 ? <EmptyState title="No projects in this range" /> : <DataTable columns={columns} rows={b.byProject} rowKey={(r) => r.key} />)}
+    </QuerySection>
   );
 }
 ```
@@ -5463,42 +5871,33 @@ export function ProjectsSection({ range, userId }: { range: ResolvedRange; userI
 ```tsx
 "use client";
 
-import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type { BreakdownsResult } from "@convex/lib/types";
 import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
-import { SectionCard } from "@/components/primitives/section-card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useStableQuery } from "@/hooks/use-stable-query";
+import { QuerySection } from "@/components/primitives/query-section";
+import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { formatInt } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
-import { cn } from "@/lib/utils";
 
 type SkillRow = BreakdownsResult["bySkill"][number];
 
 export function SkillsSection({ range, userId }: { range: ResolvedRange; userId?: Id<"users"> }) {
-  const { data, isStale } = useStableQuery(api.stats.breakdowns, { from: range.from, to: range.to, userId });
-  if (!data) {
-    return (
-      <SectionCard title="Skills">
-        <Skeleton className="h-48" />
-      </SectionCard>
-    );
-  }
+  const { data, isStale } = useBreakdowns(range, userId);
   const columns: Column<SkillRow>[] = [
     { key: "skill", header: "Skill", render: (r) => r.key },
     { key: "count", header: "Invocations", align: "right", bar: (r) => r.count, render: (r) => formatInt(r.count) },
     { key: "sessions", header: "Sessions", align: "right", render: (r) => formatInt(r.sessions) },
   ];
   return (
-    <SectionCard
+    <QuerySection
       title="Skills"
-      help="A skill is counted whenever a command reads a SKILL.md file; the skill name is its parent directory."
-      bodyClassName={cn(isStale && "opacity-60 transition-opacity")}
+      info="A skill is counted whenever a command reads a SKILL.md file; the skill name is its parent directory."
+      data={data}
+      isStale={isStale}
     >
-      {data.bySkill.length === 0 ? <EmptyState title="No skill use in this range" /> : <DataTable columns={columns} rows={data.bySkill} rowKey={(r) => r.key} />}
-    </SectionCard>
+      {(b) => (b.bySkill.length === 0 ? <EmptyState title="No skill use in this range" /> : <DataTable columns={columns} rows={b.bySkill} rowKey={(r) => r.key} />)}
+    </QuerySection>
   );
 }
 ```
@@ -5511,7 +5910,7 @@ Expected: PASS; typecheck and lint exit 0.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add web/src/lib/breakdowns.ts web/src/lib/breakdowns.test.ts web/src/components/home/models-section.tsx web/src/components/home/tools-section.tsx web/src/components/home/projects-section.tsx web/src/components/home/skills-section.tsx
+git add web/src/hooks/use-breakdowns.ts web/src/components/primitives/query-section.tsx web/src/lib/breakdowns.ts web/src/lib/breakdowns.test.ts web/src/components/home/model-columns.tsx web/src/components/home/models-section.tsx web/src/components/home/tools-section.tsx web/src/components/home/projects-section.tsx web/src/components/home/skills-section.tsx
 git commit -m "$(cat <<'MSG'
 Add models, tools, projects and skills breakdown sections
 
@@ -6214,13 +6613,13 @@ MSG
 ### Task 24: User page — Breakdown tab (tables, time analysis, weekday × hour heatmap)
 
 **Files:**
-- Create: `web/src/lib/time-analysis.ts`, `web/src/components/user/machines-table.tsx`, `web/src/components/user/time-analysis-card.tsx`, `web/src/components/user/breakdown-tab.tsx`
+- Create: `web/src/lib/time-analysis.ts`, `web/src/components/user/machines-table.tsx`, `web/src/components/user/sources-table.tsx`, `web/src/components/user/time-analysis-card.tsx`, `web/src/components/user/breakdown-tab.tsx`
 - Modify: `web/src/app/(app)/users/[userId]/page.tsx` (add the `breakdown` case)
 - Test: `web/src/lib/time-analysis.test.ts`
 
 **Interfaces:**
-- Consumes: `api.stats.summary`, `api.stats.breakdowns`, `api.stats.dayHourHeatmap`; `ModelsSection`, `ToolsSection`, `ProjectsSection`, `SkillsSection` with `userId` (Task 21); `DayHourHeatmap` (Task 18); `WEEKDAY_LABELS`, `hourLabel` (Task 9).
-- Produces: `peakHour(byHour: number[]): number | null`; `timeAnalysisRows(summary, byHour, heatmap): { label: string; value: string; help: string }[]`; `<MachinesTable range userId />`; `<TimeAnalysisCard range userId />`; `<BreakdownTab range userId />`.
+- Consumes: `api.stats.summary`, `api.stats.dayHourHeatmap`, `useBreakdowns` + `<QuerySection>` (Task 21 — never `api.stats.breakdowns` directly); `SOURCE_LABELS` (Task 21); `ratio` from `@shared/metrics` (contracts §5); `ModelsSection`, `ToolsSection`, `ProjectsSection`, `SkillsSection` with `userId` (Task 21); `DayHourHeatmap` (Task 18); `WEEKDAY_LABELS`, `hourLabel` (Task 9).
+- Produces: `peakHour(byHour: number[]): number | null`; `timeAnalysisRows(summary, byHour, heatmap): { label: string; value: string; help: string }[]`; `<MachinesTable range userId />`; `<SourcesTable range userId />` (renders `BreakdownsResult.bySource`); `<TimeAnalysisCard range userId />`; `<BreakdownTab range userId />`.
 
 - [ ] **Step 1: Write the failing test `web/src/lib/time-analysis.test.ts`**
 
@@ -6285,10 +6684,10 @@ Expected: FAIL with `Failed to resolve import "./time-analysis"`.
 
 `web/src/lib/time-analysis.ts`:
 ```ts
+import { ratio } from "@shared/metrics";
 import type { DayHourHeatmapResult, SummaryResult } from "@convex/lib/types";
 import { formatDurationMs, formatHours, formatPercent } from "./format";
 import { WEEKDAY_LABELS, hourLabel } from "./heatmap";
-import { safeRatio } from "./metrics";
 
 export function peakHour(byHour: number[]): number | null {
   let best: number | null = null;
@@ -6307,7 +6706,7 @@ export type TimeRow = { label: string; value: string; help: string };
 
 export function timeAnalysisRows(summary: SummaryResult, byHour: number[], heatmap: DayHourHeatmapResult): TimeRow[] {
   const m = summary.metrics;
-  const perSession = safeRatio(m.messages.current, m.sessions.current);
+  const perSession = ratio(m.messages.current, m.sessions.current);
   const hour = heatmap.peakHour ?? peakHour(byHour);
   return [
     { label: "Total hours", value: formatHours(m.wallMs.current), help: "Sum of session spans (first to last event)." },
@@ -6325,21 +6724,19 @@ export function timeAnalysisRows(summary: SummaryResult, byHour: number[], heatm
 ```tsx
 "use client";
 
-import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type { BreakdownsResult } from "@convex/lib/types";
 import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
-import { SectionCard } from "@/components/primitives/section-card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useStableQuery } from "@/hooks/use-stable-query";
+import { QuerySection } from "@/components/primitives/query-section";
+import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { formatCompact, formatInt, formatPercent } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
 
 type MachineRow = BreakdownsResult["byMachine"][number];
 
 export function MachinesTable({ range, userId }: { range: ResolvedRange; userId: Id<"users"> }) {
-  const { data } = useStableQuery(api.stats.breakdowns, { from: range.from, to: range.to, userId });
+  const { data, isStale } = useBreakdowns(range, userId);
   const columns: Column<MachineRow>[] = [
     { key: "machine", header: "Machine", render: (r) => r.label },
     { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
@@ -6347,15 +6744,53 @@ export function MachinesTable({ range, userId }: { range: ResolvedRange; userId:
     { key: "sessions", header: "Sessions", align: "right", render: (r) => formatInt(r.sessions) },
   ];
   return (
-    <SectionCard title="Machines" help="Tokens per synced machine in the range. Rename machines on the Settings page.">
-      {data === undefined ? (
-        <Skeleton className="h-32" />
-      ) : data.byMachine.length === 0 ? (
-        <EmptyState title="No machine data in this range" />
-      ) : (
-        <DataTable columns={columns} rows={data.byMachine} rowKey={(r) => r.key} />
-      )}
-    </SectionCard>
+    <QuerySection
+      title="Machines"
+      info="Tokens per synced machine in the range. Rename machines on the Settings page."
+      data={data}
+      isStale={isStale}
+      skeletonClassName="h-32"
+    >
+      {(b) => (b.byMachine.length === 0 ? <EmptyState title="No machine data in this range" /> : <DataTable columns={columns} rows={b.byMachine} rowKey={(r) => r.key} />)}
+    </QuerySection>
+  );
+}
+```
+
+`web/src/components/user/sources-table.tsx`:
+```tsx
+"use client";
+
+import type { Id } from "@convex/_generated/dataModel";
+import type { BreakdownsResult } from "@convex/lib/types";
+import { DataTable, type Column } from "@/components/primitives/data-table";
+import { EmptyState } from "@/components/primitives/empty-state";
+import { QuerySection } from "@/components/primitives/query-section";
+import { useBreakdowns } from "@/hooks/use-breakdowns";
+import { SOURCE_LABELS } from "@/lib/breakdowns";
+import { formatCompact, formatInt, formatPercent } from "@/lib/format";
+import type { ResolvedRange } from "@/lib/range";
+
+type SourceRow = BreakdownsResult["bySource"][number];
+
+export function SourcesTable({ range, userId }: { range: ResolvedRange; userId: Id<"users"> }) {
+  const { data, isStale } = useBreakdowns(range, userId);
+  const columns: Column<SourceRow>[] = [
+    { key: "source", header: "Source", render: (r) => SOURCE_LABELS[r.key] ?? r.key },
+    { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
+    { key: "sessions", header: "Sessions", align: "right", render: (r) => formatInt(r.sessions) },
+    { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },
+  ];
+  return (
+    <QuerySection
+      title="Sources"
+      info="Where the work ran: the interactive CLI, `codex exec`, an editor extension, MCP, or a sub-agent thread."
+      data={data}
+      isStale={isStale}
+      skeletonClassName="h-32"
+    >
+      {(b) => (b.bySource.length === 0 ? <EmptyState title="No sessions in this range" /> : <DataTable columns={columns} rows={b.bySource} rowKey={(r) => r.key} />)}
+    </QuerySection>
   );
 }
 ```
@@ -6370,6 +6805,7 @@ import { DayHourHeatmap } from "@/components/charts/day-hour-heatmap";
 import { InfoTooltip } from "@/components/primitives/info-tooltip";
 import { SectionCard } from "@/components/primitives/section-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { useStableQuery } from "@/hooks/use-stable-query";
 import { formatCompact } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
@@ -6378,7 +6814,7 @@ import { timeAnalysisRows } from "@/lib/time-analysis";
 export function TimeAnalysisCard({ range, userId }: { range: ResolvedRange; userId: Id<"users"> }) {
   const args = { from: range.from, to: range.to, userId };
   const { data: summary } = useStableQuery(api.stats.summary, { ...args, previous: false });
-  const { data: breakdowns } = useStableQuery(api.stats.breakdowns, args);
+  const { data: breakdowns } = useBreakdowns(range, userId);
   const { data: heatmap } = useStableQuery(api.stats.dayHourHeatmap, args);
   return (
     <SectionCard title="Time analysis" help="When and how long this user works with Codex, in the machines' local time." bodyClassName="flex flex-col gap-4">
@@ -6417,6 +6853,7 @@ import { ToolsSection } from "@/components/home/tools-section";
 import { SectionErrorBoundary } from "@/components/primitives/section-error-boundary";
 import type { ResolvedRange } from "@/lib/range";
 import { MachinesTable } from "./machines-table";
+import { SourcesTable } from "./sources-table";
 import { TimeAnalysisCard } from "./time-analysis-card";
 
 export function BreakdownTab({ range, userId }: { range: ResolvedRange; userId: Id<"users"> }) {
@@ -6441,6 +6878,9 @@ export function BreakdownTab({ range, userId }: { range: ResolvedRange; userId: 
         <SectionErrorBoundary>
           <MachinesTable range={range} userId={userId} />
         </SectionErrorBoundary>
+        <SectionErrorBoundary>
+          <SourcesTable range={range} userId={userId} />
+        </SectionErrorBoundary>
       </div>
     </div>
   );
@@ -6458,12 +6898,12 @@ In `web/src/app/(app)/users/[userId]/page.tsx` add the import `import { Breakdow
 - [ ] **Step 5: Run the test, typecheck, lint and check in the browser**
 
 Run: `cd web && npx vitest run --project unit src/lib/time-analysis.test.ts && cd .. && npm run typecheck -w web && npm run lint -w web`
-Expected: PASS; typecheck and lint exit 0. In the browser, `My Page → Breakdown` (`?tab=breakdown`) shows the seven time-analysis tiles, the weekday × hour heatmap with a tooltip on hover, and the Models, Tools, Projects, Skills and Machines cards scoped to the user.
+Expected: PASS; typecheck and lint exit 0. In the browser, `My Page → Breakdown` (`?tab=breakdown`) shows the seven time-analysis tiles, the weekday × hour heatmap with a tooltip on hover, and the Models, Tools, Projects, Skills, Machines and Sources cards scoped to the user (Sources lists CLI / Exec / Sub-agent with tokens, sessions and share).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add web/src/lib/time-analysis.ts web/src/lib/time-analysis.test.ts web/src/components/user/machines-table.tsx web/src/components/user/time-analysis-card.tsx web/src/components/user/breakdown-tab.tsx "web/src/app/(app)/users/[userId]/page.tsx"
+git add web/src/lib/time-analysis.ts web/src/lib/time-analysis.test.ts web/src/components/user/machines-table.tsx web/src/components/user/sources-table.tsx web/src/components/user/time-analysis-card.tsx web/src/components/user/breakdown-tab.tsx "web/src/app/(app)/users/[userId]/page.tsx"
 git commit -m "$(cat <<'MSG'
 Add the user Breakdown tab with time analysis and weekday-hour heatmap
 
@@ -6483,24 +6923,14 @@ MSG
 - Test: `web/src/lib/efficiency.test.ts`
 
 **Interfaces:**
-- Consumes: `api.stats.summary`, `api.stats.breakdowns`; `CostStructureCard`, `MetricStatCard` (Task 19); `StatCard`, `DataTable`, `SectionCard`, `EmptyState` (Tasks 12–13); `safeRatio` (Task 7); `ModelRow` from `@convex/lib/types`.
-- Produces: `costPerLine(costUsd, linesAdded): number | null`; `costWithoutCaching(costUsd, cacheSavingsUsd): number`; `type ModelEfficiencyRow = { model: string; tokens: number; cacheHitRate: number | null; costUsd: number | null; usdPerMTok: number | null; share: number }`; `modelEfficiencyRows(byModel: ModelRow[]): ModelEfficiencyRow[]`; `<EfficiencyTab range userId />`.
+- Consumes: `api.stats.summary`; `useBreakdowns`, `<QuerySection>`, `modelTableRows`, `modelTableColumns` (Task 21 — the per-model table is defined once there and reused here); `CostStructureCard`, `MetricStatCard`, `CardsSkeleton` (Task 19); `StatCard`, `DataTable`, `EmptyState` (Tasks 12–13); `ratio` from `@shared/metrics` (contracts §5).
+- Produces: `costPerLine(costUsd, linesAdded): number | null`; `costWithoutCaching(costUsd, cacheSavingsUsd): number`; `<EfficiencyTab range userId />`.
 
 - [ ] **Step 1: Write the failing test `web/src/lib/efficiency.test.ts`**
 
 ```ts
 import { describe, expect, it } from "vitest";
-import type { ModelRow } from "@convex/lib/types";
-import { costPerLine, costWithoutCaching, modelEfficiencyRows } from "./efficiency";
-
-const model = (key: string, input: number, cached: number, costUsd: number | null): ModelRow => ({
-  key,
-  effort: null,
-  tokens: { input, cachedInput: cached, cacheWrite: 0, output: 0, reasoning: 0, total: input },
-  responses: 1,
-  costUsd,
-  share: 0.5,
-});
+import { costPerLine, costWithoutCaching } from "./efficiency";
 
 describe("efficiency helpers", () => {
   it("guards cost per line and adds savings back", () => {
@@ -6508,13 +6938,9 @@ describe("efficiency helpers", () => {
     expect(costPerLine(10, 4)).toBe(2.5);
     expect(costWithoutCaching(10, 2.5)).toBe(12.5);
   });
-  it("derives per-model rows with cache hit and USD per million tokens", () => {
-    const rows = modelEfficiencyRows([model("a", 2_000_000, 500_000, 3), model("b", 1_000_000, 0, null)]);
-    expect(rows[0]).toEqual({ model: "a", tokens: 2_000_000, cacheHitRate: 0.25, costUsd: 3, usdPerMTok: 1.5, share: 0.5 });
-    expect(rows[1]).toEqual({ model: "b", tokens: 1_000_000, cacheHitRate: 0, costUsd: null, usdPerMTok: null, share: 0.5 });
-  });
 });
 ```
+(The per-model rows are `modelTableRows` from Task 21 and are tested in `src/lib/breakdowns.test.ts`.)
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -6525,35 +6951,14 @@ Expected: FAIL with `Failed to resolve import "./efficiency"`.
 
 `web/src/lib/efficiency.ts`:
 ```ts
-import type { ModelRow } from "@convex/lib/types";
-import { safeRatio } from "./metrics";
+import { ratio } from "@shared/metrics";
 
 export function costPerLine(costUsd: number, linesAdded: number): number | null {
-  return safeRatio(costUsd, linesAdded);
+  return ratio(costUsd, linesAdded);
 }
 
 export function costWithoutCaching(costUsd: number, cacheSavingsUsd: number): number {
   return costUsd + cacheSavingsUsd;
-}
-
-export type ModelEfficiencyRow = {
-  model: string;
-  tokens: number;
-  cacheHitRate: number | null;
-  costUsd: number | null;
-  usdPerMTok: number | null;
-  share: number;
-};
-
-export function modelEfficiencyRows(byModel: ModelRow[]): ModelEfficiencyRow[] {
-  return byModel.map((m) => ({
-    model: m.key,
-    tokens: m.tokens.total,
-    cacheHitRate: safeRatio(m.tokens.cachedInput, m.tokens.input),
-    costUsd: m.costUsd,
-    usdPerMTok: m.costUsd === null ? null : m.tokens.total > 0 ? (m.costUsd / m.tokens.total) * 1e6 : null,
-    share: m.share,
-  }));
 }
 ```
 
@@ -6566,51 +6971,39 @@ import type { Id } from "@convex/_generated/dataModel";
 import { CardsSkeleton } from "@/components/home/cards-skeleton";
 import { CostStructureCard } from "@/components/home/cost-structure-card";
 import { MetricStatCard } from "@/components/home/metric-stat-card";
-import { DataTable, type Column } from "@/components/primitives/data-table";
+import { modelTableColumns } from "@/components/home/model-columns";
+import { DataTable } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
-import { SectionCard } from "@/components/primitives/section-card";
+import { QuerySection } from "@/components/primitives/query-section";
 import { SectionErrorBoundary } from "@/components/primitives/section-error-boundary";
 import { StatCard } from "@/components/primitives/stat-card";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { useStableQuery } from "@/hooks/use-stable-query";
-import { costPerLine, costWithoutCaching, modelEfficiencyRows, type ModelEfficiencyRow } from "@/lib/efficiency";
-import { formatCompact, formatPercent, formatUsd } from "@/lib/format";
+import { modelTableRows } from "@/lib/breakdowns";
+import { costPerLine, costWithoutCaching } from "@/lib/efficiency";
+import { formatUsd } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
 import { cn } from "@/lib/utils";
 
 function ModelEfficiencyTable({ range, userId }: { range: ResolvedRange; userId: Id<"users"> }) {
-  const { data, isStale } = useStableQuery(api.stats.breakdowns, { from: range.from, to: range.to, userId });
-  const columns: Column<ModelEfficiencyRow>[] = [
-    { key: "model", header: "Model", render: (r) => r.model },
-    { key: "tokens", header: "Tokens", align: "right", bar: (r) => r.tokens, render: (r) => formatCompact(r.tokens) },
-    { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },
-    { key: "cache", header: "Cache hit", align: "right", render: (r) => formatPercent(r.cacheHitRate) },
-    {
-      key: "cost",
-      header: "Est. cost",
-      align: "right",
-      render: (r) =>
-        r.costUsd === null ? (
-          <Badge variant="outline" className="rounded-full text-[10px]">
-            unpriced
-          </Badge>
-        ) : (
-          formatUsd(r.costUsd)
-        ),
-    },
-    { key: "rate", header: "$ / M tokens", align: "right", render: (r) => (r.usdPerMTok === null ? "—" : formatUsd(r.usdPerMTok)) },
-  ];
+  const { data, isStale } = useBreakdowns(range, userId);
+  const columns = modelTableColumns({ usdPerMTok: true });
   return (
-    <SectionCard title="Cost by model" help="Effective price per million tokens after caching. Unpriced models need a price on the Settings page." bodyClassName={cn(isStale && "opacity-60")}>
-      {data === undefined ? (
-        <Skeleton className="h-40" />
-      ) : data.byModel.length === 0 ? (
-        <EmptyState title="No model usage in this range" />
-      ) : (
-        <DataTable columns={columns} rows={modelEfficiencyRows(data.byModel)} rowKey={(r) => r.model} />
-      )}
-    </SectionCard>
+    <QuerySection
+      title="Cost by model"
+      info="Effective price per million tokens after caching. Unpriced models need a price on the Settings page."
+      data={data}
+      isStale={isStale}
+      skeletonClassName="h-40"
+    >
+      {(b) =>
+        b.byModel.length === 0 ? (
+          <EmptyState title="No model usage in this range" />
+        ) : (
+          <DataTable columns={columns} rows={modelTableRows(b.byModel)} rowKey={(r) => r.model} />
+        )
+      }
+    </QuerySection>
   );
 }
 
@@ -6621,7 +7014,7 @@ export function EfficiencyTab({ range, userId }: { range: ResolvedRange; userId:
     userId,
     previous: range.previous,
   });
-  if (!summary) return <CardsSkeleton count={6} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" />;
+  if (!summary) return <CardsSkeleton count={9} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" />;
   const cost = summary.metrics.costUsd.current;
   const perLine = costPerLine(cost, summary.metrics.linesAdded.current);
   return (
@@ -6662,7 +7055,7 @@ In `web/src/app/(app)/users/[userId]/page.tsx` add `import { EfficiencyTab } fro
 - [ ] **Step 5: Run the test, typecheck, lint and check in the browser**
 
 Run: `cd web && npx vitest run --project unit src/lib/efficiency.test.ts && cd .. && npm run typecheck -w web && npm run lint -w web`
-Expected: PASS; typecheck and lint exit 0. In the browser, `My Page → Efficiency` shows the cost structure bar, cache savings with the "Without caching" footer, cost per line, the four efficiency metric cards with delta pills, and the per-model table (unpriced models carry the badge). Edit a price on the Settings page later (Task 28) and confirm the cost cells change without a reload.
+Expected: PASS; typecheck and lint exit 0. In the browser, `My Page → Efficiency` shows nine cards — the cost structure bar, cache savings with the "Without caching" footer, cost per line and six efficiency metric cards with delta pills (the skeleton shows the same nine, so nothing jumps) — plus the per-model table (unpriced models carry the badge). Edit a price on the Settings page later (Task 28) and confirm the cost cells change without a reload.
 
 - [ ] **Step 6: Commit**
 
@@ -6687,7 +7080,7 @@ MSG
 - Test: `web/src/lib/sessions.test.ts`
 
 **Interfaces:**
-- Consumes: `api.sessions.listRecent` via `usePaginatedQuery` (rows of `SessionRow`); `DataTable`, `SectionCard`, `EmptyState` (Tasks 12–13); `formatDateTime`, `formatCompact`, `formatPercent`, `formatUsd`, `formatDurationMs` (Task 3).
+- Consumes: `api.sessions.listRecent` via `usePaginatedQuery` (rows of `SessionRow`); `DataTable`, `SectionCard`, `EmptyState` (Tasks 12–13); `SOURCE_LABELS` (Task 21 — the source display names live there); `formatDateTime`, `formatCompact`, `formatPercent`, `formatUsd`, `formatDurationMs` (Task 3).
 - Produces: `sourceLabel(source: string, isSubagent: boolean): string`; `<SessionsTab userId />`.
 
 - [ ] **Step 1: Write the failing test `web/src/lib/sessions.test.ts`**
@@ -6720,7 +7113,7 @@ Expected: FAIL with `Failed to resolve import "./sessions"`.
 
 `web/src/lib/sessions.ts`:
 ```ts
-const LABELS: Record<string, string> = { cli: "CLI", exec: "Exec", vscode: "VS Code", mcp: "MCP" };
+import { SOURCE_LABELS } from "./breakdowns";
 
 export function sourceLabel(source: string, isSubagent: boolean): string {
   if (source.startsWith("subagent:")) {
@@ -6728,7 +7121,7 @@ export function sourceLabel(source: string, isSubagent: boolean): string {
     return kind ? `Sub-agent · ${kind}` : "Sub-agent";
   }
   if (isSubagent) return "Sub-agent";
-  return LABELS[source] ?? source;
+  return SOURCE_LABELS[source] ?? source;
 }
 ```
 
@@ -6849,7 +7242,7 @@ MSG
 - Test: `web/src/components/settings/sync-tokens-card.test.tsx`
 
 **Interfaces:**
-- Consumes: `api.syncTokens.list` (→ `SyncTokenRow[]`), `api.syncTokens.create` (action → `{ id, token, prefix }`), `api.syncTokens.revoke`; `CopyBox`, `DataTable`, `SectionCard`, `EmptyState` (Tasks 12–13); `installCommands` (Task 10); `useOrigin` (Task 22); `useNow` (Task 11); shadcn `Dialog`, `AlertDialog`, `Input`, `Label`, `Button`, `Badge`.
+- Consumes: `api.syncTokens.list` (→ `SyncTokenRow[]`), `api.syncTokens.create` (action → `{ id, token, prefix }`), `api.syncTokens.revoke`; `CopyBox`, `DataTable`, `SectionCard`, `EmptyState`, `InlineError` (Tasks 12–13); `useAsyncAction` (Task 11); `installCommands` (Task 10); `useOrigin` (Task 22); `useNow` (Task 11); shadcn `Dialog`, `AlertDialog`, `Input`, `Label`, `Button`, `Badge`.
 - Produces: `<SyncTokensCard />`.
 
 - [ ] **Step 1: Write the failing test `web/src/components/settings/sync-tokens-card.test.tsx`**
@@ -6912,6 +7305,7 @@ import type { SyncTokenRow } from "@convex/lib/types";
 import { CopyBox } from "@/components/primitives/copy-box";
 import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
+import { InlineError } from "@/components/primitives/inline-error";
 import { SectionCard } from "@/components/primitives/section-card";
 import {
   AlertDialog,
@@ -6930,6 +7324,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAsyncAction } from "@/hooks/use-async-action";
 import { useNow } from "@/hooks/use-now";
 import { useOrigin } from "@/hooks/use-origin";
 import { formatDateTime, formatRelative } from "@/lib/format";
@@ -6998,7 +7393,7 @@ function NewTokenDialog() {
           <div className="flex flex-col gap-2">
             <Label htmlFor="token-name">Token name</Label>
             <Input id="token-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={64} />
-            {error ? <p className="text-xs text-destructive">{error}</p> : null}
+            <InlineError message={error} />
           </div>
         )}
         <DialogFooter>
@@ -7016,28 +7411,38 @@ function NewTokenDialog() {
 }
 
 function RevokeButton({ token }: { token: SyncTokenRow }) {
-  const revoke = useMutation(api.syncTokens.revoke);
+  const revokeToken = useMutation(api.syncTokens.revoke);
+  const revoke = useAsyncAction(revokeToken);
   if (token.revokedAt !== null) return null;
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="text-destructive">
-          Revoke
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Revoke “{token.name}”?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Machines using this token stop syncing immediately (their next sync gets 401). Already uploaded data is kept.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={() => void revoke({ tokenId: token._id as Id<"syncTokens"> })}>Revoke</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <span className="inline-flex flex-col items-end gap-1">
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button variant="ghost" size="sm" className="text-destructive">
+            Revoke
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke “{token.name}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Machines using this token stop syncing immediately (their next sync gets 401). Already uploaded data is kept.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={revoke.pending}
+              onClick={() => void revoke.run({ tokenId: token._id as Id<"syncTokens"> })}
+            >
+              Revoke
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {/* The dialog closes on Revoke, so the failure is rendered next to the row instead. */}
+      <InlineError message={revoke.error} />
+    </span>
   );
 }
 
@@ -7109,14 +7514,14 @@ MSG
 - Test: `web/src/lib/prices.test.ts`
 
 **Interfaces:**
-- Consumes: `api.machines.list`, `api.machines.rename`, `api.users.list`, `api.prices.list`, `api.prices.upsert`, `api.prices.remove`, `api.stats.breakdowns`; `installSteps`, `INSTALL_OS`, `installCommands`, `isNewerThanTested` (Task 10); `useOrigin`, `useToday`, `useNow`, `useCurrentUserId`; `addDays` from `@shared/days`, `MAX_QUERY_RANGE_DAYS` from `@shared/constants`; shadcn `Tabs`, `Input`, `Button`, `Badge`.
-- Produces: `parsePrice(text: string): number | null` (finite, ≥ 0, up to 6 decimals); `unpricedModels(byModel: { key: string; costUsd: number | null }[], priced: string[]): string[]`; `<InstallCard />`, `<MachinesCard />`, `<PricesCard />`; the Settings route.
+- Consumes: `api.machines.list`, `api.machines.rename`, `api.users.list`, `api.prices.list`, `api.prices.upsert`, `api.prices.remove`, `api.stats.summary` (for `SummaryResult.unpricedModels`, contracts §9 — never the much heavier `stats.breakdowns`); `installSteps`, `INSTALL_OS`, `installCommands`, `isNewerThanTested` (Task 10); `useOrigin`, `useToday`, `useNow`, `useCurrentUserId`, `useStableQuery`, `useAsyncAction` (Task 11); `InlineError` (Task 12); `addDays` from `@shared/days`, `MAX_QUERY_RANGE_DAYS` from `@shared/constants`; shadcn `Tabs`, `Input`, `Button`, `Badge`.
+- Produces: `parsePrice(text: string): number | null` (finite, ≥ 0, up to 6 decimals); `<InstallCard />`, `<MachinesCard />`, `<PricesCard />`; the Settings route.
 
 - [ ] **Step 1: Write the failing test `web/src/lib/prices.test.ts`**
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { parsePrice, unpricedModels } from "./prices";
+import { parsePrice } from "./prices";
 
 describe("parsePrice", () => {
   it.each([
@@ -7132,20 +7537,9 @@ describe("parsePrice", () => {
     expect(parsePrice(input)).toBe(expected);
   });
 });
-
-describe("unpricedModels", () => {
-  it("lists models seen without a price, sorted and deduplicated", () => {
-    const byModel = [
-      { key: "gpt-5.6-sol", costUsd: 1 },
-      { key: "codex-auto-review", costUsd: null },
-      { key: "new-model", costUsd: null },
-      { key: "codex-auto-review", costUsd: null },
-    ];
-    expect(unpricedModels(byModel, ["gpt-5.6-sol"])).toEqual(["codex-auto-review", "new-model"]);
-    expect(unpricedModels(byModel, ["gpt-5.6-sol", "new-model"])).toEqual(["codex-auto-review"]);
-  });
-});
 ```
+(The "unpriced models seen" chips come straight from `SummaryResult.unpricedModels`, so there is no
+client-side derivation left to test.)
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -7160,15 +7554,6 @@ export function parsePrice(text: string): number | null {
   if (!/^\d+(\.\d{1,6})?$/.test(trimmed)) return null;
   const value = Number(trimmed);
   return Number.isFinite(value) && value >= 0 ? value : null;
-}
-
-export function unpricedModels(byModel: { key: string; costUsd: number | null }[], priced: string[]): string[] {
-  const pricedSet = new Set(priced);
-  const seen = new Set<string>();
-  for (const m of byModel) {
-    if (m.costUsd === null && !pricedSet.has(m.key)) seen.add(m.key);
-  }
-  return [...seen].sort();
 }
 ```
 
@@ -7230,19 +7615,25 @@ import type { MachineRow } from "@convex/lib/types";
 import { useCurrentUserId } from "@/components/layout/current-user";
 import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
+import { InlineError } from "@/components/primitives/inline-error";
 import { SectionCard } from "@/components/primitives/section-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAsyncAction } from "@/hooks/use-async-action";
 import { useNow } from "@/hooks/use-now";
 import { formatRelative } from "@/lib/format";
 import { isNewerThanTested, TESTED_CODEX_VERSION } from "@/lib/install";
 
 function RenameCell({ machine }: { machine: MachineRow }) {
-  const rename = useMutation(api.machines.rename);
+  const renameMachine = useMutation(api.machines.rename);
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(machine.label);
+  const rename = useAsyncAction(async (next: string) => {
+    await renameMachine({ machineId: machine.machineId, label: next });
+    setEditing(false);
+  });
   if (!editing) {
     return (
       <span className="inline-flex items-center gap-2">
@@ -7255,21 +7646,32 @@ function RenameCell({ machine }: { machine: MachineRow }) {
   }
   return (
     <form
-      className="inline-flex items-center gap-2"
+      className="inline-flex flex-col items-start gap-1"
       onSubmit={(e) => {
         e.preventDefault();
         const next = label.trim();
         if (next.length === 0 || next.length > 64) return;
-        void rename({ machineId: machine.machineId, label: next }).then(() => setEditing(false));
+        void rename.run(next);
       }}
     >
-      <Input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={64} className="h-8 w-40" aria-label="Machine label" />
-      <Button type="submit" size="sm">
-        Save
-      </Button>
-      <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
-        Cancel
-      </Button>
+      <span className="inline-flex items-center gap-2">
+        <Input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={64} className="h-8 w-40" aria-label="Machine label" />
+        <Button type="submit" size="sm" disabled={rename.pending}>
+          Save
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            rename.reset();
+            setEditing(false);
+          }}
+        >
+          Cancel
+        </Button>
+      </span>
+      <InlineError message={rename.error} />
     </form>
   );
 }
@@ -7330,14 +7732,17 @@ import { useState } from "react";
 import { api } from "@convex/_generated/api";
 import type { PriceRow } from "@convex/lib/types";
 import { EmptyState } from "@/components/primitives/empty-state";
+import { InlineError } from "@/components/primitives/inline-error";
 import { SectionCard } from "@/components/primitives/section-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useAsyncAction } from "@/hooks/use-async-action";
+import { useStableQuery } from "@/hooks/use-stable-query";
 import { useToday } from "@/hooks/use-today";
-import { parsePrice, unpricedModels } from "@/lib/prices";
+import { parsePrice } from "@/lib/prices";
 
 type Draft = { model: string; input: string; cached: string; output: string };
 
@@ -7403,13 +7808,18 @@ function toDraft(p: PriceRow): Draft {
 export function PricesCard() {
   const prices = useQuery(api.prices.list, {});
   const upsert = useMutation(api.prices.upsert);
-  const remove = useMutation(api.prices.remove);
+  const removePrice = useMutation(api.prices.remove);
   const today = useToday();
-  const seen = useQuery(api.stats.breakdowns, today ? { from: addDays(today, -(MAX_QUERY_RANGE_DAYS - 1)), to: today } : "skip");
+  // The server already reports which models had tokens but no price row (contracts §9), so this
+  // is a summary over the widest legal window, not the far heavier `stats.breakdowns`.
+  const { data: seen } = useStableQuery(
+    api.stats.summary,
+    today ? { from: addDays(today, -(MAX_QUERY_RANGE_DAYS - 1)), to: today, previous: false } : "skip",
+  );
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [added, setAdded] = useState<Draft | null>(null);
 
-  const save = async (draft: Draft) => {
+  const save = useAsyncAction(async (draft: Draft) => {
     await upsert({
       model: draft.model.trim(),
       inputUsdPerMTok: parsePrice(draft.input)!,
@@ -7422,9 +7832,10 @@ export function PricesCard() {
       return next;
     });
     setAdded(null);
-  };
+  });
+  const remove = useAsyncAction(removePrice);
 
-  const unpriced = prices && seen ? unpricedModels(seen.byModel, prices.map((p) => p.model)) : [];
+  const unpriced = seen ? [...seen.unpricedModels].sort() : [];
 
   return (
     <SectionCard
@@ -7437,6 +7848,7 @@ export function PricesCard() {
       }
       bodyClassName="flex flex-col gap-3"
     >
+      <InlineError message={save.error ?? remove.error} />
       {unpriced.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           Unpriced models seen:
@@ -7467,7 +7879,7 @@ export function PricesCard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {added ? <PriceEditor draft={added} onChange={setAdded} onSave={() => void save(added)} modelEditable /> : null}
+              {added ? <PriceEditor draft={added} onChange={setAdded} onSave={() => void save.run(added)} modelEditable /> : null}
               {prices.map((p) => {
                 const draft = drafts[p.model] ?? toDraft(p);
                 return (
@@ -7476,8 +7888,8 @@ export function PricesCard() {
                     draft={draft}
                     modelEditable={false}
                     onChange={(next) => setDrafts((d) => ({ ...d, [p.model]: next }))}
-                    onSave={() => void save(draft)}
-                    onRemove={() => void remove({ model: p.model })}
+                    onSave={() => void save.run(draft)}
+                    onRemove={() => void remove.run({ model: p.model })}
                   />
                 );
               })}
@@ -7788,10 +8200,10 @@ npx convex run prices:seed
 cd .. && npm run dev -w web              # http://localhost:3000
 ```
 
-`web/.env.local` needs `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`,
-`NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in`, `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up` next to the
-Convex lines written by `npx convex dev`. In the Clerk dashboard, activate the **Convex**
-integration (or add a JWT template named `convex`).
+`web/.env.local` needs `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` and
+`NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in` next to the Convex lines written by `npx convex dev`
+(the sign-up URL comes from `<ClerkProvider signUpUrl="/sign-up">`, not from an env var). In the
+Clerk dashboard, activate the **Convex** integration (or add a JWT template named `convex`).
 
 Point a locally built collector at the dev deployment with
 `codex-kaboo login --server https://<deployment>.convex.site --token ck_…`.
@@ -7845,7 +8257,7 @@ MSG
 
 **Interfaces:**
 - Consumes: Plan 2's Convex functions (`prices:seed`, `/api/v1/health`), the Clerk keys and Frontend API URL supplied by the user, the Vercel CLI (authenticated as `yining044-2988`) and the Convex CLI (authenticated).
-- Produces: a production Convex deployment with `CLERK_FRONTEND_API_URL` and seeded prices; a Vercel project `codex-kaboo` with Root Directory `web`, the seven environment variables and a successful production deployment at `https://<project>.vercel.app`.
+- Produces: a production Convex deployment with `CLERK_FRONTEND_API_URL` and seeded prices; a Vercel project `codex-kaboo` with Root Directory `web`, the six environment variables and a successful production deployment at `https://<project>.vercel.app`.
 
 Steps marked **(user)** need the user's Clerk dashboard access or keys and cannot be automated.
 
@@ -7914,12 +8326,11 @@ printf '%s' "<deploy key from Step 3>" | vercel env add CONVEX_DEPLOY_KEY produc
 printf '%s' "pk_test_…" | vercel env add NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY production
 printf '%s' "sk_test_…" | vercel env add CLERK_SECRET_KEY production
 printf '%s' "/sign-in" | vercel env add NEXT_PUBLIC_CLERK_SIGN_IN_URL production
-printf '%s' "/sign-up" | vercel env add NEXT_PUBLIC_CLERK_SIGN_UP_URL production
 printf '%s' "https://<prod-name>.convex.site" | vercel env add CODEX_KABOO_SERVER production
 printf '%s' "https://codex-kaboo.vercel.app" | vercel env add CODEX_KABOO_WEB_ORIGIN production
 vercel env ls production
 ```
-Expected: the listing shows the seven names for `Production`. (The exact `*.vercel.app` hostname is printed by `vercel link`/the first deploy; if it differs from `codex-kaboo.vercel.app`, rerun the last `env add` with `vercel env rm CODEX_KABOO_WEB_ORIGIN production` first.)
+Expected: the listing shows the six names for `Production` (the six from contracts §11; the sign-up URL is set by `<ClerkProvider signUpUrl="/sign-up">` in code, not by an env var). (The exact `*.vercel.app` hostname is printed by `vercel link`/the first deploy; if it differs from `codex-kaboo.vercel.app`, rerun the last `env add` with `vercel env rm CODEX_KABOO_WEB_ORIGIN production` first.)
 
 - [ ] **Step 7: Commit the Vercel config and push**
 
@@ -7976,7 +8387,7 @@ let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
   console.log("sessions:", out.sessions.length, "events:", out.tokenEvents.length, "leaks:", leaks.length ? leaks : "none");
 });' && codex-kaboo install && launchctl list | grep codex-kaboo && codex-kaboo status
 ```
-Expected: the stamped version; `Logged in as <name>`; the dry run prints at least 11 sessions and at least 430 events with `leaks: none`; `install` registers `com.codex-kaboo.sync` and runs one sync; `launchctl list` shows the agent; `status` shows the last sync as OK with the inserted counts and a healthy schedule. (If Plan 1's `--dry-run --json` output nests the batches under another key, adapt the two field names in the one-liner to its documented shape.)
+Expected: the stamped version; `Logged in as <name>`; the dry run prints exactly the session and event counts printed by `codex-kaboo sync --dry-run --json` run just before this step (426 events across 11 sessions at the time of writing) with `leaks: none`; `install` registers `com.codex-kaboo.sync` and runs one sync; `launchctl list` shows the agent; `status` shows the last sync as OK with the inserted counts and a healthy schedule. (If Plan 1's `--dry-run --json` output nests the batches under another key, adapt the two field names in the one-liner to its documented shape.)
 
 - [ ] **Step 3: Check the dashboard against the CLI**
 
@@ -8018,5 +8429,5 @@ git push origin main
 ## Self-review notes (kept for the executor)
 
 - Every Convex function used here exists in contracts §9 with these argument shapes: `users.ensure {}`, `users.me {}`, `users.list {}`, `stats.summary { from, to, userId?, previous? }`, `stats.leaderboard { from, to, previous? }`, `stats.trends { from, to, bucket, userId? }`, `stats.breakdowns { from, to, userId? }`, `stats.activityHeatmap { userId, from, to }`, `stats.dayHourHeatmap { from, to, userId? }`, `stats.quota {}`, `stats.bounds { userId? }`, `sessions.listRecent { userId?, paginationOpts }`, `syncTokens.list {}`, `syncTokens.create { name }`, `syncTokens.revoke { tokenId }`, `machines.list { userId? }`, `machines.rename { machineId, label }`, `prices.list {}`, `prices.upsert { model, inputUsdPerMTok, cachedInputUsdPerMTok, outputUsdPerMTok }`, `prices.remove { model }`.
-- Type names used across tasks: `ResolvedRange`/`RangeParams`/`Preset` (Task 4), `Section`/`View`/`Tab` (Task 5), `ColorMap` (Task 6), `MetricKind`/`GoodDirection`/`MetricDef` (Task 7), `Stacked`/`SeriesDef`/`ChartRow`/`Segment`/`TrendMetric` (Task 8), `ActivityGrid`/`ActivityCell`/`HeatLevel` (Task 9), `InstallOs`/`InstallStep` (Task 10), `Column<T>`/`BarScale`/`PodiumEntry` (Task 13), `TrendVariant` (Task 16), `LeaderMetric` (Task 20), `ModelEfficiencyRow` (Task 25).
+- Type names used across tasks: `ResolvedRange`/`RangeParams`/`Preset` (Task 4), `Section`/`View`/`Tab` (Task 5), `ColorMap` (Task 6), `MetricKind`/`GoodDirection`/`MetricDef` (Task 7), `Stacked`/`SeriesDef`/`ChartRow`/`Segment`/`TrendMetric` (Task 8), `ActivityGrid`/`ActivityCell`/`HeatLevel` (Task 9), `InstallOs`/`InstallStep` (Task 10), `ModelTableRow` (Task 21), `Column<T>`/`BarScale`/`PodiumEntry` (Task 13), `TrendVariant` (Task 16), `LeaderMetric` (Task 20).
 - Recharts is only mounted in the browser (`TrendChart`); every jsdom test targets pure transforms, HTML/CSS/SVG components or the table view.

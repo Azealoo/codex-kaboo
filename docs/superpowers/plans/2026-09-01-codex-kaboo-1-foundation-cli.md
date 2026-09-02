@@ -34,7 +34,7 @@ package.json, package-lock.json, tsconfig.base.json, .prettierrc, .prettierignor
 shared/package.json, shared/tsconfig.json, shared/vitest.config.ts
 shared/src/{index,constants,days,sync,metrics}.ts + *.test.ts
 web/ (create-next-app scaffold + shadcn init + vitest.config.ts + vitest.setup.ts + convex/tsconfig.json + 3 bootstrap tests)
-cli/package.json, cli/tsconfig.json, cli/tsup.config.ts, cli/vitest.config.ts
+cli/package.json, cli/tsconfig.json, cli/tsup.config.ts, cli/vitest.config.mts
 cli/src/main.ts                 commander wiring, exit codes
 cli/src/build-info.ts           build-time constants (version, baked server / web origin)
 cli/src/types.ts                Config, FileState, SyncState, shared CLI types
@@ -57,7 +57,7 @@ README.md                       CLI section (install, commands, per-OS notes)
 **Files:**
 - Create: `package.json`, `tsconfig.base.json`, `.prettierrc`, `.prettierignore`, `eslint.config.mjs`, `.github/workflows/ci.yml`
 - Create: `shared/package.json`, `shared/tsconfig.json`, `shared/vitest.config.ts`, `shared/src/index.ts`
-- Create: `cli/package.json`, `cli/tsconfig.json`, `cli/tsup.config.ts`, `cli/vitest.config.ts`, `cli/src/main.ts`, `cli/src/build-info.ts`, `cli/test/build-info.test.ts`
+- Create: `cli/package.json`, `cli/tsconfig.json`, `cli/tsup.config.ts`, `cli/vitest.config.mts`, `cli/src/main.ts`, `cli/src/build-info.ts`, `cli/test/build-info.test.ts`
 - Modify: `.gitignore` (append `cli/test/fixtures/**/*.tmp`)
 
 **Interfaces:**
@@ -285,7 +285,7 @@ export default defineConfig({
 });
 ```
 
-`cli/vitest.config.ts`:
+`cli/vitest.config.mts`:
 
 ```ts
 import { defineConfig } from "vitest/config";
