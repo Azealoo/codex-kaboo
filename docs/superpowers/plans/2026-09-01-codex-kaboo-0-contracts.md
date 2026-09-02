@@ -416,6 +416,13 @@ Events keyed by `(sessionId, seq)` — insert / `unchanged` when all fields equa
 `conflicts.events` count. `machine_conflict` when `machineId` exists for another user (409, no data
 written). Machine `hostname: null` is stored as absent.
 
+A 503 may follow a batch that partially committed, since the sync handler's mutations are
+independent `ctx.runMutation` calls rather than one transaction; this is safe because every upsert
+above is keyed and idempotent and the CLI only advances its per-file replay state on a 200, so
+retrying the identical batch converges with no loss or duplication. `lastSyncAt` only advances via
+`finishSync`, which runs last and only after the whole batch has committed — `upsertMachine` never
+advances it when patching an existing row (only when inserting a new one).
+
 ## 8. Convex data model additions to the spec
 
 - `sessions` gains `effort?: string` (from `SessionSummary.effort`). `machineId` is stamped by the

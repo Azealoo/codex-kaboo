@@ -88,7 +88,7 @@ export function eventsEqual(a: TokenEvent, b: TokenEvent): boolean {
 
 type MachineInfoArg = Infer<typeof machineInfoValidator>;
 
-function machineFields(machine: MachineInfoArg, cliVersion: string, now: number) {
+function machineFields(machine: MachineInfoArg, cliVersion: string) {
   return {
     hostname: machine.hostname ?? undefined, // null (opt-out) clears the stored field
     platform: machine.platform,
@@ -98,7 +98,6 @@ function machineFields(machine: MachineInfoArg, cliVersion: string, now: number)
     codexVersion: machine.codexVersion,
     codexLatestVersion: machine.codexLatestVersion,
     tz: machine.tz,
-    lastSyncAt: now,
   };
 }
 
@@ -117,8 +116,11 @@ export const upsertMachine = internalMutation({
       .withIndex("by_machineId", (q) => q.eq("machineId", machine.machineId))
       .unique();
     if (existing && existing.userId !== userId) return { conflict: true, created: false };
-    const fields = machineFields(machine, cliVersion, now);
+    const fields = machineFields(machine, cliVersion);
     if (existing) {
+      // lastSyncAt is deliberately NOT included in `fields` and not patched here: only `finishSync`
+      // (which runs last, and only after the whole batch has committed) advances it, so a request
+      // that fails partway through leaves the machine's last-known-good sync time truthful.
       await ctx.db.patch(existing._id, fields);
       return { conflict: false, created: false };
     }
@@ -127,6 +129,8 @@ export const upsertMachine = internalMutation({
       userId,
       label: machine.label,
       firstSeenAt: now,
+      lastSyncAt: now, // seed value only (the schema requires one on insert); finishSync owns every
+      // update to it from here on — see the comment on the patch branch above.
       ...fields,
     });
     return { conflict: false, created: true };
@@ -306,6 +310,14 @@ function internalError(error: unknown): Response {
   return errorResponse(503, "internal", "unexpected error, retry later", {}, { "retry-after": "5" });
 }
 
+/**
+ * A 503 may follow a batch that partially committed, since the sync handler's mutations are
+ * independent `ctx.runMutation` calls rather than one transaction; this is safe because every
+ * upsert above is keyed and idempotent and the CLI only advances its per-file replay state on a
+ * 200, so retrying the identical batch converges with no loss or duplication. `lastSyncAt` only
+ * advances via `finishSync`, which runs last and only after the whole batch has committed —
+ * `upsertMachine` never advances it when patching an existing row (only when inserting a new one).
+ */
 export const syncHandler = httpAction(async (ctx, request) => {
   try {
     const authed = await authenticate(ctx, request);

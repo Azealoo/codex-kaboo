@@ -54,7 +54,7 @@ describe("eventsEqual", () => {
 });
 
 describe("upsertMachine", () => {
-  it("registers, updates versions but never the label, clears hostname on null, rejects other users", async () => {
+  it("registers, updates versions but never the label or lastSyncAt, clears hostname on null, rejects other users", async () => {
     const t = setup();
     const alice = await registerUser(t, "alice");
     const bob = await registerUser(t, "bob");
@@ -63,6 +63,8 @@ describe("upsertMachine", () => {
     });
     expect(first).toEqual({ conflict: false, created: true });
 
+    // lastSyncAt is seeded on insert (T0) and, per the fix below, never touched by a later patch —
+    // only `finishSync` advances it, so it stays T0 through every upsertMachine call in this test.
     const second = await t.mutation(internal.ingest.upsertMachine, {
       userId: alice,
       machine: makeMachine({ label: "renamed-by-cli", hostname: "mac.local", codexVersion: "0.151.0" }),
@@ -74,7 +76,7 @@ describe("upsertMachine", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       machineId: "machine-1", userId: alice, label: "brisk-otter", hostname: "mac.local",
-      codexVersion: "0.151.0", cliVersion: "0.2.0", firstSeenAt: T0, lastSyncAt: T0 + 1,
+      codexVersion: "0.151.0", cliVersion: "0.2.0", firstSeenAt: T0, lastSyncAt: T0,
     });
 
     await t.mutation(internal.ingest.upsertMachine, {
@@ -82,13 +84,14 @@ describe("upsertMachine", () => {
     });
     const cleared = await t.run(async (ctx) => ctx.db.query("machines").first());
     expect(cleared?.hostname).toBeUndefined();
+    expect(cleared?.lastSyncAt).toBe(T0);
 
     const conflict = await t.mutation(internal.ingest.upsertMachine, {
       userId: bob, machine: makeMachine({ label: "stolen" }), cliVersion: "0.2.0", now: T0 + 3,
     });
     expect(conflict).toEqual({ conflict: true, created: false });
     const after = await t.run(async (ctx) => ctx.db.query("machines").first());
-    expect(after).toMatchObject({ userId: alice, lastSyncAt: T0 + 2 });
+    expect(after).toMatchObject({ userId: alice, lastSyncAt: T0 });
   });
 });
 

@@ -148,6 +148,40 @@ describe("POST /api/v1/sync validation", () => {
     expect(res.headers.get("retry-after")).toBe("5");
     expect(res.json).toEqual({ ok: false, error: "internal", message: expect.any(String) });
   });
+
+  it("leaves a pre-existing machine's lastSyncAt untouched when a later chunk throws, but advances it on the next successful sync", async () => {
+    const t = setup();
+    const { userId, raw } = await userWithToken(t, "alice");
+
+    const first = await postSync(t, raw, makeBatch());
+    expect(first.status).toBe(200);
+    const firstSyncAt = first.json.serverTime;
+    const afterFirst = await t.run(async (ctx) => ctx.db.query("machines").first());
+    expect(afterFirst?.lastSyncAt).toBe(firstSyncAt);
+
+    // Same trick as the 503 test above: upsertMachine (patch) commits before upsertSessions throws,
+    // so finishSync never runs and lastSyncAt must stay at its previous, last-known-good value.
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 2; i++) {
+        await ctx.db.insert("sessions", {
+          ...makeSession({ sessionId: "dup" }),
+          userId,
+          machineId: "machine-1",
+          syncedAt: T0,
+        });
+      }
+    });
+    const failed = await postSync(t, raw, makeBatch({ sessions: [makeSession({ sessionId: "dup" })] }));
+    expect(failed.status).toBe(503);
+    const afterFailure = await t.run(async (ctx) => ctx.db.query("machines").first());
+    expect(afterFailure?.lastSyncAt).toBe(firstSyncAt);
+
+    const second = await postSync(t, raw, makeBatch());
+    expect(second.status).toBe(200);
+    expect(second.json.serverTime).toBeGreaterThanOrEqual(firstSyncAt);
+    const afterSecond = await t.run(async (ctx) => ctx.db.query("machines").first());
+    expect(afterSecond?.lastSyncAt).toBe(second.json.serverTime);
+  });
 });
 
 describe("POST /api/v1/sync happy path", () => {
