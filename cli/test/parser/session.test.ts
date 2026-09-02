@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SessionSummary, TokenEvent } from "@codex-kaboo/shared/sync";
-import { createReducerState, finalize, reduceLine, type ReducerContext } from "../../src/parser/session";
+import { bump, createReducerState, finalize, reduceLine, type ReducerContext } from "../../src/parser/session";
 
 const TID = "0199a1b2-0000-7000-8000-000000000001";
 const T = (s: number): string => new Date(Date.UTC(2026, 7, 30, 17, 0, s)).toISOString();
@@ -158,5 +158,46 @@ describe("reducer: sessions, turns and token events", () => {
     expect(empty.summary.wallMs).toBe(0);
     expect(empty.summary.project).toBe("(unknown)");
     expect(SessionSummary.safeParse(empty.summary).success).toBe(true);
+  });
+});
+
+// A raw, unbounded rollout string used to be copied verbatim into a different artifact: `bump` got
+// the unclipped `line.type` / `payload.type`, and sync-plan JSON-stringifies the map into a DEBUG
+// line that the logger writes to sync.log on every scheduled run — the file a user pastes into a
+// bug report. Clipping and bounding at the choke point covers unknownTypes, itemTypes and every
+// other caller of `bump` in one place.
+describe("diagnostic maps are clipped and bounded", () => {
+  it("clips a key over 256 characters, whatever the file put in it", () => {
+    const long = `future_${"a".repeat(300)}`;
+    const parsed = run([line("session_meta", meta(), T(0), 0), line(long, {}, T(1), 1)]);
+    const keys = Object.keys(parsed.diagnostics.unknownTypes);
+    expect(keys).toEqual([long.slice(0, 256)]);
+    expect(keys[0]).toHaveLength(256);
+
+    const nested = run([
+      line("session_meta", meta(), T(0), 0),
+      line("event_msg", { type: `x${"b".repeat(400)}` }, T(1), 1),
+    ]);
+    expect(Object.keys(nested.diagnostics.unknownTypes)[0]).toHaveLength(256);
+  });
+
+  it("folds keys past the bound into (other) instead of growing without limit", () => {
+    const lines = [line("session_meta", meta(), T(0), 0)];
+    for (let i = 0; i < 200; i += 1) lines.push(line(`future_${i}`, {}, T(1), i + 1));
+    const map = run(lines).diagnostics.unknownTypes;
+    expect(Object.keys(map)).toHaveLength(64);
+    expect(map["future_0"]).toBe(1);
+    expect(map["future_62"]).toBe(1);
+    expect(map["future_63"]).toBeUndefined();
+    expect(map["(other)"]).toBe(200 - 63);
+  });
+
+  it("still counts repeats of a key it already holds once the bound is reached", () => {
+    const map = new Map<string, number>();
+    for (let i = 0; i < 100; i += 1) bump(map, `k${i}`);
+    expect(map.size).toBe(64);
+    bump(map, "k0");
+    expect(map.get("k0")).toBe(2);
+    expect(map.size).toBe(64);
   });
 });

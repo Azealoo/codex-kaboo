@@ -1,5 +1,5 @@
 import {
-  MAX_KEYED_ENTRIES_PER_SESSION, OTHER_KEY, PARSER_VERSION,
+  MAX_KEYED_ENTRIES_PER_SESSION, MAX_STRING_LENGTH, OTHER_KEY, PARSER_VERSION,
 } from "@codex-kaboo/shared/constants";
 import { addTokens, emptyTokens, emptyToolCounts, emptyTtft, mergeKeyCounts, ttftBucketIndex } from "@codex-kaboo/shared/metrics";
 import type {
@@ -144,8 +144,22 @@ export function createReducerState(ctx: ReducerContext): ReducerState {
   };
 }
 
+/**
+ * The single choke point for every counting map the reducer keeps — `unknownTypes`, `itemTypes`,
+ * `skills`, `mcpTools`, `mcpFallback`. Keys are clipped and the map is bounded HERE rather than at
+ * each call site: an unclipped key reached `sync.log` verbatim via the diagnostics DEBUG line (the
+ * file a user pastes into a bug report), and an unbounded map let a pathological file grow it
+ * without limit. Past the bound, a new key folds into OTHER_KEY, which is reserved rather than
+ * counted as an ordinary entry so the map never exceeds MAX_KEYED_ENTRIES_PER_SESSION — the same
+ * keep-(cap - 1)-and-fold shape the rollup's `capEntries` uses, and within the wire's own cap on
+ * `mcpTools` / `skills`, so `mergeKeyCounts` never has to fold again and cannot emit two
+ * `(other)` rows.
+ */
 export function bump(map: Map<string, number>, key: string): void {
-  map.set(key, (map.get(key) ?? 0) + 1);
+  const clipped = key.length > MAX_STRING_LENGTH ? key.slice(0, MAX_STRING_LENGTH) : key;
+  const target =
+    map.has(clipped) || map.size < MAX_KEYED_ENTRIES_PER_SESSION - 1 ? clipped : OTHER_KEY;
+  map.set(target, (map.get(target) ?? 0) + 1);
 }
 
 /** Feed one raw line (already `\n`-terminated in the file). Parse failures are counted and skipped. */
