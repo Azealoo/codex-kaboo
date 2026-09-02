@@ -108,6 +108,10 @@ export const schtasksAdapter: SchedulerAdapter = {
     let command: string;
     if (await hasWscript(spawner)) {
       const file = vbsPath(target.kabooHome);
+      // The runner path is the one value here that never passes through vbsQuote/powershellQuote:
+      // it is derived from kabooHome (CODEX_KABOO_HOME, else the home directory) and goes straight
+      // into the /TR command line. Check it before the mkdir, so a refusal writes nothing at all.
+      assertNoNewline(file, "a scheduled-task command line");
       await fs.mkdir(path.dirname(file), { recursive: true });
       await fs.writeFile(file, renderVbs(target), "utf8");
       command = `wscript.exe //B //Nologo "${file}"`;
@@ -117,6 +121,7 @@ export const schtasksAdapter: SchedulerAdapter = {
         command = inline;
       } else {
         const file = ps1Path(target.kabooHome);
+        assertNoNewline(file, "a scheduled-task command line");
         await fs.mkdir(path.dirname(file), { recursive: true });
         await fs.writeFile(file, renderPs1(target), "utf8");
         command = `powershell.exe -NoProfile -WindowStyle Hidden -File "${file}"`;

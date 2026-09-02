@@ -358,6 +358,35 @@ describe("schtasks", () => {
     expect(existsSync(path.join(kabooHome, "sync-hidden.vbs"))).toBe(false);
     expect(calls.some((c) => c.command === "schtasks")).toBe(false);
   });
+
+  // Found by the newline re-review: the runner file's own path is derived from `kabooHome`, which is
+  // environment-derived (CODEX_KABOO_HOME, else os.homedir()) and reaches the /TR command line
+  // without passing through vbsQuote/powershellQuote — the one value in schedule/ that bypassed
+  // every quoting primitive. Guarded before the mkdir so a refusal leaves no directory behind.
+  it("refuses a newline in kabooHome itself, for both the VBS and the .ps1 runner", async () => {
+    const vbsHomeDir = freshTempDir("ck-schtasks-home-vbs-");
+    const vbsKabooHome = path.join(vbsHomeDir, ".codex\n-kaboo");
+    const vbsTarget = target({ homeDir: vbsHomeDir, kabooHome: vbsKabooHome });
+    const vbs = mockSpawner((cmd) => (cmd === "where" ? { code: 0, stdout: "C:\\Windows\\System32\\wscript.exe", stderr: "" } : undefined));
+    await expect(schtasksAdapter.install(vbsTarget, vbs.spawner)).rejects.toThrow(/newline/i);
+    expect(existsSync(vbsKabooHome)).toBe(false);
+    expect(vbs.calls.some((c) => c.command === "schtasks")).toBe(false);
+
+    const psHomeDir = freshTempDir("ck-schtasks-home-ps1-");
+    const psKabooHome = path.join(psHomeDir, ".codex\r-kaboo");
+    const psTarget = target({
+      nodePath: "C:\\Program Files\\nodejs\\node.exe",
+      scriptPath: "C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\codex-kaboo-cli\\dist\\codex-kaboo.js",
+      kabooHome: psKabooHome,
+      homeDir: psHomeDir,
+      codexHome: "D:\\codex",
+    });
+    expect(renderPowershellCommand(psTarget).length).toBeGreaterThan(250); // forces the .ps1 fallback
+    const ps = mockSpawner((cmd) => (cmd === "where" ? { code: 1, stdout: "", stderr: "" } : undefined));
+    await expect(schtasksAdapter.install(psTarget, ps.spawner)).rejects.toThrow(/newline/i);
+    expect(existsSync(psKabooHome)).toBe(false);
+    expect(ps.calls.some((c) => c.command === "schtasks")).toBe(false);
+  });
 });
 
 describe("index", () => {
