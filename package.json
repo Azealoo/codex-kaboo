@@ -2,8 +2,14 @@
   "name": "codex-kaboo",
   "version": "0.1.0",
   "private": true,
-  "engines": { "node": ">=20" },
-  "workspaces": ["shared", "cli"],
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "shared",
+    "cli",
+    "web"
+  ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
