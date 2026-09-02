@@ -1,0 +1,418 @@
+import {
+  MAX_KEYED_ENTRIES_PER_SESSION, OTHER_KEY, PARSER_VERSION,
+} from "@codex-kaboo/shared/constants";
+import { addTokens, emptyTokens, emptyToolCounts, emptyTtft, mergeKeyCounts, ttftBucketIndex } from "@codex-kaboo/shared/metrics";
+import type { KeyCount, RateLimitSnapshot, SessionSummary, TokenEvent, ToolCounts, Ttft } from "@codex-kaboo/shared/sync";
+import { parseJsonLine } from "../core/jsonl-reader";
+import { summaryHashOf } from "../util/hash";
+import { asRecord, clipString, isSubagentSource, projectOf, sourceOf, toCount } from "./classify";
+import { dayHour, isValidZone, parseLineTimestamp, resolveZone, secondsToMs } from "./time";
+
+export interface ReducerContext {
+  sessionId: string;
+  threadId: string;
+  rolloutId: string | null;
+  fileTimestampMs: number | null;
+  machineZone?: string;
+}
+
+interface TurnInfo {
+  model?: string;
+  effort?: string;
+  mode?: string;
+}
+
+interface PendingEvent {
+  seq: number;
+  ts: number;
+  turnId?: string;
+  model?: string; // explicit model on the line (token_usage_record only)
+  input: number;
+  cachedInput: number;
+  cacheWrite: number;
+  output: number;
+  reasoning: number;
+  contextWindow?: number;
+}
+
+export interface ReducerState {
+  ctx: ReducerContext;
+  metaSeen: boolean;
+  threadId: string;
+  startedAt: number | null;
+  project: string;
+  gitBranch?: string;
+  originator: string;
+  source: string;
+  isSubagent: boolean;
+  parentThreadId?: string;
+  cliVersion?: string;
+  fallbackModel?: string;
+  timezone?: string;
+  turns: Map<string, TurnInfo>;
+  currentTurnId?: string;
+  openTurn: boolean;
+  lastModel?: string;
+  lastEffort?: string;
+  contextWindow?: number;
+  counts: {
+    turns: number;
+    completedTurns: number;
+    userMessages: number;
+    agentMessages: number;
+    reasoningItems: number;
+    legacyUserMessages: number;
+    legacyAgentMessages: number;
+    compactedLines: number;
+    contextCompactionItems: number;
+    linesAdded: number;
+    linesRemoved: number;
+    filesChanged: number;
+    activeMs: number;
+    lineCount: number;
+    parseErrors: number;
+  };
+  toolCounts: ToolCounts;
+  mcpTools: Map<string, number>; // from McpToolCall items
+  mcpFallback: Map<string, number>; // from response_item/function_call names
+  skills: Map<string, number>;
+  ttft: Ttft;
+  tokenCountEvents: PendingEvent[];
+  usageRecordEvents: PendingEvent[];
+  hasUsageRecords: boolean;
+  firstTs: number | null;
+  lastTs: number | null;
+  rateLimit: RateLimitSnapshot | null;
+  unknownTypes: Map<string, number>;
+  itemTypes: Map<string, number>;
+}
+
+export interface FinalizeOptions {
+  now: number;
+  generation: number;
+}
+
+export interface ParsedSession {
+  summary: SessionSummary;
+  events: TokenEvent[];
+  rateLimit: RateLimitSnapshot | null;
+  diagnostics: {
+    unknownTypes: Record<string, number>;
+    itemTypes: Record<string, number>;
+    mcpFallbackUsed: boolean;
+    zone: string | undefined;
+  };
+}
+
+export function createReducerState(ctx: ReducerContext): ReducerState {
+  return {
+    ctx,
+    metaSeen: false,
+    threadId: ctx.threadId,
+    startedAt: null,
+    project: "(unknown)",
+    originator: "unknown",
+    source: "unknown",
+    isSubagent: false,
+    turns: new Map(),
+    openTurn: false,
+    counts: {
+      turns: 0, completedTurns: 0, userMessages: 0, agentMessages: 0, reasoningItems: 0,
+      legacyUserMessages: 0, legacyAgentMessages: 0, compactedLines: 0, contextCompactionItems: 0,
+      linesAdded: 0, linesRemoved: 0, filesChanged: 0, activeMs: 0, lineCount: 0, parseErrors: 0,
+    },
+    toolCounts: emptyToolCounts(),
+    mcpTools: new Map(),
+    mcpFallback: new Map(),
+    skills: new Map(),
+    ttft: emptyTtft(),
+    tokenCountEvents: [],
+    usageRecordEvents: [],
+    hasUsageRecords: false,
+    firstTs: null,
+    lastTs: null,
+    rateLimit: null,
+    unknownTypes: new Map(),
+    itemTypes: new Map(),
+  };
+}
+
+export function bump(map: Map<string, number>, key: string): void {
+  map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+/** Feed one raw line (already `\n`-terminated in the file). Parse failures are counted and skipped. */
+export function reduceLine(state: ReducerState, seq: number, text: string): void {
+  state.counts.lineCount += 1;
+  const parsed = asRecord(parseJsonLine(text));
+  if (parsed === null) {
+    state.counts.parseErrors += 1;
+    return;
+  }
+  reduce(state, seq, parsed);
+}
+
+export function reduce(state: ReducerState, seq: number, line: Record<string, unknown>): void {
+  const ts = parseLineTimestamp(line.timestamp);
+  if (ts !== null) {
+    if (state.firstTs === null || ts < state.firstTs) state.firstTs = ts;
+    if (state.lastTs === null || ts > state.lastTs) state.lastTs = ts;
+  }
+  const payload = asRecord(line.payload) ?? {};
+  switch (line.type) {
+    case "session_meta":
+      handleSessionMeta(state, payload, ts);
+      break;
+    case "turn_context":
+      handleTurnContext(state, payload);
+      break;
+    case "event_msg":
+      handleEventMsg(state, seq, payload, ts);
+      break;
+    case "token_usage_record":
+      handleUsageRecord(state, seq, payload, ts);
+      break;
+    default:
+      bump(state.unknownTypes, typeof line.type === "string" ? line.type : "(non-string type)");
+  }
+}
+
+function handleSessionMeta(state: ReducerState, payload: Record<string, unknown>, lineTs: number | null): void {
+  state.metaSeen = true;
+  const id = clipString(payload.id);
+  if (id) state.threadId = id;
+  state.startedAt = parseLineTimestamp(payload.timestamp) ?? lineTs ?? state.startedAt;
+  state.project = projectOf(payload.cwd);
+  const branch = clipString(asRecord(payload.git)?.branch);
+  if (branch) state.gitBranch = branch;
+  state.originator = clipString(payload.originator) ?? "unknown";
+  state.source = sourceOf(payload.source);
+  const parent = clipString(payload.parent_thread_id);
+  if (parent) state.parentThreadId = parent;
+  state.isSubagent = isSubagentSource(state.source) || parent !== undefined;
+  const cliVersion = clipString(payload.cli_version);
+  if (cliVersion) state.cliVersion = cliVersion;
+  const model = clipString(asRecord(asRecord(payload.base_instructions)?.provenance)?.model);
+  if (model) state.fallbackModel = model;
+}
+
+function handleTurnContext(state: ReducerState, payload: Record<string, unknown>): void {
+  const turnId = clipString(payload.turn_id);
+  const model = clipString(payload.model);
+  const effort = clipString(payload.effort);
+  const mode = clipString(asRecord(payload.collaboration_mode)?.mode);
+  if (turnId) {
+    const info: TurnInfo = {};
+    if (model) info.model = model;
+    if (effort) info.effort = effort;
+    if (mode) info.mode = mode;
+    state.turns.set(turnId, info);
+  }
+  if (model) state.lastModel = model;
+  if (effort) state.lastEffort = effort;
+  if (state.timezone === undefined) {
+    const zone = clipString(payload.timezone);
+    if (zone && isValidZone(zone)) state.timezone = zone;
+  }
+}
+
+function pendingEventFrom(
+  state: ReducerState,
+  seq: number,
+  ts: number | null,
+  usage: Record<string, unknown>,
+  info: Record<string, unknown> | null,
+): PendingEvent | null {
+  if (ts === null) return null;
+  const input = toCount(usage.input_tokens);
+  const cachedInput = toCount(usage.cached_input_tokens);
+  const cacheWrite = toCount(usage.cache_write_input_tokens);
+  const output = toCount(usage.output_tokens);
+  const reasoning = toCount(usage.reasoning_output_tokens);
+  if (input + cachedInput + cacheWrite + output + reasoning === 0) return null;
+  const contextWindow = toCount(info?.model_context_window) || state.contextWindow;
+  const event: PendingEvent = { seq, ts, input, cachedInput, cacheWrite, output, reasoning };
+  if (state.currentTurnId) event.turnId = state.currentTurnId;
+  if (contextWindow) event.contextWindow = contextWindow;
+  return event;
+}
+
+function considerRateLimit(state: ReducerState, rateLimits: Record<string, unknown>, ts: number): void {
+  const primary = asRecord(rateLimits.primary);
+  if (primary === null) return;
+  const used = primary.used_percent;
+  if (typeof used !== "number" || !Number.isFinite(used)) return;
+  const snapshot: RateLimitSnapshot = {
+    observedAt: ts,
+    usedPercent: Math.max(0, used),
+    windowMinutes: toCount(primary.window_minutes),
+  };
+  const resetsAt = secondsToMs(primary.resets_at);
+  if (resetsAt !== null) snapshot.resetsAt = resetsAt;
+  const planType = clipString(rateLimits.plan_type);
+  if (planType) snapshot.planType = planType;
+  const limitId = clipString(rateLimits.limit_id);
+  if (limitId) snapshot.limitId = limitId;
+  if (state.rateLimit === null || snapshot.observedAt >= state.rateLimit.observedAt) state.rateLimit = snapshot;
+}
+
+function handleEventMsg(state: ReducerState, seq: number, payload: Record<string, unknown>, ts: number | null): void {
+  const c = state.counts;
+  switch (payload.type) {
+    case "task_started": {
+      c.turns += 1;
+      const turnId = clipString(payload.turn_id);
+      if (turnId) state.currentTurnId = turnId;
+      state.openTurn = true;
+      const contextWindow = toCount(payload.model_context_window);
+      if (contextWindow > 0) state.contextWindow = contextWindow;
+      break;
+    }
+    case "task_complete": {
+      c.completedTurns += 1;
+      state.openTurn = false;
+      const duration = payload.duration_ms;
+      if (typeof duration === "number" && Number.isFinite(duration) && duration >= 0) {
+        c.activeMs += Math.round(duration);
+      } else {
+        const started = secondsToMs(payload.started_at);
+        const completed = secondsToMs(payload.completed_at);
+        if (started !== null && completed !== null && completed >= started) c.activeMs += completed - started;
+      }
+      const ttft = payload.time_to_first_token_ms;
+      if (typeof ttft === "number" && Number.isFinite(ttft) && ttft >= 0) {
+        state.ttft.count += 1;
+        state.ttft.sumMs += Math.round(ttft);
+        const idx = ttftBucketIndex(ttft);
+        state.ttft.hist[idx] = (state.ttft.hist[idx] ?? 0) + 1;
+      }
+      break;
+    }
+    case "token_count": {
+      const info = asRecord(payload.info);
+      const usage = asRecord(info?.last_token_usage);
+      if (usage !== null) {
+        const event = pendingEventFrom(state, seq, ts, usage, info);
+        if (event) state.tokenCountEvents.push(event);
+      }
+      const rateLimits = asRecord(payload.rate_limits);
+      if (rateLimits !== null && ts !== null) considerRateLimit(state, rateLimits, ts);
+      break;
+    }
+    default:
+      bump(state.unknownTypes, `event_msg/${typeof payload.type === "string" ? payload.type : "(none)"}`);
+  }
+}
+
+function handleUsageRecord(state: ReducerState, seq: number, payload: Record<string, unknown>, ts: number | null): void {
+  const info = asRecord(payload.info);
+  const usage =
+    asRecord(payload.usage) ?? asRecord(info?.last_token_usage) ?? (typeof payload.input_tokens === "number" ? payload : null);
+  if (usage === null) {
+    bump(state.unknownTypes, "token_usage_record/unrecognised");
+    return;
+  }
+  state.hasUsageRecords = true;
+  const event = pendingEventFrom(state, seq, ts, usage, info);
+  if (event === null) return;
+  const turnId = clipString(payload.turn_id);
+  if (turnId) event.turnId = turnId;
+  const model = clipString(payload.model);
+  if (model) event.model = model;
+  state.usageRecordEvents.push(event);
+}
+
+function mapToKeyCounts(map: Map<string, number>): KeyCount[] {
+  return [...map.entries()].map(([key, count]) => ({ key, count }));
+}
+
+export function finalize(state: ReducerState, opts: FinalizeOptions): ParsedSession {
+  const c = state.counts;
+  const zone = resolveZone(state.timezone, state.ctx.machineZone);
+  const startedAt = state.startedAt ?? state.firstTs ?? state.ctx.fileTimestampMs ?? opts.now;
+  const endedAt = Math.max(startedAt, state.lastTs ?? startedAt);
+  const pending = state.hasUsageRecords ? state.usageRecordEvents : state.tokenCountEvents;
+  const events: TokenEvent[] = [...pending]
+    .sort((a, b) => a.seq - b.seq)
+    .map((ev) => {
+      const turn = ev.turnId ? state.turns.get(ev.turnId) : undefined;
+      const { day, hour } = dayHour(ev.ts, zone);
+      const event: TokenEvent = {
+        sessionId: state.ctx.sessionId,
+        seq: ev.seq,
+        ts: ev.ts,
+        day,
+        hour,
+        model: ev.model ?? turn?.model ?? state.lastModel ?? state.fallbackModel ?? "(unknown)",
+        project: state.project,
+        isSubagent: state.isSubagent,
+        input: ev.input,
+        cachedInput: ev.cachedInput,
+        cacheWrite: ev.cacheWrite,
+        output: ev.output,
+        reasoning: ev.reasoning,
+        total: ev.input + ev.output,
+      };
+      const effort = turn?.effort ?? state.lastEffort;
+      if (effort) event.effort = effort;
+      if (ev.turnId) event.turnId = ev.turnId;
+      if (ev.contextWindow) event.contextWindow = ev.contextWindow;
+      return event;
+    });
+  const tokens = events.reduce((acc, e) => addTokens(acc, e), emptyTokens());
+  const mcpFallbackUsed = state.mcpTools.size === 0 && state.mcpFallback.size > 0;
+  const mcpSource = mcpFallbackUsed ? state.mcpFallback : state.mcpTools;
+  const toolCounts: ToolCounts = { ...state.toolCounts };
+  if (mcpFallbackUsed) toolCounts.mcpTool = [...state.mcpFallback.values()].reduce((a, b) => a + b, 0);
+  const base: Omit<SessionSummary, "summaryHash"> = {
+    sessionId: state.ctx.sessionId,
+    threadId: state.threadId,
+    startedAt,
+    endedAt,
+    wallMs: endedAt - startedAt,
+    day: dayHour(startedAt, zone).day,
+    project: state.project,
+    originator: state.originator,
+    source: state.source,
+    isSubagent: state.isSubagent,
+    model: state.lastModel ?? state.fallbackModel ?? "(unknown)",
+    turns: c.turns,
+    completedTurns: c.completedTurns,
+    userMessages: c.userMessages > 0 ? c.userMessages : c.legacyUserMessages,
+    agentMessages: c.agentMessages > 0 ? c.agentMessages : c.legacyAgentMessages,
+    reasoningItems: c.reasoningItems,
+    toolCounts,
+    mcpTools: mergeKeyCounts([mapToKeyCounts(mcpSource)], MAX_KEYED_ENTRIES_PER_SESSION, OTHER_KEY),
+    skills: mergeKeyCounts([mapToKeyCounts(state.skills)], MAX_KEYED_ENTRIES_PER_SESSION, OTHER_KEY),
+    linesAdded: c.linesAdded,
+    linesRemoved: c.linesRemoved,
+    filesChanged: c.filesChanged,
+    compactions: Math.max(c.compactedLines, c.contextCompactionItems),
+    activeMs: c.activeMs,
+    ttft: { count: state.ttft.count, sumMs: state.ttft.sumMs, hist: [...state.ttft.hist] },
+    tokens,
+    responses: events.length,
+    inProgress: state.openTurn, // structural only: a started turn without completion
+    lineCount: c.lineCount,
+    generation: opts.generation,
+    parseErrors: c.parseErrors,
+    parserVersion: PARSER_VERSION,
+  };
+  if (state.parentThreadId) base.parentThreadId = state.parentThreadId;
+  if (zone) base.timezone = zone;
+  if (state.gitBranch) base.gitBranch = state.gitBranch;
+  if (state.lastEffort) base.effort = state.lastEffort;
+  if (state.cliVersion) base.cliVersion = state.cliVersion;
+  const summary: SessionSummary = { ...base, summaryHash: summaryHashOf(base) };
+  return {
+    summary,
+    events,
+    rateLimit: state.rateLimit,
+    diagnostics: {
+      unknownTypes: Object.fromEntries(state.unknownTypes),
+      itemTypes: Object.fromEntries(state.itemTypes),
+      mcpFallbackUsed,
+      zone,
+    },
+  };
+}
