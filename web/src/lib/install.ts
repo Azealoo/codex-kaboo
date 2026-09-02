@@ -1,3 +1,4 @@
+import { MIN_NODE_MAJOR } from "@shared/constants";
 export type InstallOs = "macos" | "linux" | "windows";
 export const INSTALL_OS: { id: InstallOs; label: string }[] = [
   { id: "macos", label: "macOS" },
@@ -26,12 +27,14 @@ export function installCommands(origin: string, token?: string) {
 
 export type InstallStep = { title: string; command: string; note?: string };
 
+// Interpolated rather than written out, because this card is the copy a user actually follows:
+// when it lags `engines.node` they hit EBADENGINE on a floor the dashboard told them was fine.
+const NODE_FLOOR = `Needs Node ${MIN_NODE_MAJOR}+`;
+
 const INSTALL_NOTES: Record<InstallOs, string> = {
-  macos: "Needs Node 18+ (22+ recommended).",
-  linux:
-    "Needs Node 18+. If you get EACCES with a system Node, use nvm/fnm or `npm config set prefix ~/.npm-global` and add it to PATH.",
-  windows:
-    "Needs Node 18+. Make sure %AppData%\\npm is on PATH and, in PowerShell, that the execution policy allows npm scripts (`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`).",
+  macos: `${NODE_FLOOR} (22+ recommended).`,
+  linux: `${NODE_FLOOR}. If you get EACCES with a system Node, use nvm/fnm or \`npm config set prefix ~/.npm-global\` and add it to PATH.`,
+  windows: `${NODE_FLOOR}. Make sure %AppData%\\npm is on PATH and, in PowerShell, that the execution policy allows npm scripts (\`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned\`).`,
 };
 
 const SCHEDULE_NOTES: Record<InstallOs, string> = {

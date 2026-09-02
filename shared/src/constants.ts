@@ -90,6 +90,14 @@ export const CLI_MAX_FILE_BYTES = 256 * 1024 * 1024;
 export const CLI_MAX_FILES = 20000;
 export const CLI_IN_PROGRESS_WINDOW_MS = 10 * 60 * 1000;
 
+/**
+ * The Node floor the CLI is published under. Four surfaces state it — `engines.node` in
+ * cli/package.json, `doctor`'s node check, the README and the dashboard's install card — and two
+ * of them have already drifted from the others once. Everything that can import it now does, and
+ * `cli/test/engines.test.ts` pins package.json to this value, so the next bump is one edit.
+ */
+export const MIN_NODE_MAJOR = 20;
+
 export const TOKEN_PREFIX = "ck_";
 export const SYNC_PATH = "/api/v1/sync";
 export const WHOAMI_PATH = "/api/v1/whoami";

@@ -1,3 +1,4 @@
+import { MIN_NODE_MAJOR } from "@codex-kaboo/shared";
 import { readConfig } from "../core/config";
 import { discoverRolloutFiles } from "../core/discover";
 import { resolveCodexHomes } from "../core/paths";
@@ -8,12 +9,9 @@ import type { SyncClient } from "../upload/client";
 import { meetsVersion } from "../util/version";
 import { buildScheduleTarget, type ScheduleDeps } from "./schedule-deps";
 
-/**
- * Must stay equal to `engines.node` in cli/package.json and to the floor the README states. When
- * they drift, `doctor` blesses an install npm would have refused — the one command whose whole job
- * is to catch that.
- */
-const MIN_NODE_MAJOR = 20;
+// MIN_NODE_MAJOR is shared with `engines.node`, the README and the dashboard's install card (see
+// its comment). When they drift, `doctor` blesses an install npm would have refused — the one
+// command whose whole job is to catch that.
 const MIN_NODE = `${MIN_NODE_MAJOR}.0.0`;
 
 export interface DoctorCheck {
