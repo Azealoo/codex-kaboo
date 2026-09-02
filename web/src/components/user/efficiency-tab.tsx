@@ -53,7 +53,12 @@ function EfficiencyStats({ range, userId }: { range: ResolvedRange; userId: Id<"
   const perLine = costPerLine(cost, summary.metrics.linesAdded.current);
   return (
     <div className={cn("grid gap-4 md:grid-cols-2 xl:grid-cols-3", isStale && "opacity-60 transition-opacity")}>
-      <CostStructureCard costByKind={summary.costByKind} costUsd={cost} cacheSavingsUsd={summary.cacheSavingsUsd} />
+      <CostStructureCard
+        costByKind={summary.costByKind}
+        costUsd={cost}
+        cacheSavingsUsd={summary.cacheSavingsUsd}
+        unpricedModels={summary.unpricedModels}
+      />
       <StatCard
         label="Cache savings"
         value={summary.cacheSavingsUsd}

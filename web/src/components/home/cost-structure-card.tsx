@@ -9,10 +9,12 @@ export function CostStructureCard({
   costByKind,
   costUsd,
   cacheSavingsUsd,
+  unpricedModels,
 }: {
   costByKind: CostByKind;
   costUsd: number;
   cacheSavingsUsd: number;
+  unpricedModels?: string[];
 }) {
   return (
     <Card className="gap-3 rounded-lg border-border p-4 shadow-none md:col-span-2 xl:col-span-1">
@@ -23,6 +25,9 @@ export function CostStructureCard({
       </div>
       <StackedShareBar segments={costStructureSegments(costByKind)} format={formatUsd} />
       <p className="text-xs text-muted-foreground">Cache savings {formatUsd(cacheSavingsUsd)} vs. no caching</p>
+      {unpricedModels && unpricedModels.length > 0 ? (
+        <p className="text-xs text-muted-foreground">Unpriced: {unpricedModels.join(", ")}</p>
+      ) : null}
     </Card>
   );
 }

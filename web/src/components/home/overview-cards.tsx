@@ -42,6 +42,7 @@ export function OverviewCards({ range, view }: { range: ResolvedRange; view: Vie
           costByKind={summary.costByKind}
           costUsd={summary.metrics.costUsd.current}
           cacheSavingsUsd={summary.cacheSavingsUsd}
+          unpricedModels={summary.unpricedModels}
         />
       )}
     </div>
