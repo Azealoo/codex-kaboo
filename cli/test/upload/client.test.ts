@@ -68,11 +68,11 @@ describe("createClient.sync", () => {
     expect(isBadRequest(e3)).toBe(true);
     expect((e3 as SyncHttpError).message).toContain("sessions.0.day");
   });
-  it("gives up after five network failures", async () => {
-    const { client, calls, sleeps } = stub([new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET")]);
+  it("gives up after six attempts (five retries)", async () => {
+    const { client, calls, sleeps } = stub([new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET")]);
     await expect(client.sync(makeBatch())).rejects.toBeInstanceOf(SyncNetworkError);
-    expect(calls).toHaveLength(5);
-    expect(sleeps).toEqual([1000, 2000, 4000, 8000]);
+    expect(calls).toHaveLength(6);
+    expect(sleeps).toEqual([1000, 2000, 4000, 8000, 16000]);
   });
   it("rejects a malformed success body", async () => {
     const { client } = stub([json(200, { ok: true, nope: 1 })]);
@@ -149,7 +149,7 @@ describe("token safety", () => {
   });
   it("never includes the token in a SyncNetworkError message", async () => {
     const { client } = stub([
-      new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"),
+      new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"), new Error("ECONNRESET"),
     ]);
     const e = await client.sync(makeBatch()).catch((x: unknown) => x);
     expect(e).toBeInstanceOf(SyncNetworkError);

@@ -81,7 +81,7 @@ export function createClient(opts: ClientOptions): SyncClient {
   const doFetch: FetchLike = opts.fetch ?? ((url, init) => fetch(url, init));
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const timeoutMs = opts.timeoutMs ?? 30_000;
-  const maxAttempts = opts.maxAttempts ?? 5;
+  const maxAttempts = opts.maxAttempts ?? 6; // 1 initial attempt + 5 retries, reaching the full 1/2/4/8/16 s backoff schedule
   const random = opts.random ?? Math.random;
   const now = opts.now ?? (() => Date.now());
   const base = opts.server.replace(/\/+$/, "");
