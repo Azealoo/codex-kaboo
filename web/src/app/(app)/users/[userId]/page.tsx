@@ -9,6 +9,7 @@ import { ShellSkeleton } from "@/components/layout/app-gate";
 import { useCurrentUserId } from "@/components/layout/current-user";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { SegmentedControl } from "@/components/primitives/segmented-control";
+import { BreakdownTab } from "@/components/user/breakdown-tab";
 import { OverviewTab } from "@/components/user/overview-tab";
 import { UserHeader } from "@/components/user/user-header";
 import { useUserColors } from "@/hooks/use-entity-colors";
@@ -23,6 +24,8 @@ function TabBody({ tab, range, userId, isMe, today }: { tab: Tab; range: Resolve
   switch (tab) {
     case "overview":
       return <OverviewTab range={range} userId={userId} isMe={isMe} today={today} />;
+    case "breakdown":
+      return <BreakdownTab range={range} userId={userId} />;
     default:
       return <EmptyState title="Coming up" description="This tab is added in the next tasks." />;
   }
