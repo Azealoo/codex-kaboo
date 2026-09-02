@@ -68,6 +68,8 @@ describe("breakdown helpers", () => {
     expect(other?.label).toBe("Other");
     expect(other?.value).toBe(10);
     expect(other?.color).toBe(OTHER_COLOR);
+    // The fold reserves gray for Other, so no surviving source may also be gray.
+    expect(new Set(segs.map((seg) => seg.color)).size).toBe(segs.length);
   });
   it("gives every returned segment a distinct color", () => {
     const segs = sourceSegments([

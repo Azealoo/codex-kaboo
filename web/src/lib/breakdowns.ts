@@ -55,17 +55,23 @@ export const SOURCE_LABELS: Record<string, string> = {
 /** Fixed slots for the sources Codex can emit, so a source's colour never depends on the range. */
 const SOURCE_ORDER = ["cli", "exec", "vscode", "mcp", "custom", "internal"] as const;
 
-/** Known sources hold their slot whether or not they appear; `subagent:<kind>` and any future
- *  source follow, alphabetically, so a colour shifts only when the set of unknown sources changes. */
+/** Slots go to the sources actually present: the known ones in `SOURCE_ORDER`, then `subagent:<kind>`
+ *  and any future source alphabetically. Absent known sources are NOT reserved a slot — reserving all
+ *  six would push a third sub-agent kind past the eight-colour palette and onto `OTHER_COLOR`, which
+ *  is the fold bucket's colour, reintroducing the collision this function exists to prevent. */
 export function sourceColorMap(keys: readonly string[]): Map<string, string> {
   const known = new Set<string>(SOURCE_ORDER);
-  const extras = [...new Set(keys)].filter((k) => !known.has(k)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  return assignSlots([...SOURCE_ORDER, ...extras]);
+  const present = new Set(keys);
+  const inOrder = SOURCE_ORDER.filter((k) => present.has(k));
+  const extras = [...present].filter((k) => !known.has(k)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return assignSlots([...inOrder, ...extras]);
 }
 
 export function sourceSegments(bySource: BreakdownsResult["bySource"], topN = 8): Segment[] {
-  const colors = sourceColorMap(bySource.map((s) => s.key));
   const folded = foldTopN(bySource.map((s) => ({ key: s.key, value: s.tokens })), topN);
+  // Colour only the survivors: at most `topN` keys, so every one gets a real palette slot and
+  // `OTHER_COLOR` stays unique to the fold bucket.
+  const colors = sourceColorMap(folded.filter((i) => i.key !== OTHER_KEY).map((i) => i.key));
   const total = folded.reduce((acc, i) => acc + i.value, 0);
   return folded.map((i) => ({
     key: i.key,
