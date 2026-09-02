@@ -439,4 +439,29 @@ describe("token_usage_record supersedes token_count across parses", () => {
     expect(rollup?.responses).toBe(2);
     expect(before?.responses).toBe(1);
   });
+
+  it("never deletes another user's events for the same sessionId", async () => {
+    // The purge is the ingest's only delete path, and it runs on the branch where no session
+    // document exists yet — which is exactly the state `upsertEvents` deliberately allows another
+    // user's events to sit in ("events may arrive before their summary"). Alice's run dies before
+    // the batch carrying her summary; Bob then posts a `record` summary for the same id. Without
+    // an ownership filter Alice loses her rows AND her rollup is never recomputed, so it counts
+    // events that no longer exist — silent and undetectable.
+    const t = setup();
+    const alice = await userWithToken(t, "alice");
+    const bob = await userWithToken(t, "bob");
+    const orphan = makeBatch({
+      tokenEvents: [makeEvent({ sessionId: "b3", seq: 4, origin: "count", ...COUNT_TOKENS })],
+    });
+    expect((await postSync(t, alice.raw, orphan)).status).toBe(200);
+
+    vi.advanceTimersByTime(60_000);
+    const theirs = recordPass();
+    theirs.machine = makeMachine({ machineId: "machine-2" });
+    expect((await postSync(t, bob.raw, theirs)).status).toBe(200);
+
+    const stored = await t.run(async (ctx) => ctx.db.query("tokenEvents").collect());
+    expect(stored.filter((e) => e.userId === alice.userId).map((e) => e.seq)).toEqual([4]);
+    expect(await getRollup(t, alice.userId, "2026-08-31")).toMatchObject({ responses: 1 });
+  });
 });

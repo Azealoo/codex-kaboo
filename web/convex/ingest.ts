@@ -184,13 +184,25 @@ export const upsertMachine = internalMutation({
  * and because `upsertSessions` runs before `upsertEvents`, so a session first seen in this batch
  * usually has no stored events yet.
  */
-async function purgeCountEvents(ctx: MutationCtx, sessionId: string): Promise<string[]> {
+async function purgeCountEvents(
+  ctx: MutationCtx,
+  sessionId: string,
+  userId: Id<"users">,
+): Promise<string[]> {
   const events = await ctx.db
     .query("tokenEvents")
     .withIndex("by_session_seq", (q) => q.eq("sessionId", sessionId))
     .collect();
   const days: string[] = [];
   for (const event of events) {
+    // Ownership is filtered here and not left to the caller's session check, because the caller's
+    // check only bites when a session DOCUMENT exists. `upsertEvents` deliberately lets a file's
+    // events arrive before its summary, so a sessionId can hold another user's events with no
+    // session doc to own it — and this is the ingest's only delete path. Without this line, a
+    // summary posted by the second user to reach that id would delete the first user's rows and
+    // then recompute only the second user's days, leaving the victim's rollup counting events
+    // that no longer exist: silent, and repairable only by a full re-upload.
+    if (event.userId !== userId) continue;
     if (event.origin !== "count") continue;
     days.push(event.day);
     await ctx.db.delete(event._id);
@@ -230,7 +242,7 @@ export const upsertSessions = internalMutation({
       // idempotent either way: after the purge there is nothing left to delete, so `--full`, a
       // re-send and a deleted `state.json` all heal rather than corrupt.
       if (session.eventOrigin === "record" && existing?.eventOrigin !== "record") {
-        for (const day of await purgeCountEvents(ctx, session.sessionId)) touched.add(day);
+        for (const day of await purgeCountEvents(ctx, session.sessionId, userId)) touched.add(day);
       }
       if (!existing) {
         await ctx.db.insert("sessions", { ...session, userId, machineId, syncedAt: now });
