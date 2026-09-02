@@ -1,0 +1,6 @@
+{"timestamp":"2026-08-30T21:00:00.000Z","ordinal":0,"type":"session_meta","payload":{"id":"0199f1c0-0000-7000-8000-0000000000b2","timestamp":"2026-08-30T21:00:00.000Z","cwd":"/redacted/project-c","originator":"codex-tui","source":"cli","cli_version":"0.150.1","history_mode":"paginated","git":{"branch":"main"},"base_instructions":{"text":"<r:10>","provenance":{"type":"model","model":"gpt-5.6-sol"}}}}
+{"timestamp":"2026-08-30T21:00:01.000Z","ordinal":1,"type":"event_msg","payload":{"type":"task_started","turn_id":"t1","started_at":1788123601}}
+{"timestamp":"2026-08-30T21:00:01.500Z","ordinal":2,"type":"turn_context","payload":{"turn_id":"t1","model":"gpt-5.6-luna","effort":"low","timezone":"Asia/Tokyo"}}
+{not json at all
+{"timestamp":"2026-08-30T21:00:02.000Z","ordinal":4,"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"cache_write_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":5,"total_tokens":110}},"rate_limits":{"primary":{"used_percent":50,"window_minutes":10080,"resets_at":1788210000},"secondary":null,"plan_type":"pro","limit_id":"weekly"}}}
+{"timestamp":"2026-08-30T21:00:03.000Z","ordinal":5,"type":"event_msg","payload":{"type":"task_complete","turn_id":"t1","started_at":1788123601,"completed_at":1788123603,"duration_ms":1500,"time_to_first_token_ms":700}}
