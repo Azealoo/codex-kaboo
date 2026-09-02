@@ -63,6 +63,8 @@ export type TrendsResult = {
   users: UserRef[];                      // every user that appears in `points`
   models: string[];                      // every model that appears, by total tokens desc
   peak: { bucket: string; total: number } | null;
+  unpricedModels: string[];              // models with tokens in range but no price row: every
+                                         // `costUsd` above understates spend by their share
 };
 
 export type ModelRow = { key: string; effort: string | null; tokens: Tokens; responses: number; costUsd: number | null; share: number };
@@ -86,6 +88,8 @@ export type ActivityHeatmapResult = {
   days: { day: string; tokens: number; sessions: number; costUsd: number }[]; // only days with data
   activeDays: number;
   maxTokens: number;
+  unpricedModels: string[];              // models with tokens in range but no price row: every
+                                         // day's `costUsd` understates spend by their share
 };
 
 export type DayHourHeatmapResult = {

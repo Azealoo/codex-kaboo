@@ -120,15 +120,21 @@ describe("computeDayRollup", () => {
       { key: "alpha", tokens: 2570, responses: 3, sessions: 1, userMessages: 2, linesAdded: 10, linesRemoved: 2 },
       { key: "beta", tokens: 330, responses: 1, sessions: 1, userMessages: 1, linesAdded: 0, linesRemoved: 0 },
     ]);
+    // Sessions exclude sub-agent threads everywhere (spec); tokens include them everywhere. m1
+    // carries one main and one sub-agent session, so its tokens cover both but it counts one.
     expect(r.byMachine).toEqual([
-      { key: "m1", tokens: 2570, sessions: 2 },
+      { key: "m1", tokens: 2570, sessions: 1 },
       { key: "m2", tokens: 330, sessions: 1 },
     ]);
     expect(r.bySource).toEqual([
       { key: "cli", tokens: 1800, sessions: 1 },
       { key: "exec", tokens: 330, sessions: 1 },
-      { key: "subagent:review", tokens: 770, sessions: 1 },
+      { key: "subagent:review", tokens: 770, sessions: 0 },
     ]);
+    // The same convention as byProject and the day's own `sessions` counter, on the same page.
+    expect(r.byMachine.reduce((n, m) => n + m.sessions, 0)).toBe(r.sessions);
+    expect(r.bySource.reduce((n, s) => n + s.sessions, 0)).toBe(r.sessions);
+    expect(r.byProject.reduce((n, p) => n + p.sessions, 0)).toBe(r.sessions);
   });
 
   it("is independent of input order", () => {
@@ -156,8 +162,8 @@ describe("computeDayRollup", () => {
     expect(r.ttft.count).toBe(0);
     expect(r.byTool.every((t) => t.count === 0)).toBe(true);
     expect(r.tokens.total).toBe(770);
-    expect(r.byMachine).toEqual([{ key: "m1", tokens: 770, sessions: 1 }]);
-    expect(r.bySource).toEqual([{ key: "subagent:review", tokens: 770, sessions: 1 }]);
+    expect(r.byMachine).toEqual([{ key: "m1", tokens: 770, sessions: 0 }]);
+    expect(r.bySource).toEqual([{ key: "subagent:review", tokens: 770, sessions: 0 }]);
   });
 
   it("caps keyed arrays at 100 entries and folds the rest into (other)", () => {
@@ -231,7 +237,7 @@ describe("mergeRollups", () => {
       key: "beta", tokens: 660, responses: 2, sessions: 2, userMessages: 2, linesAdded: 0, linesRemoved: 0,
     });
     expect(merged.byMachine).toEqual([
-      { key: "m1", tokens: 2570, sessions: 2 },
+      { key: "m1", tokens: 2570, sessions: 1 },
       { key: "m2", tokens: 660, sessions: 2 },
     ]);
     expect(merged.byTool.find((t) => t.key === "commandRead")?.count).toBe(5);

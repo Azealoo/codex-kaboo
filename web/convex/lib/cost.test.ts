@@ -1,5 +1,6 @@
 // web/convex/lib/cost.test.ts
 import { describe, expect, it } from "vitest";
+import { OTHER_KEY } from "../../../shared/src/constants";
 import type { ModelPrice } from "../../../shared/src/metrics";
 import type { Tokens } from "../../../shared/src/sync";
 import { setup } from "../test.helpers";
@@ -47,6 +48,19 @@ describe("sumCost", () => {
     expect(summary.cacheSavingsUsd).toBeCloseTo(0.72, 10);
     expect(summary.unpricedModels).toEqual(["codex-auto-review"]);
   });
+  it("never reports the (other) fold key as an unpriced model", () => {
+    // `(other)` is the 100-entry keyed-array fold, not a model: listing it would render a
+    // synthetic name in the dashboard's "no price row" warning.
+    const summary = sumCost(
+      [
+        { key: OTHER_KEY, tokens },
+        { key: "codex-auto-review", tokens },
+      ],
+      new Map(),
+    );
+    expect(summary.unpricedModels).toEqual(["codex-auto-review"]);
+  });
+
   it("is zero for no models", () => {
     expect(sumCost([], new Map())).toEqual({
       totalUsd: 0,

@@ -266,6 +266,9 @@ export const trends = authedQuery({
 
     const userIds = new Set<Id<"users">>();
     const modelTotals = new Map<string, number>();
+    // A model with no price row contributes 0 to every costUsd below; carry the flag out of
+    // sumCost so the chart can say "unpriced", never draw a silent $0 (spec).
+    const unpriced = new Set<string>();
     const points: TrendPoint[] = eachBucket(range.from, range.to, args.bucket).map((bucket) => {
       const bucketDocs = byBucket.get(bucket) ?? [];
       const agg = mergeRollups(bucketDocs);
@@ -287,11 +290,13 @@ export const trends = authedQuery({
         .map(([key, tokens]) => ({ key, tokens }))
         .sort((a, b) => b.tokens - a.tokens || cmpKey(a.key, b.key));
       for (const m of byModel) modelTotals.set(m.key, (modelTotals.get(m.key) ?? 0) + m.tokens);
+      const bucketCost = sumCost(agg.byModel, prices);
+      for (const model of bucketCost.unpricedModels) unpriced.add(model);
       return {
         bucket,
         total: agg.tokens.total,
         tokens: agg.tokens,
-        costUsd: sumCost(agg.byModel, prices).totalUsd,
+        costUsd: bucketCost.totalUsd,
         activeMs: agg.activeMs,
         sessions: agg.sessions,
         byUser,
@@ -311,7 +316,7 @@ export const trends = authedQuery({
         peak = { bucket: point.bucket, total: point.total };
       }
     }
-    return { bucket: args.bucket, points, users, models, peak };
+    return { bucket: args.bucket, points, users, models, peak, unpricedModels: [...unpriced].sort() };
   },
 });
 
@@ -323,6 +328,21 @@ export const breakdowns = authedQuery({
     const agg = mergeRollups(await loadRollups(ctx, range, args.userId));
     const totalTokens = agg.tokens.total;
     const share = (n: number) => ratio(n, totalTokens) ?? 0;
+    /**
+     * `byMachine` and `bySource` are the only two breakdowns on the SESSION basis: `tokenEvents`
+     * carries neither `machineId` nor `source`, so those tokens can only come from the session
+     * summary, which is attributed to the session's START day. Every other breakdown is
+     * event-derived and attributed to the event's own day. Dividing the session basis by the event
+     * basis is not a share at all — one midnight-spanning session made a machine render 250 % next
+     * to a project table summing to 100 % — so each of these two groups is normalised within
+     * itself. Both then sum to 1 and can never exceed it.
+     */
+    const groupShare = (rows: { tokens: number }[]) => {
+      const groupTotal = rows.reduce((sum, row) => sum + row.tokens, 0);
+      return (n: number) => ratio(n, groupTotal) ?? 0;
+    };
+    const machineShare = groupShare(agg.byMachine);
+    const sourceShare = groupShare(agg.bySource);
     const tokensDesc = <T extends { key: string; tokens: number }>(a: T, b: T) =>
       b.tokens - a.tokens || cmpKey(a.key, b.key);
     const countDesc = <T extends { key: string; count: number }>(a: T, b: T) =>
@@ -387,11 +407,13 @@ export const breakdowns = authedQuery({
         label: machine?.label ?? m.key,
         tokens: m.tokens,
         sessions: m.sessions,
-        share: share(m.tokens),
+        share: machineShare(m.tokens), // session basis — see groupShare above
       });
     }
     byMachine.sort(tokensDesc);
-    const bySource = agg.bySource.map((s) => ({ ...s, share: share(s.tokens) })).sort(tokensDesc);
+    const bySource = agg.bySource
+      .map((s) => ({ ...s, share: sourceShare(s.tokens) })) // session basis — see groupShare above
+      .sort(tokensDesc);
 
     return {
       totalTokens,
@@ -416,20 +438,28 @@ export const activityHeatmap = authedQuery({
     const range = assertRange(args.from, args.to);
     const prices = await loadPriceMap(ctx);
     const docs = await loadRollups(ctx, range, args.userId);
+    // As in `trends`: an unpriced model contributes 0 to a day's costUsd, so the flag has to
+    // travel with the days rather than being discarded (spec — never a silent $0).
+    const unpriced = new Set<string>();
     const days = docs
       .filter((doc) => doc.tokens.total > 0 || doc.sessions > 0)
-      .map((doc) => ({
-        day: doc.day,
-        tokens: doc.tokens.total,
-        sessions: doc.sessions,
-        costUsd: sumCost(doc.byModel, prices).totalUsd,
-      }))
+      .map((doc) => {
+        const cost = sumCost(doc.byModel, prices);
+        for (const model of cost.unpricedModels) unpriced.add(model);
+        return {
+          day: doc.day,
+          tokens: doc.tokens.total,
+          sessions: doc.sessions,
+          costUsd: cost.totalUsd,
+        };
+      })
       .sort((a, b) => cmpKey(a.day, b.day));
     return {
       range,
       days,
       activeDays: days.length,
       maxTokens: days.reduce((max, d) => Math.max(max, d.tokens), 0),
+      unpricedModels: [...unpriced].sort(),
     };
   },
 });

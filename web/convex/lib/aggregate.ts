@@ -312,8 +312,13 @@ export function computeDayRollup(
   }
 
   for (const session of sessions) {
-    c.addMachine(session.machineId, session.tokens.total, 1);
-    c.addSource(session.source, session.tokens.total, 1);
+    // Both run BEFORE the sub-agent guard so a sub-agent's tokens still count — "sessions, turns
+    // and messages exclude sub-agent threads; token totals and cost include them" (spec) — but the
+    // session count passed is 0 for them, so these two rows use the same session convention as
+    // `byProject` and `body.sessions`, which sit beside them on the same page.
+    const sessionCount = session.isSubagent ? 0 : 1;
+    c.addMachine(session.machineId, session.tokens.total, sessionCount);
+    c.addSource(session.source, session.tokens.total, sessionCount);
     if (session.isSubagent) {
       body.subagentSessions += 1;
       continue;

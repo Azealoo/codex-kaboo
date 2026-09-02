@@ -185,6 +185,8 @@ describe("stats.trends", () => {
     expect(r.users.map((u) => u.name)).toEqual(["Alice", "Bob"]);
     expect(r.models).toEqual(["gpt-5.6-sol", "codex-auto-review"]);
     expect(r.peak).toEqual({ bucket: "2026-08-31", total: 3600 });
+    // A model with no price row must be flagged, never drawn as a real $0 (spec).
+    expect(r.unpricedModels).toEqual(["codex-auto-review"]);
   });
 
   it("buckets by week and month, scopes to a user and handles empty ranges", async () => {
@@ -207,6 +209,7 @@ describe("stats.trends", () => {
     expect(mine.points[0]?.total).toBe(2400);
     expect(mine.points[0]?.byUser).toHaveLength(1);
     expect(mine.models).toEqual(["gpt-5.6-sol"]);
+    expect(mine.unpricedModels).toEqual([]); // alice's only model is priced
 
     const empty = await withUser(t, "alice").query(api.stats.trends, { from: "2025-01-01", to: "2025-01-03", bucket: "day" });
     expect(empty.points.map((p) => p.total)).toEqual([0, 0, 0]);
@@ -251,17 +254,48 @@ describe("stats.breakdowns", () => {
       { key: "alpha", tokens: 4800, responses: 4, sessions: 1, userMessages: 2, linesAdded: 10, linesRemoved: 2, share: 1 },
       { key: "beta", tokens: 0, responses: 0, sessions: 1, userMessages: 2, linesAdded: 10, linesRemoved: 2, share: 0 },
     ]);
+    // byMachine/bySource tokens are on the session (start-day) basis, so their shares are
+    // normalised within their own group and sum to 1 — not against the event-basis totalTokens.
+    // Sub-agent threads contribute tokens but no session count, as everywhere else.
     expect(b.byMachine).toEqual([
-      { key: "machine-1", label: "brisk-otter", tokens: 2400, sessions: 2, share: 0.5 },
-      { key: "machine-2", label: "machine-2", tokens: 1200, sessions: 1, share: 0.25 },
+      { key: "machine-1", label: "brisk-otter", tokens: 2400, sessions: 2, share: 2400 / 3600 },
+      { key: "machine-2", label: "machine-2", tokens: 1200, sessions: 0, share: 1200 / 3600 },
     ]);
     expect(b.bySource).toEqual([
-      { key: "cli", tokens: 2400, sessions: 2, share: 0.5 },
-      { key: "subagent:review", tokens: 1200, sessions: 1, share: 0.25 },
+      { key: "cli", tokens: 2400, sessions: 2, share: 2400 / 3600 },
+      { key: "subagent:review", tokens: 1200, sessions: 0, share: 1200 / 3600 },
     ]);
     expect(b.byHour[9]).toBe(3600);
     expect(b.byHour[10]).toBe(1200);
     expect(b.byHour).toHaveLength(24);
+  });
+
+  it("keeps machine and source shares within [0, 1] for a midnight-spanning session", async () => {
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    // A session starting 2026-08-30 23:50 and ending 00:30: its whole 1,000 tokens are attributed
+    // to the START day, while its two token events straddle midnight (400 before, 600 after).
+    await seedRollup(
+      t, alice, "2026-08-30",
+      [ev({ hour: 23, input: 300, cachedInput: 100, output: 100, reasoning: 20, total: 400 })],
+      [ses({ tokens: { input: 700, cachedInput: 200, cacheWrite: 0, output: 300, reasoning: 50, total: 1000 } })],
+    );
+    await seedRollup(
+      t, alice, "2026-08-31",
+      [ev({ hour: 0, input: 400, cachedInput: 100, output: 200, reasoning: 30, total: 600 })],
+      [],
+    );
+
+    const b = await withUser(t, "alice").query(api.stats.breakdowns, { from: "2026-08-30", to: "2026-08-30" });
+    expect(b.totalTokens).toBe(400); // event basis: only the pre-midnight event lands on this day
+    expect(b.byMachine[0]?.tokens).toBe(1000); // session basis: the whole session, start day
+    for (const row of [...b.byMachine, ...b.bySource]) {
+      expect(row.share).toBeGreaterThanOrEqual(0);
+      expect(row.share).toBeLessThanOrEqual(1);
+    }
+    expect(b.byMachine.reduce((sum, m) => sum + m.share, 0)).toBeCloseTo(1, 10);
+    expect(b.bySource.reduce((sum, s) => sum + s.share, 0)).toBeCloseTo(1, 10);
+    expect(b.byProject.reduce((sum, p) => sum + p.share, 0)).toBeCloseTo(1, 10);
   });
 
   it("is empty but well-formed without data", async () => {
@@ -290,9 +324,12 @@ describe("stats.activityHeatmap", () => {
     expect(r.days[2]?.costUsd).toBeCloseTo(0.00656, 8);
     expect(r.activeDays).toBe(3);
     expect(r.maxTokens).toBe(2400);
+    expect(r.unpricedModels).toEqual([]);
 
     const b = await withUser(t, "alice").query(api.stats.activityHeatmap, { userId: bob, from: "2026-08-01", to: "2026-08-31" });
     expect(b.days).toEqual([{ day: "2026-08-31", tokens: 1200, sessions: 0, costUsd: 0 }]);
+    // Bob's only model has no price row: the $0 above is unpriced, not free.
+    expect(b.unpricedModels).toEqual(["codex-auto-review"]);
   });
 });
 

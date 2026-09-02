@@ -520,6 +520,8 @@ export type TrendsResult = {
   users: UserRef[];                      // every user that appears in `points`
   models: string[];                      // every model that appears, by total tokens desc
   peak: { bucket: string; total: number } | null;
+  unpricedModels: string[];              // models with tokens in range but no price row: every
+                                         // `costUsd` above understates spend by their share
 };
 
 export type ModelRow = { key: string; effort: string | null; tokens: Tokens; responses: number; costUsd: number | null; share: number };
@@ -532,6 +534,10 @@ export type BreakdownsResult = {
   byMcpTool: { key: string; count: number }[];
   bySkill: { key: string; count: number; sessions: number }[];
   byProject: { key: string; tokens: number; responses: number; sessions: number; userMessages: number; linesAdded: number; linesRemoved: number; share: number }[];
+  // byMachine/bySource are the only two breakdowns on the SESSION basis (tokenEvents carry no
+  // machineId or source), attributed to the session's START day; every other one is event-derived.
+  // Their `share` is therefore normalised WITHIN its own group — each group sums to 1 — while every
+  // other `share` is against `totalTokens`. `sessions` excludes sub-agent threads; `tokens` includes them.
   byMachine: { key: string; label: string; tokens: number; sessions: number; share: number }[]; // key = machineId
   bySource: { key: string; tokens: number; sessions: number; share: number }[];
   byHour: number[];                      // 24 entries, total tokens
@@ -543,6 +549,8 @@ export type ActivityHeatmapResult = {
   days: { day: string; tokens: number; sessions: number; costUsd: number }[]; // only days with data
   activeDays: number;
   maxTokens: number;
+  unpricedModels: string[];              // models with tokens in range but no price row: every
+                                         // day's `costUsd` understates spend by their share
 };
 
 export type DayHourHeatmapResult = {
@@ -646,7 +654,9 @@ export type MeResult = { _id: Id<"users">; clerkId: string; email: string | null
 
 Cost rules used by every function: a `(model, tokens)` pair is priced with `costOf` when a
 `modelPrices` row with that exact `model` exists; otherwise it contributes 0 to `costUsd` and the
-model is listed in `unpricedModels` / the row is flagged `unpriced` / `costUsd: null`.
+model is listed in `unpricedModels` / the row is flagged `unpriced` / `costUsd: null`. The
+`"(other)"` fold key is never listed in `unpricedModels`: it is the 100-entry keyed-array fold, not
+a model name.
 
 ## 10. Web ↔ CLI strings (Plan 3 shows, Plan 1 implements)
 

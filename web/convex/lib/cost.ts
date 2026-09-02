@@ -1,3 +1,4 @@
+import { OTHER_KEY } from "../../../shared/src/constants";
 import { cacheSavings, costOf, type CostBreakdown, type ModelPrice } from "../../../shared/src/metrics";
 import type { Tokens } from "../../../shared/src/sync";
 import type { QueryCtx } from "../_generated/server";
@@ -33,7 +34,12 @@ export type CostSummary = {
   unpricedModels: string[];
 };
 
-/** Folds a by-model token list into cost; unpriced models contribute 0 and are listed (sorted). */
+/**
+ * Folds a by-model token list into cost; unpriced models contribute 0 and are listed (sorted).
+ * The single place `unpricedModels` is assembled, so it is also the single place OTHER_KEY is
+ * excluded: `(other)` is the 100-entry keyed-array fold, not a model, and the dashboard renders
+ * these strings as model names.
+ */
 export function sumCost(byModel: { key: string; tokens: Tokens }[], prices: PriceMap): CostSummary {
   const byKind: CostByKind = { input: 0, cached: 0, output: 0, reasoning: 0 };
   let cacheSavingsUsd = 0;
@@ -41,7 +47,7 @@ export function sumCost(byModel: { key: string; tokens: Tokens }[], prices: Pric
   for (const entry of byModel) {
     const price = prices.get(entry.key);
     if (!price) {
-      if (entry.tokens.total > 0) unpriced.add(entry.key);
+      if (entry.tokens.total > 0 && entry.key !== OTHER_KEY) unpriced.add(entry.key);
       continue;
     }
     const cost = costOf(entry.tokens, price);

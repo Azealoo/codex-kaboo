@@ -24,6 +24,7 @@ const trends: TrendsResult = {
   ],
   models: ["gpt-5.6-sol", "gpt-5.6-luna", "m3", "m4", "m5", "m6", "m7", "m8", "m9"],
   peak: { bucket: "2026-09-02", total: 400 },
+  unpricedModels: [],
   points: [
     {
       bucket: "2026-09-01",
