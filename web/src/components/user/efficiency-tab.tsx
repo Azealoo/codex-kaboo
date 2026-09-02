@@ -41,7 +41,7 @@ function ModelEfficiencyTable({ range, userId }: { range: ResolvedRange; userId:
   );
 }
 
-export function EfficiencyTab({ range, userId }: { range: ResolvedRange; userId: Id<"users"> }) {
+function EfficiencyStats({ range, userId }: { range: ResolvedRange; userId: Id<"users"> }) {
   const { data: summary, isStale } = useStableQuery(api.stats.summary, {
     from: range.from,
     to: range.to,
@@ -52,24 +52,32 @@ export function EfficiencyTab({ range, userId }: { range: ResolvedRange; userId:
   const cost = summary.metrics.costUsd.current;
   const perLine = costPerLine(cost, summary.metrics.linesAdded.current);
   return (
+    <div className={cn("grid gap-4 md:grid-cols-2 xl:grid-cols-3", isStale && "opacity-60 transition-opacity")}>
+      <CostStructureCard costByKind={summary.costByKind} costUsd={cost} cacheSavingsUsd={summary.cacheSavingsUsd} />
+      <StatCard
+        label="Cache savings"
+        value={summary.cacheSavingsUsd}
+        kind="usd"
+        help="What the cached input tokens would have cost at the full input price, minus what they cost at the cached price."
+        footer={`Without caching: ${formatUsd(costWithoutCaching(cost, summary.cacheSavingsUsd))}`}
+      />
+      <StatCard label="Cost per line" value={perLine} kind="usd" help="Estimated cost divided by generated lines." footer={perLine === null ? "No generated lines in this range" : undefined} />
+      <MetricStatCard metricKey="cacheHitRate" metric={summary.metrics.cacheHitRate} />
+      <MetricStatCard metricKey="tokensPerLine" metric={summary.metrics.tokensPerLine} />
+      <MetricStatCard metricKey="tokensPerTurn" metric={summary.metrics.tokensPerTurn} />
+      <MetricStatCard metricKey="ttftP50Ms" metric={summary.metrics.ttftP50Ms} />
+      <MetricStatCard metricKey="compactions" metric={summary.metrics.compactions} />
+      <MetricStatCard metricKey="reasoningTokens" metric={summary.metrics.reasoningTokens} />
+    </div>
+  );
+}
+
+export function EfficiencyTab({ range, userId }: { range: ResolvedRange; userId: Id<"users"> }) {
+  return (
     <div className="flex flex-col gap-4">
-      <div className={cn("grid gap-4 md:grid-cols-2 xl:grid-cols-3", isStale && "opacity-60 transition-opacity")}>
-        <CostStructureCard costByKind={summary.costByKind} costUsd={cost} cacheSavingsUsd={summary.cacheSavingsUsd} />
-        <StatCard
-          label="Cache savings"
-          value={summary.cacheSavingsUsd}
-          kind="usd"
-          help="What the cached input tokens would have cost at the full input price, minus what they cost at the cached price."
-          footer={`Without caching: ${formatUsd(costWithoutCaching(cost, summary.cacheSavingsUsd))}`}
-        />
-        <StatCard label="Cost per line" value={perLine} kind="usd" help="Estimated cost divided by generated lines." footer={perLine === null ? "No generated lines in this range" : undefined} />
-        <MetricStatCard metricKey="cacheHitRate" metric={summary.metrics.cacheHitRate} />
-        <MetricStatCard metricKey="tokensPerLine" metric={summary.metrics.tokensPerLine} />
-        <MetricStatCard metricKey="tokensPerTurn" metric={summary.metrics.tokensPerTurn} />
-        <MetricStatCard metricKey="ttftP50Ms" metric={summary.metrics.ttftP50Ms} />
-        <MetricStatCard metricKey="compactions" metric={summary.metrics.compactions} />
-        <MetricStatCard metricKey="reasoningTokens" metric={summary.metrics.reasoningTokens} />
-      </div>
+      <SectionErrorBoundary title="Efficiency stats could not load">
+        <EfficiencyStats range={range} userId={userId} />
+      </SectionErrorBoundary>
       <SectionErrorBoundary>
         <ModelEfficiencyTable range={range} userId={userId} />
       </SectionErrorBoundary>

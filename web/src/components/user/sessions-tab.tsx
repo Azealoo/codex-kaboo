@@ -7,6 +7,7 @@ import type { SessionRow } from "@convex/lib/types";
 import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { SectionCard } from "@/components/primitives/section-card";
+import { SectionErrorBoundary } from "@/components/primitives/section-error-boundary";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,7 +16,7 @@ import { sourceLabel } from "@/lib/sessions";
 
 const PAGE_SIZE = 20;
 
-export function SessionsTab({ userId }: { userId: Id<"users"> }) {
+function SessionsTable({ userId }: { userId: Id<"users"> }) {
   const { results, status, loadMore } = usePaginatedQuery(api.sessions.listRecent, { userId }, { initialNumItems: PAGE_SIZE });
   const columns: Column<SessionRow>[] = [
     {
@@ -64,5 +65,13 @@ export function SessionsTab({ userId }: { userId: Id<"users"> }) {
         </>
       )}
     </SectionCard>
+  );
+}
+
+export function SessionsTab({ userId }: { userId: Id<"users"> }) {
+  return (
+    <SectionErrorBoundary title="Sessions could not load">
+      <SessionsTable userId={userId} />
+    </SectionErrorBoundary>
   );
 }
