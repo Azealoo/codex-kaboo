@@ -1,8 +1,8 @@
-import { TOOL_KINDS, type ToolKind } from "@shared/constants";
+import { OTHER_KEY, TOOL_KINDS, type ToolKind } from "@shared/constants";
 import { cacheHitRate, ratio } from "@shared/metrics";
 import type { BreakdownsResult } from "@convex/lib/types";
-import { CATEGORICAL, OTHER_COLOR, type ColorMap } from "./colors";
-import { shareSegments, type Segment } from "./chart-data";
+import { CATEGORICAL, OTHER_COLOR, assignSlots, colorFor, type ColorMap } from "./colors";
+import { foldTopN, shareSegments, type Segment } from "./chart-data";
 
 export const TOOL_LABELS: Record<ToolKind, string> = {
   commandRead: "Read files",
@@ -52,15 +52,27 @@ export const SOURCE_LABELS: Record<string, string> = {
   subagent: "Sub-agent",
 };
 
-const SOURCE_COLORS = [CATEGORICAL[1], CATEGORICAL[0], CATEGORICAL[4], CATEGORICAL[3], CATEGORICAL[5]] as const;
+/** Fixed slots for the sources Codex can emit, so a source's colour never depends on the range. */
+const SOURCE_ORDER = ["cli", "exec", "vscode", "mcp", "custom", "internal"] as const;
 
-export function sourceSegments(bySource: BreakdownsResult["bySource"]): Segment[] {
-  return bySource.map((s, i) => ({
-    key: s.key,
-    label: SOURCE_LABELS[s.key] ?? s.key,
-    value: s.tokens,
-    share: s.share,
-    color: SOURCE_COLORS[i % SOURCE_COLORS.length]!,
+/** Known sources hold their slot whether or not they appear; `subagent:<kind>` and any future
+ *  source follow, alphabetically, so a colour shifts only when the set of unknown sources changes. */
+export function sourceColorMap(keys: readonly string[]): Map<string, string> {
+  const known = new Set<string>(SOURCE_ORDER);
+  const extras = [...new Set(keys)].filter((k) => !known.has(k)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return assignSlots([...SOURCE_ORDER, ...extras]);
+}
+
+export function sourceSegments(bySource: BreakdownsResult["bySource"], topN = 8): Segment[] {
+  const colors = sourceColorMap(bySource.map((s) => s.key));
+  const folded = foldTopN(bySource.map((s) => ({ key: s.key, value: s.tokens })), topN);
+  const total = folded.reduce((acc, i) => acc + i.value, 0);
+  return folded.map((i) => ({
+    key: i.key,
+    label: i.key === OTHER_KEY ? "Other" : (SOURCE_LABELS[i.key] ?? i.key),
+    value: i.value,
+    share: total > 0 ? i.value / total : 0,
+    color: i.key === OTHER_KEY ? OTHER_COLOR : colorFor(colors, i.key),
   }));
 }
 

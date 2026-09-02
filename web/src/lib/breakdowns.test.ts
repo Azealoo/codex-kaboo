@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { TOOL_KINDS } from "@shared/constants";
+import { OTHER_KEY, TOOL_KINDS } from "@shared/constants";
 import type { ModelRow } from "@convex/lib/types";
-import { assignSlots } from "./colors";
+import { OTHER_COLOR, assignSlots } from "./colors";
 import { TOOL_LABELS, modelSegments, modelTableRows, sourceSegments, toolSegments } from "./breakdowns";
 
 const modelRow = (key: string, input: number, cached: number, costUsd: number | null, responses = 1): ModelRow => ({
@@ -49,5 +49,46 @@ describe("breakdown helpers", () => {
     expect(segs.map((s) => s.label)).toEqual(["CLI", "something_new"]);
     expect(segs[0]?.value).toBe(80);
     expect(segs[0]?.color).not.toBe(segs[1]?.color);
+  });
+  it("folds nine distinct sources into eight named segments plus one Other", () => {
+    const segs = sourceSegments([
+      { key: "cli", tokens: 90, sessions: 1, share: 0 },
+      { key: "exec", tokens: 80, sessions: 1, share: 0 },
+      { key: "vscode", tokens: 70, sessions: 1, share: 0 },
+      { key: "mcp", tokens: 60, sessions: 1, share: 0 },
+      { key: "custom", tokens: 50, sessions: 1, share: 0 },
+      { key: "internal", tokens: 40, sessions: 1, share: 0 },
+      { key: "subagent:review", tokens: 30, sessions: 1, share: 0 },
+      { key: "subagent:plan", tokens: 20, sessions: 1, share: 0 },
+      { key: "subagent:build", tokens: 10, sessions: 1, share: 0 },
+    ]);
+    expect(segs).toHaveLength(9);
+    expect(segs.filter((s) => s.key !== OTHER_KEY)).toHaveLength(8);
+    const other = segs.find((s) => s.key === OTHER_KEY);
+    expect(other?.label).toBe("Other");
+    expect(other?.value).toBe(10);
+    expect(other?.color).toBe(OTHER_COLOR);
+  });
+  it("gives every returned segment a distinct color", () => {
+    const segs = sourceSegments([
+      { key: "cli", tokens: 60, sessions: 1, share: 0 },
+      { key: "exec", tokens: 50, sessions: 1, share: 0 },
+      { key: "vscode", tokens: 40, sessions: 1, share: 0 },
+      { key: "mcp", tokens: 30, sessions: 1, share: 0 },
+      { key: "custom", tokens: 20, sessions: 1, share: 0 },
+      { key: "internal", tokens: 10, sessions: 1, share: 0 },
+    ]);
+    const colors = new Set(segs.map((s) => s.color));
+    expect(colors.size).toBe(segs.length);
+  });
+  it("keeps cli's color stable whether or not exec is present in the input", () => {
+    const withExec = sourceSegments([
+      { key: "exec", tokens: 50, sessions: 1, share: 0.5 },
+      { key: "cli", tokens: 50, sessions: 1, share: 0.5 },
+    ]);
+    const withoutExec = sourceSegments([{ key: "cli", tokens: 100, sessions: 1, share: 1 }]);
+    const cliWithExec = withExec.find((s) => s.key === "cli")?.color;
+    const cliWithoutExec = withoutExec.find((s) => s.key === "cli")?.color;
+    expect(cliWithoutExec).toBe(cliWithExec);
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import type { Id } from "@convex/_generated/dataModel";
+import type { BreakdownsResult } from "@convex/lib/types";
 import { StackedShareBar } from "@/components/charts/stacked-share-bar";
 import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
@@ -11,7 +12,7 @@ import { toolSegments } from "@/lib/breakdowns";
 import { formatInt, formatPercent } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
 
-type McpRow = { key: string; count: number };
+type McpRow = BreakdownsResult["byMcpTool"][number];
 
 export function ToolsSection({ range, userId }: { range: ResolvedRange; userId?: Id<"users"> }) {
   const { data, isStale } = useBreakdowns(range, userId);
