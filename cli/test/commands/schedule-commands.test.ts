@@ -85,6 +85,25 @@ describe("install / uninstall", () => {
     expect(result.exitCode).toBe(2);
     expect(result.detail).toContain("codex-kaboo login");
   });
+
+  // Re-review finding: a newline embedded in a scheduled path is unrepresentable in a crontab
+  // entry, not merely unescaped (see cli/src/schedule/index.ts assertNoNewline). runInstall must
+  // surface that as a normal (non-crashing) failed result, and since `--json` prints this same
+  // `result` object verbatim (see emit() in main.ts), result.detail is the one place to pin that
+  // the JSON error path carries the same explanation as the human-readable one.
+  it("refuses a scheduled path containing a newline with a clear, non-zero-exit error", async () => {
+    const s = await setup();
+    const result = await runInstall(
+      { systemd: false, json: true },
+      { ...s.deps, platform: "linux", execPath: "/opt/node\n/bin/node", runSync: async () => emptyReport },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.exitCode).toBe(1);
+    expect(result.scheduler).toBe("cron");
+    expect(result.sync).toBeNull(); // runSync must not have been reached
+    expect(result.detail).toMatch(/newline/i);
+    expect(result.detail).toContain("/opt/node");
+  });
 });
 
 describe("status", () => {

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTarget, type Spawner } from "./index";
+import { assertNoNewline, checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTarget, type Spawner } from "./index";
 
 export const CRON_BEGIN = "# BEGIN codex-kaboo";
 export const CRON_END = "# END codex-kaboo";
@@ -19,8 +19,13 @@ export const CRON_END = "# END codex-kaboo";
  *
  * `%` is escaped last so it applies to the quoting punctuation too, and the backslash it introduces
  * is removed by cron before the shell sees the (still correctly single-quoted) line.
+ *
+ * A `\n` or `\r` inside `value` is refused rather than quoted: cron splits the crontab into one
+ * entry per line *before* the shell ever parses this quoting, so an embedded newline cannot be
+ * escaped into safety — see `assertNoNewline`.
  */
 export function cronQuote(value: string): string {
+  assertNoNewline(value, "a crontab entry");
   return `'${value.replace(/'/g, "'\\''")}'`.replace(/%/g, "\\%");
 }
 

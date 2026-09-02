@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { CRON_BEGIN, CRON_END, cronAdapter, cronQuote, removeCronBlock, renderCronLine, upsertCronBlock } from "../../src/schedule/cron";
 import { checkTargetPaths, pickScheduler, type ScheduleTarget, type Spawner, type SpawnResult } from "../../src/schedule/index";
 import { LAUNCHD_LABEL, launchdAdapter, plistPath, renderPlist, xmlEscape } from "../../src/schedule/launchd";
-import { parseSchtasksStatus, ps1Path, renderPowershellCommand, renderPs1, renderVbs, schtasksAdapter, schtasksCreateArgs, TASK_NAME, vbsQuote } from "../../src/schedule/schtasks";
+import { parseSchtasksStatus, powershellQuote, ps1Path, renderPowershellCommand, renderPs1, renderVbs, schtasksAdapter, schtasksCreateArgs, TASK_NAME, vbsQuote } from "../../src/schedule/schtasks";
 import { renderService, renderTimer, systemdAdapter, systemdDir } from "../../src/schedule/systemd";
 
 function target(overrides: Partial<ScheduleTarget> = {}): ScheduleTarget {
@@ -82,6 +82,25 @@ describe("launchd", () => {
       args[0] === "kickstart" ? { code: 1, stdout: "", stderr: "kickstart: could not start job" } : undefined,
     );
     await expect(launchdAdapter.install(t, spawner)).rejects.toThrow(/kickstart failed/);
+  });
+
+  // Decision (newline re-review): unlike cron/systemd/schtasks, a plist is XML, and a literal
+  // newline inside a <string> element's TEXT content is well-formed — XML only whitespace-
+  // normalizes attribute values, not element content — so it cannot terminate the element early
+  // or inject a sibling <key>/<string> pair. xmlEscape is left unchanged and renderPlist is not
+  // expected to refuse; pinned here instead of merely assumed.
+  it("represents an embedded newline safely inside a <string> element instead of refusing it", () => {
+    const value = "/Users/me/weird\nhome";
+    expect(xmlEscape(value)).toBe(value); // a literal newline needs no XML entity of its own
+    const withoutNewline = renderPlist(target({ codexHome: "/srv/codex" }));
+    let withNewline = "";
+    expect(() => {
+      withNewline = renderPlist(target({ codexHome: value }));
+    }).not.toThrow();
+    expect(withNewline).toContain(`<string>${value}</string>`);
+    // Same element count either way: the embedded newline neither injected nor dropped an XML node.
+    expect(withNewline.match(/<key>/g)?.length).toBe(withoutNewline.match(/<key>/g)?.length);
+    expect(withNewline.match(/<string>/g)?.length).toBe(withoutNewline.match(/<string>/g)?.length);
   });
 });
 
@@ -161,6 +180,24 @@ describe("cron", () => {
     expect(stored).not.toContain(CRON_BEGIN);
     expect((await cronAdapter.status(target(), spawner)).installed).toBe(false);
   });
+
+  // Re-review finding: a newline is not a metacharacter cronQuote can escape away. crontab reads
+  // one line per entry no matter how a field inside it is quoted, so an embedded \n or \r would
+  // either truncate the entry or inject an extra line inside the codex-kaboo block — corrupting
+  // the crontab silently instead of failing loudly. Refuse instead of writing it.
+  it("refuses a path containing a newline or carriage return instead of writing a broken crontab line", async () => {
+    expect(() => renderCronLine(target({ nodePath: "/opt/node\n/bin/node" }))).toThrow(/newline/i);
+    expect(() => renderCronLine(target({ scriptPath: "/Users/me/weird\rpath/codex-kaboo.js" }))).toThrow(/newline/i);
+    expect(() => renderCronLine(target({ codexHome: "/srv/co\ndex" }))).toThrow(/crontab/i);
+    expect(() => renderCronLine(target({ kabooHome: "/Users/me/.codex-kaboo\r" }))).toThrow(/newline/i);
+    expect(() => cronQuote("a\nb")).toThrow(/newline/i);
+    expect(() => cronQuote("a\rb")).toThrow(/newline/i);
+
+    // Nothing is written: the throw happens before `crontab -` (the write) is ever called.
+    const { spawner, calls } = mockSpawner((cmd, args) => (args[0] === "-l" ? { code: 1, stdout: "", stderr: "no crontab for me" } : undefined));
+    await expect(cronAdapter.install(target({ nodePath: "/opt/node\n/bin/node" }), spawner)).rejects.toThrow(/newline/i);
+    expect(calls.some((c) => c.args[0] === "-")).toBe(false);
+  });
 });
 
 describe("systemd", () => {
@@ -204,6 +241,24 @@ describe("systemd", () => {
     expect(service).toContain(String.raw`Environment="CODEX_HOME=/srv/co\"dex/$HOME/back\\slash"`);
     // Every line of the unit stays one line: nothing above can inject a second directive.
     expect(service.split("\n").filter((l) => l.startsWith("ExecStart="))).toHaveLength(1);
+  });
+
+  // Re-review finding: same as cron — a systemd unit is line-oriented (one Key=Value directive per
+  // line), so an embedded \n or \r in a value is unrepresentable, not merely unescaped. Refuse
+  // instead of writing a unit whose ExecStart/Environment line silently gains an extra directive.
+  it("refuses a path containing a newline or carriage return instead of writing a broken unit file", async () => {
+    expect(() => renderService(target({ nodePath: "/opt/node\n/bin/node" }))).toThrow(/newline/i);
+    expect(() => renderService(target({ scriptPath: "/srv/we\rird/codex-kaboo.js" }))).toThrow(/newline/i);
+    expect(() => renderService(target({ codexHome: "/srv/codex\nhome" }))).toThrow(/systemd/i);
+
+    // Nothing is written: the throw happens before either unit file, or systemctl, is touched.
+    const homeDir = freshTempDir("ck-systemd-newline-");
+    const t = target({ homeDir, nodePath: "/opt/node\n/bin/node" });
+    const { spawner, calls } = mockSpawner(() => undefined);
+    await expect(systemdAdapter.install(t, spawner)).rejects.toThrow(/newline/i);
+    expect(existsSync(path.join(systemdDir(homeDir), "codex-kaboo-sync.service"))).toBe(false);
+    expect(existsSync(path.join(systemdDir(homeDir), "codex-kaboo-sync.timer"))).toBe(false);
+    expect(calls.length).toBe(0);
   });
 });
 
@@ -276,6 +331,32 @@ describe("schtasks", () => {
     expect(tr).toBe(`powershell.exe -NoProfile -WindowStyle Hidden -File "${file}"`);
     await schtasksAdapter.uninstall(t, spawner);
     expect(existsSync(file)).toBe(false);
+  });
+
+  // Decision (newline re-review): schtasks shares the check too. The VBS runner is classic
+  // VBScript — one statement per physical line, and a double-quoted string literal cannot itself
+  // span lines — so an embedded \n breaks out of the intended one-line `sh.Run "..."` statement.
+  // The PowerShell runner's own quoting is more forgiving (its quoted strings can span lines), but
+  // the value still has to survive as a single schtasks /TR argument and whatever the Windows Task
+  // Scheduler does when storing and replaying it — a round trip this repo cannot exercise outside
+  // Windows. Unable to prove that path safe the way the launchd/XML path is proven safe below,
+  // both schtasks runners refuse rather than gamble.
+  it("refuses a path containing a newline or carriage return for both the VBS and PowerShell runners", async () => {
+    expect(() => renderVbs(target({ nodePath: "C:\\node\n.exe" }))).toThrow(/newline/i);
+    expect(() => renderVbs(target({ codexHome: "D:\\codex\rhome" }))).toThrow(/newline/i);
+    expect(() => renderPowershellCommand(target({ nodePath: "C:\\node\n.exe" }))).toThrow(/newline/i);
+    expect(() => renderPs1(target({ scriptPath: "C:\\weird\rscript.js" }))).toThrow(/newline/i);
+    expect(() => vbsQuote("a\nb")).toThrow(/newline/i);
+    expect(() => powershellQuote("a\rb")).toThrow(/newline/i);
+
+    // Nothing is written: the throw happens before the VBS file (or `schtasks /Create`) is touched.
+    const homeDir = freshTempDir("ck-schtasks-newline-");
+    const kabooHome = path.join(homeDir, ".codex-kaboo");
+    const t = target({ homeDir, kabooHome, nodePath: "C:\\node\n.exe" });
+    const { spawner, calls } = mockSpawner((cmd) => (cmd === "where" ? { code: 0, stdout: "C:\\Windows\\System32\\wscript.exe", stderr: "" } : undefined));
+    await expect(schtasksAdapter.install(t, spawner)).rejects.toThrow(/newline/i);
+    expect(existsSync(path.join(kabooHome, "sync-hidden.vbs"))).toBe(false);
+    expect(calls.some((c) => c.command === "schtasks")).toBe(false);
   });
 });
 

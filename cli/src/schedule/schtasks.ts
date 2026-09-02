@@ -1,11 +1,20 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTarget, type Spawner } from "./index";
+import { assertNoNewline, checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTarget, type Spawner } from "./index";
 
 export const TASK_NAME = "codex-kaboo-sync";
 
-/** VBScript string literal: wrap in quotes, double any inner quote. */
+/**
+ * VBScript string literal: wrap in quotes, double any inner quote.
+ *
+ * A `\n` or `\r` inside `value` is refused rather than quoted: classic VBScript is one statement
+ * per physical line and a double-quoted string literal cannot itself span lines, so an embedded
+ * newline would break out of the intended one-line `sh.Run "..."` statement — see
+ * `assertNoNewline`. `command` (built in `renderVbs` below) is quoted as a whole here, so this one
+ * call also covers `nodePath`/`scriptPath`, not just `codexHome`.
+ */
 export function vbsQuote(value: string): string {
+  assertNoNewline(value, "a scheduled-task script");
   return `"${value.replace(/"/g, '""')}"`;
 }
 
@@ -25,16 +34,30 @@ export function renderVbs(target: ScheduleTarget): string {
   return lines.join("\r\n");
 }
 
-function powershellEnvLines(target: ScheduleTarget, ps: (value: string) => string): string[] {
+/**
+ * PowerShell single-quoted string literal: wrap in quotes, double any inner quote. Shared by
+ * `renderPowershellCommand` and `renderPs1` (previously each defined its own identical closure).
+ *
+ * A `\n` or `\r` inside `value` is refused rather than quoted. PowerShell's own quoting can in fact
+ * span physical lines, but the quoted result still has to survive as a single `schtasks /TR`
+ * argument and whatever the Windows Task Scheduler does when storing and later replaying it — a
+ * round trip this codebase cannot verify outside Windows. Rather than gamble on that, this refuses
+ * the same way `vbsQuote` and `cronQuote` do — see `assertNoNewline`.
+ */
+export function powershellQuote(value: string): string {
+  assertNoNewline(value, "a scheduled-task script");
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function powershellEnvLines(target: ScheduleTarget): string[] {
   const lines = ["$env:CODEX_KABOO_SCHEDULED='1'"];
-  if (target.codexHome) lines.push(`$env:CODEX_HOME=${ps(target.codexHome)}`);
+  if (target.codexHome) lines.push(`$env:CODEX_HOME=${powershellQuote(target.codexHome)}`);
   return lines;
 }
 
 /** Fallback when wscript.exe is unavailable (a console may flash briefly). Mirrors the VBS runner's environment. */
 export function renderPowershellCommand(target: ScheduleTarget): string {
-  const ps = (s: string): string => `'${s.replace(/'/g, "''")}'`;
-  const script = [...powershellEnvLines(target, ps), `& ${ps(target.nodePath)} ${ps(target.scriptPath)} ${scheduledArgs().join(" ")}`].join("; ");
+  const script = [...powershellEnvLines(target), `& ${powershellQuote(target.nodePath)} ${powershellQuote(target.scriptPath)} ${scheduledArgs().join(" ")}`].join("; ");
   return `powershell.exe -NoProfile -WindowStyle Hidden -Command "${script}"`;
 }
 
@@ -47,8 +70,7 @@ export function ps1Path(kabooHome: string): string {
  * would exceed schtasks's /TR length limit (documented as 261 characters); mirrors the VBS runner.
  */
 export function renderPs1(target: ScheduleTarget): string {
-  const ps = (s: string): string => `'${s.replace(/'/g, "''")}'`;
-  const lines = [...powershellEnvLines(target, ps), `& ${ps(target.nodePath)} ${ps(target.scriptPath)} ${scheduledArgs().join(" ")}`, ""];
+  const lines = [...powershellEnvLines(target), `& ${powershellQuote(target.nodePath)} ${powershellQuote(target.scriptPath)} ${scheduledArgs().join(" ")}`, ""];
   return lines.join("\r\n");
 }
 

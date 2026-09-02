@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTarget } from "./index";
+import { assertNoNewline, checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTarget } from "./index";
 
 const UNIT = "codex-kaboo-sync";
 
@@ -20,8 +20,13 @@ export function systemdDir(homeDir: string): string {
  *    silently mis-parsed the whole ExecStart line.
  *
  * Backslash first, so the backslashes this function itself introduces are not doubled again.
+ *
+ * A `\n` or `\r` inside `value` is refused rather than escaped: a systemd unit is one directive
+ * per line, parsed *before* this escaping has any effect, so an embedded newline cannot be quoted
+ * into safety — see `assertNoNewline`.
  */
 function systemdEscape(value: string): string {
+  assertNoNewline(value, "a systemd unit");
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/%/g, "%%");
 }
 
