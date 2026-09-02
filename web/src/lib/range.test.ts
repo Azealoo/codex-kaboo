@@ -65,6 +65,18 @@ describe("resolveRange ALL", () => {
     expect(r?.days).toBe(1100);
     expect(r?.from).toBe("2023-08-29");
   });
+  it("stays inside the cap when lastDay is ahead of today", () => {
+    // Re-review NEW-3: the anti-inversion clamp lets `to` exceed `today`, so flooring `from`
+    // against `today` produced a 1101-day span and threw the same `bad_range` the clamp exists
+    // to prevent. The floor has to be measured from `to`.
+    const r = resolveRange(preset("ALL"), "2026-09-01", {
+      firstDay: "2020-01-01",
+      lastDay: "2026-09-02",
+    });
+    expect(r?.to).toBe("2026-09-02");
+    expect(r?.from).toBe("2023-08-30");
+    expect(r?.days).toBe(1100);
+  });
   it("never inverts when a machine-local firstDay is ahead of the viewer's today", () => {
     // Reviewer's case: a teammate in UTC+13/+14 can legitimately own the only rollup, dated
     // `today + 1` from this viewer's browser clock. Unclamped, `from` (bounds.firstDay) landed
