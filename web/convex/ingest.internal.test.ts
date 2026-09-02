@@ -206,3 +206,22 @@ describe("finishSync", () => {
     expect(token?.lastUsedAt).toBe(T0 + 70_000);
   });
 });
+
+describe("counts", () => {
+  it("reports table sizes", async () => {
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    await t.mutation(internal.ingest.upsertSessions, {
+      userId: alice, machineId: "machine-1", sessions: [makeSession({ sessionId: "s1" })], now: T0,
+    });
+    await t.mutation(internal.ingest.upsertEvents, {
+      userId: alice, events: [makeEvent({ sessionId: "s1", seq: 1 }), makeEvent({ sessionId: "s1", seq: 2 })], now: T0,
+    });
+    expect(await t.query(internal.ingest.counts, {})).toEqual({
+      sessions: 1,
+      tokenEvents: 2,
+      dailyRollups: 1,
+      capped: { sessions: false, tokenEvents: false, dailyRollups: false },
+    });
+  });
+});

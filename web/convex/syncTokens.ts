@@ -3,6 +3,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
+  internalAction,
   internalMutation,
   internalQuery,
   type MutationCtx,
@@ -141,5 +142,57 @@ export const revoke = authedMutation({
     if (!token || token.userId !== ctx.user._id) throw new ConvexError({ code: "forbidden" });
     if (token.revokedAt === undefined) await ctx.db.patch(tokenId, { revokedAt: Date.now() });
     return null;
+  },
+});
+
+/** Pre-registers a teammate by email (pending user) and mints a token for the CLI:
+ *   npx convex run syncTokens:mint '{"email":"person@example.com","name":"Person"}'
+ * The raw token is printed once by the CLI command output and never stored. */
+export const mint = internalAction({
+  args: { email: v.string(), name: v.optional(v.string()) },
+  handler: async (ctx, { email, name }): Promise<{ token: string; prefix: string; userId: Id<"users"> }> => {
+    const token = generateRawToken();
+    const prefix = tokenPrefix(token);
+    const result = await ctx.runMutation(internal.syncTokens.insertForEmail, {
+      email,
+      name,
+      tokenHash: await sha256Hex(token),
+      prefix,
+    });
+    return { token, prefix, userId: result.userId };
+  },
+});
+
+export const insertForEmail = internalMutation({
+  args: {
+    email: v.string(),
+    name: v.optional(v.string()),
+    tokenHash: v.string(),
+    prefix: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ userId: Id<"users">; tokenId: Id<"syncTokens"> }> => {
+    const email = args.email.trim().toLowerCase();
+    if (email.length === 0) throw new ConvexError({ code: "bad_email" });
+    const now = Date.now();
+    const users = await ctx.db.query("users").collect(); // a handful of rows
+    const existing = users.find((user) => (user.email ?? "").toLowerCase() === email);
+    const userId =
+      existing?._id ??
+      (await ctx.db.insert("users", {
+        clerkId: `pending:${email}`,
+        tokenIdentifier: `pending:${email}`,
+        email,
+        name: args.name ?? email,
+        createdAt: now,
+        lastSeenAt: now,
+      }));
+    const tokenId = await ctx.db.insert("syncTokens", {
+      userId,
+      tokenHash: args.tokenHash,
+      prefix: args.prefix,
+      name: "cli-bootstrap",
+      createdAt: now,
+    });
+    return { userId, tokenId };
   },
 });

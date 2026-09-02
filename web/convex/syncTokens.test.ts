@@ -102,3 +102,34 @@ describe("lookupByHash / touchLastUsed", () => {
     expect(row?.lastUsedAt).toBe(1_060_000);
   });
 });
+
+describe("syncTokens.mint (bootstrap)", () => {
+  it("creates a pending user that the first Clerk sign-in adopts", async () => {
+    const t = setup();
+    const minted = await t.action(internal.syncTokens.mint, { email: "Alice@Example.com", name: "Alice" });
+    expect(minted.token).toMatch(/^ck_[A-Za-z0-9_-]{43}$/);
+    expect(minted.prefix).toBe(minted.token.slice(0, 9));
+    const pending = await t.run(async (ctx) => ctx.db.get(minted.userId));
+    expect(pending).toMatchObject({ clerkId: "pending:alice@example.com", email: "alice@example.com", name: "Alice" });
+    const who = await t.fetch("/api/v1/whoami", { headers: { authorization: `Bearer ${minted.token}` } });
+    expect(who.status).toBe(200);
+    expect(await who.json()).toMatchObject({ userId: minted.userId, token: { name: "cli-bootstrap" } });
+
+    const adopted = await withUser(t, "alice").mutation(api.users.ensure, {});
+    expect(adopted).toBe(minted.userId);
+    expect(await t.run(async (ctx) => ctx.db.query("users").collect())).toHaveLength(1);
+    expect(await t.run(async (ctx) => ctx.db.get(minted.userId))).toMatchObject({
+      clerkId: "user_alice",
+      tokenIdentifier: "https://clerk.example|user_alice",
+    });
+    expect((await withUser(t, "alice").query(api.syncTokens.list, {})).map((r) => r.name)).toEqual(["cli-bootstrap"]);
+  });
+
+  it("attaches to an already registered user with the same email", async () => {
+    const t = setup();
+    const aliceId = await registerUser(t, "alice");
+    const minted = await t.action(internal.syncTokens.mint, { email: "alice@example.com" });
+    expect(minted.userId).toBe(aliceId);
+    expect(await t.run(async (ctx) => ctx.db.query("users").collect())).toHaveLength(1);
+  });
+});

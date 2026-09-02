@@ -19,7 +19,7 @@ import {
 } from "../../shared/src/sync";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { httpAction, internalMutation, type ActionCtx } from "./_generated/server";
+import { httpAction, internalMutation, internalQuery, type ActionCtx } from "./_generated/server";
 import { LIMITS, latestCliVersion } from "./lib/constants";
 import { parseBearer, sha256Hex } from "./lib/hash";
 import {
@@ -446,3 +446,33 @@ export const whoamiHandler = httpAction(async (ctx, request) => {
 export const healthHandler = httpAction(async () =>
   jsonResponse(200, { ok: true, serverTime: Date.now() }),
 );
+
+/** No table is scanned past this in `counts`; a table that hits it reports `capped: true`. */
+const COUNTS_LIMIT = 5000;
+
+/** Operational check: `npx convex run ingest:counts '{}'`. Every table is counted up to 5,000 rows. */
+export const counts = internalQuery({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{
+    sessions: number;
+    tokenEvents: number;
+    dailyRollups: number;
+    capped: { sessions: boolean; tokenEvents: boolean; dailyRollups: boolean };
+  }> => {
+    const sessions = await ctx.db.query("sessions").take(COUNTS_LIMIT);
+    const tokenEvents = await ctx.db.query("tokenEvents").take(COUNTS_LIMIT);
+    const dailyRollups = await ctx.db.query("dailyRollups").take(COUNTS_LIMIT);
+    return {
+      sessions: sessions.length,
+      tokenEvents: tokenEvents.length,
+      dailyRollups: dailyRollups.length,
+      capped: {
+        sessions: sessions.length === COUNTS_LIMIT,
+        tokenEvents: tokenEvents.length === COUNTS_LIMIT,
+        dailyRollups: dailyRollups.length === COUNTS_LIMIT,
+      },
+    };
+  },
+});

@@ -66,3 +66,22 @@ describe("users.me / users.list", () => {
     ]);
   });
 });
+
+describe("users.ensure adoption", () => {
+  it("does not adopt a pending user with a different email", async () => {
+    const t = setup();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        clerkId: "pending:someone-else@example.com",
+        tokenIdentifier: "pending:someone-else@example.com",
+        email: "someone-else@example.com",
+        name: "Someone",
+        createdAt: 1,
+        lastSeenAt: 1,
+      });
+    });
+    await withUser(t, "alice").mutation(api.users.ensure, {});
+    const users = await t.run(async (ctx) => ctx.db.query("users").collect());
+    expect(users).toHaveLength(2);
+  });
+});

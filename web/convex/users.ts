@@ -34,6 +34,17 @@ export const ensure = mutation({
       await ctx.db.patch(existing._id, fields);
       return existing._id;
     }
+    const email = identity.email?.trim().toLowerCase();
+    const pending = email
+      ? await ctx.db
+          .query("users")
+          .withIndex("by_clerkId", (q) => q.eq("clerkId", `pending:${email}`))
+          .unique()
+      : null;
+    if (pending) {
+      await ctx.db.patch(pending._id, { clerkId: identity.subject, ...fields });
+      return pending._id;
+    }
     return await ctx.db.insert("users", { clerkId: identity.subject, createdAt: now, ...fields });
   },
 });
