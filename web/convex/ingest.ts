@@ -19,7 +19,9 @@ import {
 } from "../../shared/src/sync";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { httpAction, internalMutation, internalQuery, type ActionCtx } from "./_generated/server";
+import {
+  httpAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx,
+} from "./_generated/server";
 import { LIMITS, latestCliVersion } from "./lib/constants";
 import { parseBearer, sha256Hex } from "./lib/hash";
 import {
@@ -78,11 +80,15 @@ export function chunkSessions(sessions: SessionSummary[]): SessionSummary[][] {
 
 const EVENT_KEYS = [
   "sessionId", "seq", "ts", "day", "hour", "model", "effort", "turnId", "project", "isSubagent",
-  "input", "cachedInput", "cacheWrite", "output", "reasoning", "total", "contextWindow",
+  "origin", "input", "cachedInput", "cacheWrite", "output", "reasoning", "total", "contextWindow",
 ] as const;
 
-/** Field-by-field equality of the payload fields (a stored document may carry extra fields). */
-export function eventsEqual(a: TokenEvent, b: TokenEvent): boolean {
+/**
+ * Field-by-field equality of the payload fields (a stored document may carry extra fields, and
+ * widens the enum-like `origin` to `string` the way the Convex validator stores it).
+ */
+type EventFields = Omit<TokenEvent, "origin"> & { origin: string };
+export function eventsEqual(a: EventFields, b: EventFields): boolean {
   return EVENT_KEYS.every((key) => a[key] === b[key]);
 }
 
@@ -137,6 +143,33 @@ export const upsertMachine = internalMutation({
   },
 });
 
+/**
+ * Deletes every `count`-derived event of one session and returns the days they were on, so their
+ * rollups get recomputed. This is the ingest's ONLY delete path, and it exists because the CLI's
+ * `token_count`-vs-`token_usage_record` choice is a whole-file decision re-taken on every parse
+ * while uploads are incremental: a parse that ended before the file's first `token_usage_record`
+ * has already shipped `count` events keyed on `(sessionId, seq)` that the next parse suppresses
+ * locally and could otherwise never retract, double-counting the session's tokens for good.
+ *
+ * Reads that session's whole `by_session_seq` range. That is bounded in practice because it fires
+ * at most once per session — the stored `eventOrigin` latches to `record` in the same mutation —
+ * and because `upsertSessions` runs before `upsertEvents`, so a session first seen in this batch
+ * usually has no stored events yet.
+ */
+async function purgeCountEvents(ctx: MutationCtx, sessionId: string): Promise<string[]> {
+  const events = await ctx.db
+    .query("tokenEvents")
+    .withIndex("by_session_seq", (q) => q.eq("sessionId", sessionId))
+    .collect();
+  const days: string[] = [];
+  for (const event of events) {
+    if (event.origin !== "count") continue;
+    days.push(event.day);
+    await ctx.db.delete(event._id);
+  }
+  return days;
+}
+
 export const upsertSessions = internalMutation({
   args: {
     userId: v.id("users"),
@@ -153,14 +186,25 @@ export const upsertSessions = internalMutation({
         .query("sessions")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", session.sessionId))
         .unique();
+      if (existing && existing.userId !== userId) {
+        conflicts.push(session.sessionId);
+        continue;
+      }
+      // The `count` -> `record` flip lives here rather than in `upsertEvents` because the summary
+      // is re-derived in full on every parse and always states the file's CURRENT mechanism, so
+      // the trigger is exact and fires at most once per session per flip; in `upsertEvents` it
+      // would rescan the session on every chunk. `record` always wins — a single Codex process
+      // writes one file and a file's emission pattern cannot change mid-file — so there is no
+      // reverse transition. Checked BEFORE the write below, which latches the stored value, and
+      // idempotent either way: after the purge there is nothing left to delete, so `--full`, a
+      // re-send and a deleted `state.json` all heal rather than corrupt.
+      if (session.eventOrigin === "record" && existing?.eventOrigin !== "record") {
+        for (const day of await purgeCountEvents(ctx, session.sessionId)) touched.add(day);
+      }
       if (!existing) {
         await ctx.db.insert("sessions", { ...session, userId, machineId, syncedAt: now });
         counts.inserted += 1;
         touched.add(session.day);
-        continue;
-      }
-      if (existing.userId !== userId) {
-        conflicts.push(session.sessionId);
         continue;
       }
       if (existing.summaryHash === session.summaryHash) {

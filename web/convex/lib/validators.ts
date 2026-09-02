@@ -96,6 +96,7 @@ export const sessionSummaryFields = {
   ttft: ttftValidator,
   tokens: tokensValidator,
   responses: v.number(),
+  eventOrigin: v.string(), // TokenEventOrigin: "count" | "record"
   inProgress: v.boolean(),
   lineCount: v.number(),
   generation: v.number(),
@@ -116,6 +117,7 @@ export const tokenEventFields = {
   turnId: v.optional(v.string()),
   project: v.string(),
   isSubagent: v.boolean(),
+  origin: v.string(), // TokenEventOrigin: "count" | "record"
   input: v.number(),
   cachedInput: v.number(),
   cacheWrite: v.number(),

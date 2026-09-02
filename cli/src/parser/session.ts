@@ -2,7 +2,9 @@ import {
   MAX_KEYED_ENTRIES_PER_SESSION, OTHER_KEY, PARSER_VERSION,
 } from "@codex-kaboo/shared/constants";
 import { addTokens, emptyTokens, emptyToolCounts, emptyTtft, mergeKeyCounts, ttftBucketIndex } from "@codex-kaboo/shared/metrics";
-import type { KeyCount, RateLimitSnapshot, SessionSummary, TokenEvent, ToolCounts, Ttft } from "@codex-kaboo/shared/sync";
+import type {
+  KeyCount, RateLimitSnapshot, SessionSummary, TokenEvent, TokenEventOrigin, ToolCounts, Ttft,
+} from "@codex-kaboo/shared/sync";
 import { parseJsonLine } from "../core/jsonl-reader";
 import { summaryHashOf } from "../util/hash";
 import {
@@ -28,6 +30,7 @@ interface TurnInfo {
 interface PendingEvent {
   seq: number;
   ts: number;
+  origin: TokenEventOrigin;
   turnId?: string;
   model?: string; // explicit model on the line (token_usage_record only)
   input: number;
@@ -231,6 +234,7 @@ function pendingEventFrom(
   ts: number | null,
   usage: Record<string, unknown>,
   info: Record<string, unknown> | null,
+  origin: TokenEventOrigin,
 ): PendingEvent | null {
   if (ts === null) return null;
   const input = toCount(usage.input_tokens);
@@ -240,7 +244,7 @@ function pendingEventFrom(
   const reasoning = toCount(usage.reasoning_output_tokens);
   if (input + cachedInput + cacheWrite + output + reasoning === 0) return null;
   const contextWindow = toCount(info?.model_context_window) || state.contextWindow;
-  const event: PendingEvent = { seq, ts, input, cachedInput, cacheWrite, output, reasoning };
+  const event: PendingEvent = { seq, ts, origin, input, cachedInput, cacheWrite, output, reasoning };
   if (state.currentTurnId) event.turnId = state.currentTurnId;
   if (contextWindow) event.contextWindow = contextWindow;
   return event;
@@ -301,7 +305,7 @@ function handleEventMsg(state: ReducerState, seq: number, payload: Record<string
       const info = asRecord(payload.info);
       const usage = asRecord(info?.last_token_usage);
       if (usage !== null) {
-        const event = pendingEventFrom(state, seq, ts, usage, info);
+        const event = pendingEventFrom(state, seq, ts, usage, info, "count");
         if (event) state.tokenCountEvents.push(event);
       }
       const rateLimits = asRecord(payload.rate_limits);
@@ -330,7 +334,7 @@ function handleUsageRecord(state: ReducerState, seq: number, payload: Record<str
     bump(state.unknownTypes, "token_usage_record/unrecognised");
     return;
   }
-  const event = pendingEventFrom(state, seq, ts, usage, info);
+  const event = pendingEventFrom(state, seq, ts, usage, info, "record");
   if (event === null) return; // degenerate (all-zero or unparseable ts) — must not suppress token_count events
   state.hasUsageRecords = true;
   const turnId = clipString(payload.turn_id);
@@ -440,6 +444,10 @@ export function finalize(state: ReducerState, opts: FinalizeOptions): ParsedSess
   const zone = resolveZone(state.timezone, state.ctx.machineZone);
   const startedAt = state.startedAt ?? state.firstTs ?? state.ctx.fileTimestampMs ?? opts.now;
   const endedAt = Math.max(startedAt, state.lastTs ?? startedAt);
+  // Whole-file choice, re-decided from scratch on every parse. It rides the summary as
+  // `eventOrigin` because a PREVIOUS parse of a still-growing file may have taken the other branch
+  // and already shipped its events; the server uses the flip to `record` to retract them.
+  const eventOrigin: TokenEventOrigin = state.hasUsageRecords ? "record" : "count";
   const pending = state.hasUsageRecords ? state.usageRecordEvents : state.tokenCountEvents;
   const events: TokenEvent[] = [...pending]
     .sort((a, b) => a.seq - b.seq)
@@ -455,6 +463,7 @@ export function finalize(state: ReducerState, opts: FinalizeOptions): ParsedSess
         model: ev.model ?? turn?.model ?? state.lastModel ?? state.fallbackModel ?? "(unknown)",
         project: state.project,
         isSubagent: state.isSubagent,
+        origin: ev.origin,
         input: ev.input,
         cachedInput: ev.cachedInput,
         cacheWrite: ev.cacheWrite,
@@ -501,6 +510,7 @@ export function finalize(state: ReducerState, opts: FinalizeOptions): ParsedSess
     ttft: { count: state.ttft.count, sumMs: state.ttft.sumMs, hist: [...state.ttft.hist] },
     tokens,
     responses: events.length,
+    eventOrigin,
     inProgress: state.openTurn, // structural only: a started turn without completion
     lineCount: c.lineCount,
     generation: opts.generation,

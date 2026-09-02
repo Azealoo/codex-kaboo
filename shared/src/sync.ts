@@ -94,6 +94,17 @@ export const Ttft = z.object({
 });
 export type Ttft = z.infer<typeof Ttft>;
 
+/**
+ * Which of Codex's two token-usage mechanisms produced a row: `token_count` event_msg lines
+ * (`count`) or `token_usage_record` lines (`record`). A file that emits both is parsed as
+ * `record`-only, but an earlier parse of the same file — truncated before its first
+ * `token_usage_record` — will already have shipped `count` events that the server has to retract.
+ * Carrying the mechanism on the wire is what makes that retraction expressible; see
+ * `SessionSummary.eventOrigin`.
+ */
+export const TokenEventOrigin = z.enum(["count", "record"]);
+export type TokenEventOrigin = z.infer<typeof TokenEventOrigin>;
+
 export const SessionSummary = z.object({
   sessionId: nonEmptyString, // threadId or `${threadId}_${rolloutId}`
   threadId: nonEmptyString,
@@ -127,6 +138,12 @@ export const SessionSummary = z.object({
   ttft: Ttft,
   tokens: TokenCounts,
   responses: count, // number of token events
+  /**
+   * The mechanism this parse chose for the WHOLE file — re-derived from scratch every parse, so it
+   * is always the file's current, authoritative answer, and it rides the file's last batch on every
+   * parse. `record` here retracts any `count` event the server still holds for this session.
+   */
+  eventOrigin: TokenEventOrigin,
   inProgress: z.boolean(),
   lineCount: count,
   generation: count,
@@ -147,6 +164,7 @@ export const TokenEvent = z.object({
   turnId: shortString.optional(),
   project: nonEmptyString,
   isSubagent: z.boolean(),
+  origin: TokenEventOrigin, // the line type this row was derived from
   input: count,
   cachedInput: count,
   cacheWrite: count,

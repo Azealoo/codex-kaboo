@@ -273,3 +273,103 @@ describe("machine bookkeeping", () => {
     expect((await t.run(async (ctx) => ctx.db.query("machines").first()))?.hostname).toBeUndefined();
   });
 });
+
+/**
+ * The `token_usage_record` flip, over the real incremental protocol. A live rollout file is
+ * re-parsed and re-uploaded on every tick, and the reader skips its trailing partial line — so a
+ * pass that ends before the file's first `token_usage_record` ships `token_count`-derived events
+ * that the next pass supersedes locally but, with no delete path, could never retract on the
+ * server. The numbers are the project's own b3 fixture: `token_count` 1008 at seq 4, then
+ * `token_usage_record` 320 at seq 5.
+ */
+describe("token_usage_record supersedes token_count across parses", () => {
+  const COUNT_TOKENS = { input: 999, cachedInput: 0, cacheWrite: 0, output: 9, reasoning: 0, total: 1008 };
+  const RECORD_TOKENS = { input: 300, cachedInput: 100, cacheWrite: 0, output: 20, reasoning: 5, total: 320 };
+
+  /** Pass 1: the file ends at seq 4, so the summary and its one event are still `count`-derived. */
+  const countPass = () =>
+    makeBatch({
+      sessions: [
+        makeSession({
+          sessionId: "b3", eventOrigin: "count", tokens: COUNT_TOKENS, responses: 1,
+          inProgress: true, lineCount: 5, summaryHash: "c".repeat(40),
+        }),
+      ],
+      tokenEvents: [makeEvent({ sessionId: "b3", seq: 4, origin: "count", ...COUNT_TOKENS })],
+    });
+
+  /** Pass 2: the file is complete, so only seq 5 is emitted and only `record` events are valid. */
+  const recordPass = () =>
+    makeBatch({
+      batchId: "batch-2",
+      sessions: [
+        makeSession({
+          sessionId: "b3", eventOrigin: "record", tokens: RECORD_TOKENS, responses: 1,
+          inProgress: false, lineCount: 11, summaryHash: "d".repeat(40),
+        }),
+      ],
+      tokenEvents: [makeEvent({ sessionId: "b3", seq: 5, origin: "record", ...RECORD_TOKENS })],
+    });
+
+  it("deletes the superseded count events and repairs the day's rollup", async () => {
+    const t = setup();
+    const { userId, raw } = await userWithToken(t, "alice");
+    expect((await postSync(t, raw, countPass())).status).toBe(200);
+    expect(await getRollup(t, userId, "2026-08-31")).toMatchObject({ responses: 1 });
+
+    vi.advanceTimersByTime(60_000);
+    expect((await postSync(t, raw, recordPass())).status).toBe(200);
+
+    // Without the purge the day reads 1008 + 320 = 1328 tokens over 2 responses, for a session
+    // that made one 320-token response — the Total-tokens card and the Machines table disagree.
+    const rollup = await getRollup(t, userId, "2026-08-31");
+    expect(rollup?.tokens.total).toBe(320);
+    expect(rollup?.responses).toBe(1);
+    const stored = await t.run(async (ctx) => ctx.db.query("tokenEvents").collect());
+    expect(stored.map((e) => e.seq)).toEqual([5]);
+  });
+
+  it("is idempotent: replaying the record pass changes nothing", async () => {
+    const t = setup();
+    const { userId, raw } = await userWithToken(t, "alice");
+    await postSync(t, raw, countPass());
+    vi.advanceTimersByTime(60_000);
+    await postSync(t, raw, recordPass());
+    const before = await getRollup(t, userId, "2026-08-31");
+
+    vi.advanceTimersByTime(60_000);
+    const replay = await postSync(t, raw, recordPass());
+    expect(replay.json.accepted).toEqual({
+      sessions: { inserted: 0, updated: 0, unchanged: 1 },
+      events: { inserted: 0, updated: 0, unchanged: 1 },
+    });
+    expect(await t.run(async (ctx) => ctx.db.query("tokenEvents").collect())).toHaveLength(1);
+    expect(JSON.stringify(await getRollup(t, userId, "2026-08-31"))).toBe(JSON.stringify(before));
+  });
+
+  it("leaves a session that never emitted a record event alone", async () => {
+    const t = setup();
+    const { userId, raw } = await userWithToken(t, "alice");
+    await postSync(t, raw, countPass());
+    const before = await getRollup(t, userId, "2026-08-31");
+
+    vi.advanceTimersByTime(60_000);
+    const grown = countPass();
+    grown.batchId = "batch-2";
+    grown.tokenEvents = [makeEvent({ sessionId: "b3", seq: 6, origin: "count", ...COUNT_TOKENS })];
+    grown.sessions = [
+      makeSession({
+        sessionId: "b3", eventOrigin: "count", responses: 2, inProgress: true, lineCount: 7,
+        tokens: { input: 1998, cachedInput: 0, cacheWrite: 0, output: 18, reasoning: 0, total: 2016 },
+        summaryHash: "e".repeat(40),
+      }),
+    ];
+    expect((await postSync(t, raw, grown)).status).toBe(200);
+    const stored = await t.run(async (ctx) => ctx.db.query("tokenEvents").collect());
+    expect(stored.map((e) => e.seq).sort()).toEqual([4, 6]);
+    const rollup = await getRollup(t, userId, "2026-08-31");
+    expect(rollup?.tokens.total).toBe(2016);
+    expect(rollup?.responses).toBe(2);
+    expect(before?.responses).toBe(1);
+  });
+});

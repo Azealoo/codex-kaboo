@@ -110,6 +110,30 @@ describe("reducer: sessions, turns and token events", () => {
     expect(parsed.events).toHaveLength(1);
     expect(parsed.events[0]).toMatchObject({ seq: 4, model: "gpt-5.6-sol", effort: "medium", total: 1010 });
   });
+  // The b3 fixture's shape: a token_count at seq 4 that a later token_usage_record at seq 5
+  // supersedes. A parse of the truncated file has already shipped seq 4, so both the event and the
+  // summary must say which mechanism produced them — that is the server's only handle on the retraction.
+  it("tags each event with its origin and the summary with the file's current mechanism", () => {
+    const upTo4 = [
+      line("session_meta", meta(), T(0), 0),
+      line("event_msg", { type: "task_started", turn_id: "t1", started_at: SEC(1) }, T(1), 1),
+      line("turn_context", { turn_id: "t1", model: "gpt-5.6-sol", effort: "medium", timezone: "UTC" }, T(1), 2),
+      line("event_msg", { type: "token_count", info: { last_token_usage: usage(999, 0, 9, 0) }, rate_limits: null }, T(2), 3),
+    ];
+    const truncated = run(upTo4);
+    expect(truncated.events).toHaveLength(1);
+    expect(truncated.events[0]).toMatchObject({ seq: 3, origin: "count", total: 1008 });
+    expect(truncated.summary.eventOrigin).toBe("count");
+    expect(truncated.summary.tokens.total).toBe(1008);
+
+    const full = run([...upTo4, line("token_usage_record", { turn_id: "t1", usage: usage(300, 100, 20, 5) }, T(2), 4)]);
+    expect(full.events).toHaveLength(1);
+    expect(full.events[0]).toMatchObject({ seq: 4, origin: "record", total: 320 });
+    expect(full.summary.eventOrigin).toBe("record");
+    expect(full.summary.tokens.total).toBe(320);
+    expect(TokenEvent.safeParse(full.events[0]).success).toBe(true);
+    expect(SessionSummary.safeParse(full.summary).success).toBe(true);
+  });
   it("handles sub-agent metadata, missing zones and open turns", () => {
     const parsed = run(
       [
