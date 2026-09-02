@@ -93,6 +93,10 @@ function scan(value, trail) {
 }
 
 const batches = report.batches ?? [];
+// A dry run of a steady-state machine (nothing changed since the last sync) legitimately carries a
+// single machine-only heartbeat batch and no session data — that heartbeat is exactly what a real
+// run would still POST, so it is the payload worth auditing, not an error. Only a report with no
+// payload at all means the run found nothing to look at.
 if (batches.length === 0) problems.push("no batches in the dry-run report (is the codex home right?)");
 batches.forEach((batch, i) => scan(batch, `batches[${i}]`));
 for (const batch of batches) {
@@ -110,8 +114,20 @@ for (const batch of batches) {
   }
 }
 
+// Steady state: the report carries only the heartbeat, so there is nothing to reconcile against the
+// raw logs — every session in `raw` was uploaded on an earlier run and is deliberately absent here.
+// Say so loudly (the privacy scan above still ran over the heartbeat) instead of flagging every
+// already-synced session as missing, which would make a steady-state machine unauditable.
+const heartbeatOnly = batches.length > 0 && sessions.size === 0 && eventCounts.size === 0;
+if (heartbeatOnly) {
+  const rawCount = Object.keys(raw).length;
+  console.log(`heartbeat-only dry run: ${batches.length} machine-only batch(es), no session data.`);
+  console.log(`totals reconciliation SKIPPED (${rawCount} session(s) in the raw logs, all already synced).`);
+  console.log("re-run with a fresh CODEX_KABOO_HOME to force a full re-parse and reconcile them.");
+}
+
 const rows = [];
-for (const [sessionId, expected] of Object.entries(raw)) {
+for (const [sessionId, expected] of (heartbeatOnly ? [] : Object.entries(raw))) {
   const s = sessions.get(sessionId);
   if (!s) {
     problems.push(`session ${sessionId} missing from the dry run`);
@@ -134,4 +150,8 @@ if (problems.length > 0) {
   for (const problem of problems) console.error(` - ${problem}`);
   process.exit(1);
 }
-console.log("PASS: no text, paths or forbidden keys; totals match the raw logs");
+console.log(
+  heartbeatOnly
+    ? "PASS: no text, paths or forbidden keys in the heartbeat (totals not reconciled — see above)"
+    : "PASS: no text, paths or forbidden keys; totals match the raw logs",
+);

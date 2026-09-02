@@ -174,10 +174,32 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
           rateLimitChanged: sendRateLimit,
         });
       });
+      // `--dry-run --json` is the privacy audit: it has to show every payload a real run would
+      // send, and in steady state — nothing changed since the last sync — the ONLY thing a real run
+      // sends is the machine-only heartbeat below, carrying the full `machine` object (including
+      // the hostname, when `login --hostname` opted in). Reporting `"batches": []` there hid
+      // precisely the payload a privacy-conscious user most wants to inspect, and left a machine in
+      // its most common state with nothing to audit at all. Mirror the real heartbeat decision at
+      // :305-331 exactly — same due-or-rate-limit-changed test, same batch shape — but report the
+      // payload instead of sending it (a dry run makes no network call and writes no state, so
+      // `state.lastHeartbeatAt` is left alone and the real run stays due).
+      const heartbeatDue = state.lastHeartbeatAt === null || deps.now() - state.lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS;
+      if (report.batches.length === 0 && report.exitCode !== 2 && (heartbeatDue || plan.rateLimitChanged)) {
+        report.batches.push(
+          toSyncBatch({ sessions: [], tokenEvents: [], files: [] }, machine, {
+            cliVersion: deps.cliVersion,
+            batchId: deps.newId(),
+            sentAt: deps.now(),
+            rateLimit: plan.rateLimitChanged ? plan.rateLimit : null,
+            rateLimitChanged: plan.rateLimitChanged,
+          }),
+        );
+        report.heartbeat = true;
+      }
       report.uploads = {
         sessions: plan.uploads.filter((u) => u.summaryChanged).length,
         events: plan.uploads.reduce((n, u) => n + u.events.length, 0),
-        requests: batches.length,
+        requests: report.batches.length, // the heartbeat is a request too, as it is on the real path
       };
       report.rateLimit = plan.rateLimit;
       return finish();

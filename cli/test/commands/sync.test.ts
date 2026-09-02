@@ -85,6 +85,48 @@ describe("runSync dry-run", () => {
     expect(text).not.toContain("/redacted");
     expect(text).not.toContain(s.codexHome);
   });
+  // Review finding: the dry-run branch returned before the heartbeat block, so in steady state —
+  // nothing changed since the last sync, which is where a machine spends most of its life — the
+  // audit reported `"batches": []` while a real run still POSTed a machine-only heartbeat carrying
+  // the whole machine object, hostname included. The one payload a privacy-conscious user most
+  // wants to inspect was the one the audit never showed (and check-dry-run.mjs treated an empty
+  // batch list as a failure, so steady state could not be audited at all).
+  it("reports the machine-only heartbeat a real run would still send when nothing changed", async () => {
+    const s = await setup();
+    const first = await runSync({ ...base, codexHome: s.codexHome }, s.deps); // steady state
+    expect(first.exitCode).toBe(0);
+    expect((await readState(s.paths)).state.lastHeartbeatAt).toBe(NOW);
+
+    s.clock.now = NOW + 2 * 60 * 60 * 1000; // past HEARTBEAT_INTERVAL_MS: a real run would heartbeat
+    const dry = await runSync({ ...base, dryRun: true, codexHome: s.codexHome }, { ...s.deps, createClient: () => { throw new Error("no network in dry-run"); } });
+    expect(dry.heartbeat).toBe(true);
+    expect(dry.uploads).toEqual({ sessions: 0, events: 0, requests: 1 });
+    expect(dry.files.every((f) => f.action === "unchanged")).toBe(true);
+    expect(dry.batches).toHaveLength(1);
+    const shown = dry.batches![0]!;
+    expect(shown.sessions).toEqual([]); // machine-only: no session or event data
+    expect(shown.tokenEvents).toEqual([]);
+    expect(shown.rateLimit).toBeUndefined(); // the real run already acked this snapshot
+    expect(shown.machine).toMatchObject({ machineId: "m-1", label: "brisk-otter", platform: "darwin", hostname: null });
+    // A dry run still writes nothing, so the real run below is still due.
+    expect((await readState(s.paths)).state.lastHeartbeatAt).toBe(NOW);
+
+    // The audit is only worth anything if it shows what the wire actually carries: the reported
+    // payload must equal the one a real run at the same moment sends, batch identity aside.
+    const real = await runSync({ ...base, codexHome: s.codexHome }, s.deps);
+    expect(real.heartbeat).toBe(true);
+    const sent = s.fake.batches[s.fake.batches.length - 1]!;
+    const identity = (b: SyncBatch): unknown => ({ ...b, batchId: "-", sentAt: 0 });
+    expect(identity(sent)).toEqual(identity(shown));
+
+    // With `login --hostname`, the audit now shows the hostname the heartbeat carries.
+    const t = await setup();
+    await writeConfig(t.paths, { server: "https://x.convex.site", token: "ck_t", machineId: "m-2", label: "brisk-otter", hostnameOptIn: true, codexHomes: [] });
+    await runSync({ ...base, codexHome: t.codexHome }, t.deps);
+    t.clock.now = NOW + 2 * 60 * 60 * 1000;
+    const opted = await runSync({ ...base, dryRun: true, codexHome: t.codexHome }, { ...t.deps, createClient: () => { throw new Error("no network in dry-run"); } });
+    expect(opted.batches?.[0]?.machine.hostname).toBe("h");
+  });
   it("works without a login and refuses a real sync without one", async () => {
     const s = await setup({ loggedIn: false });
     const dry = await runSync({ ...base, dryRun: true, codexHome: s.codexHome }, s.deps);
