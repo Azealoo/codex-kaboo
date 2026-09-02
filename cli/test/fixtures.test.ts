@@ -35,7 +35,7 @@ describe("fixtures", () => {
       isSubagent: false, model: "gpt-5.6-sol", effort: "xhigh", cliVersion: "0.150.1", turns: 1, completedTurns: 1,
       userMessages: 1, agentMessages: 4, reasoningItems: 26, filesChanged: 1, linesAdded: 4, linesRemoved: 0,
       compactions: 0, activeMs: 258435, responses: 23, lineCount: 159, parseErrors: 0, wallMs: 739002,
-      skills: [{ key: "openai-docs", count: 1 }], mcpTools: [],
+      skills: [{ key: "skill-1", count: 1 }], mcpTools: [],
     });
     expect(s.gitBranch).toBeDefined();
     expect(s.toolCounts).toEqual({ commandRead: 1, commandList: 1, commandSearch: 2, commandOther: 6, fileChange: 1, webSearch: 11, imageView: 0, mcpTool: 0, other: 0 });
@@ -52,7 +52,7 @@ describe("fixtures", () => {
     expect(s).toMatchObject({
       turns: 2, completedTurns: 2, userMessages: 1, agentMessages: 8, reasoningItems: 144, filesChanged: 60,
       linesAdded: 5287, linesRemoved: 269, compactions: 0, activeMs: 2785597, responses: 127, lineCount: 805, wallMs: 2900244,
-      skills: [{ key: "lark-apps", count: 3 }], source: "cli", originator: "codex-tui",
+      skills: [{ key: "skill-1", count: 3 }], source: "cli", originator: "codex-tui",
     });
     expect(s.gitBranch).toBeUndefined();
     expect(s.toolCounts).toEqual({ commandRead: 13, commandList: 0, commandSearch: 3, commandOther: 51, fileChange: 40, webSearch: 2, imageView: 4, mcpTool: 0, other: 0 });

@@ -37,19 +37,30 @@ const KEEP = new Set([
 const PATH_KEYS = new Set(["path", "move_path", "workspace_roots", "writable_roots"]);
 const SKILL_RE = /(?:^|[\\/])([^\\/\s"']+)[\\/]SKILL\.md\b/i;
 const pathIds = new Map();
+// Real skill directory name -> synthetic "skill-N", assigned in order of first appearance in the
+// file. Shared by redactPath and redactCommandText so the same real name always maps to the same
+// synthetic one, wherever in the file it is seen — the real name (e.g. a user's actual tool/skill
+// name) must never survive into a committed fixture; only the SKILL.md structure matters for
+// skill-detection tests, not the name itself.
+const skillIds = new Map();
 let originalId = null;
 let originalSessionId = null;
 
+function synthSkillName(real) {
+  if (!skillIds.has(real)) skillIds.set(real, `skill-${skillIds.size + 1}`);
+  return skillIds.get(real);
+}
+
 function redactPath(value) {
   const m = SKILL_RE.exec(value);
-  if (m) return `/redacted/skills/${m[1]}/SKILL.md`;
+  if (m) return `/redacted/skills/${synthSkillName(m[1])}/SKILL.md`;
   if (!pathIds.has(value)) pathIds.set(value, pathIds.size + 1);
   return `/redacted/${pathIds.get(value)}`;
 }
 
 function redactCommandText(value) {
   const m = SKILL_RE.exec(value);
-  return m ? `cat /redacted/skills/${m[1]}/SKILL.md` : "redacted";
+  return m ? `cat /redacted/skills/${synthSkillName(m[1])}/SKILL.md` : "redacted";
 }
 
 function countLines(content) {
