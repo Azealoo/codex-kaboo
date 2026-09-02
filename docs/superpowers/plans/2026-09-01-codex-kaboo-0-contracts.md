@@ -70,7 +70,8 @@ export const MAX_EVENTS_PER_REQUEST = 5000;
 // Server-side mutation chunking.
 export const MAX_SESSIONS_PER_MUTATION = 200;
 export const MAX_EVENTS_PER_MUTATION = 1000;
-export const MAX_DAYS_PER_EVENT_CHUNK = 30;
+export const MAX_DAYS_PER_EVENT_CHUNK = 10; // bounds one mutation's recomputeDay reads; see the
+// constant's own comment for the arithmetic against Convex's ~32k document ceiling
 // Payload shape limits.
 export const MAX_KEYED_ENTRIES_PER_SESSION = 64; // mcpTools / skills per session
 export const MAX_ROLLUP_ENTRIES = 100; // per keyed array in a daily rollup
