@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CLI_RUN_BUDGET_MS } from "@codex-kaboo/shared/constants";
@@ -7,7 +7,7 @@ import type { SyncBatch, SyncResponse } from "@codex-kaboo/shared/sync";
 import { runSync, type SyncDeps } from "../../src/commands/sync";
 import { writeConfig } from "../../src/core/config";
 import { kabooPaths } from "../../src/core/paths";
-import { readState } from "../../src/core/state";
+import { MAX_FILE_FAILURES, readState } from "../../src/core/state";
 import { SyncHttpError, SyncNetworkError, type SyncClient } from "../../src/upload/client";
 import { silentLogger } from "../../src/util/log";
 import { FIXTURE_HOME, FX } from "../fixture-ids";
@@ -209,6 +209,54 @@ describe("runSync upload", () => {
     const advanced = Object.values(st2.files).filter((f) => f.lastUploadedSeq >= 0 || (f.summaryHash !== null));
     expect(advanced.length).toBeGreaterThanOrEqual(1);
     expect(advanced.length).toBeLessThan(r2.files.length);
+  });
+  // Review finding: `isUnchanged` is false whenever `lastError` is set, so a file the server keeps
+  // rejecting was re-parsed, re-sent, re-rejected and reported at exit 1 on every single scheduled
+  // run — for a permanently invalid summary, forever.
+  it("parks a file the server keeps rejecting the same way instead of failing every run", async () => {
+    const s = await setup();
+    // One rollout file only, so the 400 lands on exactly the file under test.
+    const solo = mkdtempSync(path.join(os.tmpdir(), "ck-park-"));
+    tmpDirs.push(solo);
+    const day = path.join(solo, "sessions", "2026", "08", "30");
+    mkdirSync(day, { recursive: true });
+    const name = `rollout-2026-08-30T13-00-00-${FX.paginatedSmall}.jsonl`;
+    cpSync(path.join(FIXTURE_HOME, "sessions", "2026", "08", "30", name), path.join(day, name));
+
+    const rejecting = fakeClient({ fail: (b) => (b.sessions.length + b.tokenEvents.length > 0 ? new SyncHttpError(400, "invalid_batch", "day out of range", null, null) : null) });
+    const deps = { ...s.deps, createClient: () => rejecting.client };
+    const run = (): Promise<Awaited<ReturnType<typeof runSync>>> => runSync({ ...base, codexHome: solo }, deps);
+
+    // Six attempts: each one really tries, really fails, and really reports the failure.
+    for (let attempt = 1; attempt <= MAX_FILE_FAILURES + 1; attempt++) {
+      const report = await run();
+      expect(report.exitCode, `attempt ${attempt}`).toBe(1);
+      expect(report.errors.some((e) => e.includes("day out of range"))).toBe(true);
+      expect((await readState(s.paths)).state.files[FX.paginatedSmall]?.failure?.count).toBe(attempt);
+    }
+    // Machine-only heartbeats also go through the fake client, so count only real upload attempts.
+    const uploadAttempts = (): number => rejecting.batches.filter((b) => b.sessions.length + b.tokenEvents.length > 0).length;
+    expect(uploadAttempts()).toBe(MAX_FILE_FAILURES + 1);
+
+    // The seventh run parks it: no upload attempted, a warning instead of an error, exit 0.
+    const parked = await run();
+    expect(parked.exitCode).toBe(0);
+    expect(parked.errors).toEqual([]);
+    expect(parked.warnings.some((w) => w.includes("skipped after 6 failed attempts") && w.includes("day out of range"))).toBe(true);
+    expect(parked.files.map((f) => f.action)).toEqual(["skipped"]);
+    expect(uploadAttempts()).toBe(MAX_FILE_FAILURES + 1); // nothing was sent for the parked file
+
+    // The failure stays on record for `status` / `doctor` to surface (asserted there).
+    const stored = (await readState(s.paths)).state.files[FX.paginatedSmall]!;
+    expect(stored.lastError).toContain("day out of range");
+    expect(stored.failure?.count).toBe(MAX_FILE_FAILURES + 1);
+
+    // Touching the file gives it a clean slate: it is tried again (and fails again, at exit 1).
+    const now = new Date();
+    utimesSync(path.join(day, name), now, new Date(now.getTime() + 60_000));
+    const retried = await run();
+    expect(retried.exitCode).toBe(1);
+    expect((await readState(s.paths)).state.files[FX.paginatedSmall]?.failure?.count).toBe(1);
   });
   it("skips when another sync holds the lock and hints about upgrades", async () => {
     const s = await setup();

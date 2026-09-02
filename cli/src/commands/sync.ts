@@ -2,7 +2,7 @@ import { CLI_LOCK_STALE_MS, CLI_MIN_BATCH_EVENTS, CLI_RUN_BUDGET_MS, HEARTBEAT_I
 import type { RateLimitSnapshot, SyncBatch, SyncResponse, UpsertCounts } from "@codex-kaboo/shared/sync";
 import { readConfig } from "../core/config";
 import { resolveCodexHomes, type KabooPaths } from "../core/paths";
-import { emptyFileState, readState, resetAllFiles, writeState } from "../core/state";
+import { clearFailure, emptyFileState, readState, recordFailure, resetAllFiles, writeState } from "../core/state";
 import type { Config, SyncState } from "../types";
 import { applyAck, buildBatches, DEFAULT_BATCH_LIMITS, type BatchLimits } from "../upload/batch";
 import { isAuthError, isBadRequest, isPayloadTooLarge, type SyncClient } from "../upload/client";
@@ -229,7 +229,12 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
       // A rejected file must keep whatever cursor it had before this run (or none at all), never
       // the fully-advanced `planned.next` — see the non-final-ack comment below for why that matters.
       const current = state.files[sessionId] ?? planned?.prev ?? (planned ? emptyFileState(planned.file.path) : undefined);
-      if (current) state.files[sessionId] = { ...current, lastError: message };
+      if (!current) return;
+      // The size/mtime stamped on the failure are the FILE's, not the cursor's: because a rejected
+      // file keeps its pre-run cursor (often a zeroed one, for a file seen for the first time),
+      // the cursor's own size/mtime could never match the file on the next run and the counter
+      // would restart forever.
+      state.files[sessionId] = recordFailure(current, message, planned?.file.size ?? current.size, planned?.file.mtimeMs ?? current.mtimeMs);
     };
 
     const deadline = start + (deps.budgetMs ?? CLI_RUN_BUDGET_MS);
@@ -292,12 +297,12 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
           // The file's whole upload (through its summary) is now acked: safe to adopt this run's
           // fully-parsed cursor.
           const current = state.files[entry.sessionId] ?? planned.next;
-          state.files[entry.sessionId] = {
+          state.files[entry.sessionId] = clearFailure({
             ...planned.next,
             lastUploadedSeq: Math.max(current.lastUploadedSeq, planned.next.lastUploadedSeq, entry.lastSeq),
             summaryHash: planned.summaryHash,
             lastError: null,
-          };
+          });
         } else {
           // Non-final ack: only part of this file's new events were accepted. Do NOT adopt
           // `planned.next`'s cursor (offset/size/mtimeMs) — with lastError cleared, that would make
@@ -307,11 +312,11 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
           // started with, else "nothing read yet") so the file is re-parsed next run and the events
           // still unacked (seq > the raised lastUploadedSeq) are correctly re-derived and re-offered.
           const current = state.files[entry.sessionId] ?? planned.prev ?? emptyFileState(planned.file.path);
-          state.files[entry.sessionId] = {
+          state.files[entry.sessionId] = clearFailure({
             ...current,
             lastUploadedSeq: Math.max(current.lastUploadedSeq, entry.lastSeq),
             lastError: null,
-          };
+          });
         }
       }
       pending = applyAck(pending, batch);

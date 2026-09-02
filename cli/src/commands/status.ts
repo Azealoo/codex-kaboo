@@ -1,8 +1,9 @@
+import { basename } from "node:path";
 import type { RateLimitSnapshot } from "@codex-kaboo/shared/sync";
 import { readConfig } from "../core/config";
 import { discoverRolloutFiles } from "../core/discover";
 import { resolveCodexHomes } from "../core/paths";
-import { readState } from "../core/state";
+import { MAX_FILE_FAILURES, readState } from "../core/state";
 import { pickScheduler, type SchedulerName } from "../schedule/index";
 import { buildScheduleTarget, type ScheduleDeps } from "./schedule-deps";
 
@@ -22,6 +23,8 @@ export interface StatusReport {
   latestCliVersion: string | null;
   filesTracked: number;
   filesWithErrors: number;
+  /** Files that failed the same way past MAX_FILE_FAILURES and are no longer retried until they change. */
+  filesParked: { name: string; failures: number; error: string }[];
   scheduler: { name: SchedulerName; installed: boolean; healthy: boolean; detail: string };
 }
 
@@ -51,6 +54,9 @@ export async function runStatus(deps: ScheduleDeps & { cliVersion: string; codex
     latestCliVersion: state.latestCliVersion,
     filesTracked: files.length,
     filesWithErrors: files.filter((f) => f.lastError !== null).length,
+    filesParked: files
+      .filter((f) => f.lastError !== null && (f.failure?.count ?? 0) > MAX_FILE_FAILURES)
+      .map((f) => ({ name: basename(f.path), failures: f.failure?.count ?? 0, error: f.lastError ?? "" })),
     scheduler: { name: adapter.name, ...scheduler },
   };
 }
@@ -68,6 +74,7 @@ export function formatStatus(r: StatusReport): string[] {
     `codex version: ${r.codexVersion ?? "unknown"}`,
     `last sync: ${r.lastSync ? `${when(r.lastSync.at)} ${r.lastSync.ok ? "ok" : `failed: ${r.lastSync.error ?? "unknown error"}`}` : "never"}`,
     `tracked files: ${r.filesTracked}${r.filesWithErrors > 0 ? ` (${r.filesWithErrors} with errors)` : ""}`,
+    ...r.filesParked.map((f) => `  parked: ${f.name} failed ${f.failures}x and is no longer retried until it changes — ${f.error}`),
     `scheduler: ${r.scheduler.name} ${r.scheduler.installed ? (r.scheduler.healthy ? "installed" : "INSTALLED BUT BROKEN") : "not installed"} — ${r.scheduler.detail}`,
   ];
   if (r.rateLimit) lines.push(`weekly quota: ${r.rateLimit.usedPercent}% used (observed ${when(r.rateLimit.observedAt)})`);

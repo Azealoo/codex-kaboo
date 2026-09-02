@@ -96,3 +96,41 @@ export function isUnchanged(fileState: FileState | undefined, size: number, mtim
     fileState.mtimeMs === mtimeMs
   );
 }
+
+/**
+ * How many times one unchanged file may fail the same way before it is parked.
+ *
+ * `isUnchanged` returns false while `lastError` is set, so a failing file is re-parsed and re-sent
+ * on every run — right for a transient server-side 400, but a permanently invalid summary (a
+ * rollout written while the machine's clock was wrong, say, whose timestamps fall outside the
+ * schema's [2020, 2100) bound) then fails identically forever and pins every scheduled run at
+ * exit 1. Six attempts is well past any transient fault, and parking is never permanent: the
+ * counter is keyed to the file's size and mtime, so any edit at all starts it over.
+ */
+export const MAX_FILE_FAILURES = 5;
+
+/** Records one failure, incrementing the counter only when the same file failed the same way. */
+export function recordFailure(previous: FileState, error: string, size: number, mtimeMs: number): FileState {
+  const repeat =
+    previous.lastError === error &&
+    previous.failure !== undefined &&
+    previous.failure.size === size &&
+    previous.failure.mtimeMs === mtimeMs;
+  return { ...previous, lastError: error, failure: { count: repeat ? previous.failure!.count + 1 : 1, size, mtimeMs } };
+}
+
+/** Clears any recorded failure: the file went through, so the next problem starts from zero. */
+export function clearFailure(fileState: FileState): FileState {
+  const { failure: _failure, ...rest } = fileState;
+  return { ...rest, lastError: null };
+}
+
+/**
+ * True when this exact file has failed the same way more than `MAX_FILE_FAILURES` times.
+ * `lastError` is checked too, so a stale counter can never park a file that is now succeeding.
+ */
+export function isPermanentlyFailing(fileState: FileState | undefined, size: number, mtimeMs: number): boolean {
+  const failure = fileState?.failure;
+  if (failure === undefined || fileState?.lastError == null) return false;
+  return failure.count > MAX_FILE_FAILURES && failure.size === size && failure.mtimeMs === mtimeMs;
+}

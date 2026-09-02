@@ -28,6 +28,13 @@ export interface FileState {
   generation: number; // incremented on every reset
   complete: boolean; // immutable file fully processed (.zst)
   lastError: string | null;
+  /**
+   * Consecutive failures with the identical `lastError`, plus the file's size/mtime when the last
+   * one was recorded. Absent whenever the file last succeeded, and reset to a count of 1 as soon as
+   * the file changes or fails a different way — so this only ever accumulates for a file that is
+   * genuinely, repeatably broken. Optional so a state.json written by an older CLI still loads.
+   */
+  failure?: { count: number; size: number; mtimeMs: number };
 }
 
 /** ~/.codex-kaboo/state.json */

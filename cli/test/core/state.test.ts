@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { kabooPaths } from "../../src/core/paths";
 import {
-  detectReset, emptyFileState, emptyState, isUnchanged, readState, resetAllFiles, resetFileState, writeState,
+  clearFailure, detectReset, emptyFileState, emptyState, isPermanentlyFailing, isUnchanged, MAX_FILE_FAILURES,
+  readState, recordFailure, resetAllFiles, resetFileState, writeState,
 } from "../../src/core/state";
 
 // Temp dirs are tracked and removed in afterEach so failed runs don't litter os.tmpdir().
@@ -73,5 +74,54 @@ describe("detectReset / isUnchanged", () => {
     expect(isUnchanged(f, 10, 6)).toBe(false);
     expect(isUnchanged({ ...f, lastError: "boom" }, 10, 5)).toBe(false);
     expect(isUnchanged(undefined, 10, 5)).toBe(false);
+  });
+});
+
+// Review finding: `isUnchanged` is false while `lastError` is set, so a file that fails is retried
+// on every run — right for a transient 400, but a permanently invalid summary then fails
+// identically forever and pins every scheduled run at exit 1.
+describe("bounded retry of a failing file", () => {
+  it("counts identical failures, parks past the cap, and starts over on any change", () => {
+    let f = emptyFileState("/p/a.jsonl");
+    expect(isPermanentlyFailing(f, 10, 5)).toBe(false); // never failed
+
+    for (let attempt = 1; attempt <= MAX_FILE_FAILURES; attempt++) {
+      f = recordFailure(f, "400 invalid_batch", 10, 5);
+      expect(f.failure?.count).toBe(attempt);
+      expect(isPermanentlyFailing(f, 10, 5)).toBe(false); // still retried at and below the cap
+    }
+    f = recordFailure(f, "400 invalid_batch", 10, 5); // one past the cap
+    expect(f.failure?.count).toBe(MAX_FILE_FAILURES + 1);
+    expect(f.lastError).toBe("400 invalid_batch");
+    expect(isPermanentlyFailing(f, 10, 5)).toBe(true);
+
+    // Any edit to the file is a new file as far as the counter is concerned.
+    expect(isPermanentlyFailing(f, 11, 5)).toBe(false); // grew
+    expect(isPermanentlyFailing(f, 10, 6)).toBe(false); // touched
+    expect(recordFailure(f, "400 invalid_batch", 11, 5).failure?.count).toBe(1);
+    // A different failure is a different problem: worth its own six attempts.
+    expect(recordFailure(f, "500 server_error", 10, 5).failure?.count).toBe(1);
+
+    // A success clears the record entirely — the key is dropped, not zeroed, so state.json stays
+    // as small as it was and a stale counter can never park a healthy file.
+    const cleared = clearFailure(f);
+    expect(cleared.lastError).toBeNull();
+    expect("failure" in cleared).toBe(false);
+    expect(isPermanentlyFailing(cleared, 10, 5)).toBe(false);
+    // Belt and braces: even a counter left behind by an older CLI cannot park a file that is fine.
+    expect(isPermanentlyFailing({ ...f, lastError: null }, 10, 5)).toBe(false);
+  });
+
+  it("survives a state.json written before the counter existed", async () => {
+    const paths = kabooPaths(path.join(tmp(), "home"));
+    const legacy = { ...emptyFileState("/p/a.jsonl"), size: 10, mtimeMs: 5, lastError: "boom" };
+    delete (legacy as { failure?: unknown }).failure;
+    mkdirSync(paths.home, { recursive: true });
+    writeFileSync(paths.state, JSON.stringify({ ...emptyState(), files: { s1: legacy } }));
+    const { state, corrupt } = await readState(paths);
+    expect(corrupt).toBe(false);
+    const loaded = state.files["s1"]!;
+    expect(isPermanentlyFailing(loaded, 10, 5)).toBe(false); // retried as before, not parked
+    expect(recordFailure(loaded, "boom", 10, 5).failure?.count).toBe(1);
   });
 });

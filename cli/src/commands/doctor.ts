@@ -1,7 +1,7 @@
 import { readConfig } from "../core/config";
 import { discoverRolloutFiles } from "../core/discover";
 import { resolveCodexHomes } from "../core/paths";
-import { readState } from "../core/state";
+import { MAX_FILE_FAILURES, readState } from "../core/state";
 import { pickScheduler } from "../schedule/index";
 import type { Config } from "../types";
 import type { SyncClient } from "../upload/client";
@@ -59,10 +59,18 @@ export async function runDoctor(
   }
   const { state, corrupt } = await readState(deps.paths);
   const errored = Object.values(state.files).filter((f) => f.lastError !== null);
+  // Parked files are the ones `sync` has stopped retrying after MAX_FILE_FAILURES identical
+  // failures. They no longer fail a scheduled run, which is the point — so `doctor` is where they
+  // have to be visible, with the count and the way back (change the file).
+  const parked = errored.filter((f) => (f.failure?.count ?? 0) > MAX_FILE_FAILURES);
+  const erroredDetail =
+    errored.length === 0
+      ? `${Object.keys(state.files).length} files tracked`
+      : `${errored.length} file(s) with errors${parked.length > 0 ? ` (${parked.length} parked after ${MAX_FILE_FAILURES}+ identical failures; each is retried again as soon as the file changes)` : ""}: ${errored.map((f) => f.lastError).join("; ")}`;
   checks.push({
     name: "state",
     ok: !corrupt && errored.length === 0,
-    detail: corrupt ? "state.json is corrupt (it will be rebuilt on the next sync)" : errored.length === 0 ? `${Object.keys(state.files).length} files tracked` : `${errored.length} file(s) with errors: ${errored.map((f) => f.lastError).join("; ")}`,
+    detail: corrupt ? "state.json is corrupt (it will be rebuilt on the next sync)" : erroredDetail,
   });
   const ok = checks.every((c) => c.ok);
   return { ok, exitCode: ok ? 0 : 1, checks };

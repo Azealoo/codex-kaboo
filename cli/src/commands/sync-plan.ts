@@ -5,7 +5,7 @@ import type { MachineInfo, RateLimitSnapshot, SyncBatch } from "@codex-kaboo/sha
 import { discoverRolloutFiles, type DiscoveredFile } from "../core/discover";
 import { zstdSupported } from "../core/jsonl-reader";
 import { parseRolloutFile } from "../core/parse-file";
-import { detectReset, emptyFileState, isUnchanged, resetFileState } from "../core/state";
+import { detectReset, emptyFileState, isPermanentlyFailing, isUnchanged, recordFailure, resetFileState } from "../core/state";
 import type { ParsedSession } from "../parser/session";
 import type { Config, FileState, SyncState } from "../types";
 import type { Batch, FileUpload } from "../upload/batch";
@@ -136,6 +136,18 @@ export async function planSync(state: SyncState, homes: string[], opts: PlanOpti
       plan.files.push(planned);
       continue;
     }
+    if (isPermanentlyFailing(prev, file.size, file.mtimeMs)) {
+      // A file that keeps failing identically is parked rather than retried (and re-failed, and
+      // re-reported at exit 1) on every scheduled run. This is a warning, not an error: the file
+      // stays visible in `status` and `doctor`, and any change to it starts the count over.
+      planned.action = "skipped";
+      planned.reason = `failed ${prev?.failure?.count ?? 0} times: ${prev?.lastError ?? "unknown error"}`;
+      plan.warnings.push(
+        `${file.name}: skipped after ${prev?.failure?.count ?? 0} failed attempts (${prev?.lastError ?? "unknown error"}); it will be retried when the file changes`,
+      );
+      plan.files.push(planned);
+      continue;
+    }
     if (prev !== undefined && prev.offset > 0 && !file.compressed) {
       let reason: "shrunk" | "tail-mismatch" | null = null;
       try {
@@ -163,7 +175,12 @@ export async function planSync(state: SyncState, homes: string[], opts: PlanOpti
       const message = errorMessage(error);
       planned.action = "error";
       planned.reason = message;
-      planned.next = { ...(prev ?? emptyFileState(file.path)), size: file.size, mtimeMs: file.mtimeMs, lastError: message };
+      planned.next = recordFailure(
+        { ...(prev ?? emptyFileState(file.path)), size: file.size, mtimeMs: file.mtimeMs },
+        message,
+        file.size,
+        file.mtimeMs,
+      );
       plan.errors.push(`${file.name}: ${message}`);
       plan.files.push(planned);
       continue;
