@@ -165,6 +165,9 @@ describe("doctor", () => {
     expect(failing.exitCode).toBe(1);
     expect(failing.checks.find((c) => c.name === "token")?.ok).toBe(false);
     expect(failing.checks.find((c) => c.name === "node")?.detail).toContain("22.15");
+    // The floor `doctor` enforces has to be the one the package promises (`engines.node`) and the
+    // one the README states, or `doctor` blesses an install that npm would have refused.
+    expect(failing.checks.find((c) => c.name === "node")?.ok).toBe(false);
   });
 
   it("distinguishes a parked file from one still being retried in the state check", async () => {

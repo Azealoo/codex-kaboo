@@ -8,6 +8,14 @@ import type { SyncClient } from "../upload/client";
 import { meetsVersion } from "../util/version";
 import { buildScheduleTarget, type ScheduleDeps } from "./schedule-deps";
 
+/**
+ * Must stay equal to `engines.node` in cli/package.json and to the floor the README states. When
+ * they drift, `doctor` blesses an install npm would have refused — the one command whose whole job
+ * is to catch that.
+ */
+const MIN_NODE_MAJOR = 20;
+const MIN_NODE = `${MIN_NODE_MAJOR}.0.0`;
+
 export interface DoctorCheck {
   name: string;
   ok: boolean;
@@ -24,11 +32,11 @@ export async function runDoctor(
   deps: ScheduleDeps & { cliVersion: string; nodeVersion: string; createClient: (config: Config) => SyncClient; codexHomeOverride?: string; systemd?: boolean },
 ): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
-  const nodeOk = meetsVersion(deps.nodeVersion, "18.0.0");
+  const nodeOk = meetsVersion(deps.nodeVersion, MIN_NODE);
   checks.push({
     name: "node",
     ok: nodeOk,
-    detail: `${deps.nodeVersion}${meetsVersion(deps.nodeVersion, "22.15.0") ? "" : " (compressed .jsonl.zst rollouts need Node >= 22.15)"}${nodeOk ? "" : " — Node 18 or newer is required"}`,
+    detail: `${deps.nodeVersion}${meetsVersion(deps.nodeVersion, "22.15.0") ? "" : " (compressed .jsonl.zst rollouts need Node >= 22.15)"}${nodeOk ? "" : ` — Node ${MIN_NODE_MAJOR} or newer is required`}`,
   });
   const config = await readConfig(deps.paths).catch(() => null);
   const homes = resolveCodexHomes({ override: deps.codexHomeOverride, env: deps.env, configured: config?.codexHomes });
