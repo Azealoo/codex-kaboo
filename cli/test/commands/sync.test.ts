@@ -10,12 +10,12 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CLI_RUN_BUDGET_MS } from "@codex-kaboo/shared/constants";
+import { CLI_RUN_BUDGET_MS, PARSER_VERSION } from "@codex-kaboo/shared/constants";
 import type { SyncBatch, SyncResponse } from "@codex-kaboo/shared/sync";
 import { runSync, type SyncDeps } from "../../src/commands/sync";
 import { writeConfig } from "../../src/core/config";
 import { kabooPaths } from "../../src/core/paths";
-import { MAX_FILE_FAILURES, readState } from "../../src/core/state";
+import { MAX_FILE_FAILURES, readState, writeState } from "../../src/core/state";
 import { SyncHttpError, SyncNetworkError, type SyncClient } from "../../src/upload/client";
 import { silentLogger } from "../../src/util/log";
 import { FIXTURE_HOME, FX } from "../fixture-ids";
@@ -241,6 +241,30 @@ describe("runSync upload", () => {
     expect((await readState(s.paths)).state.lastHeartbeatAt).toBe(NOW + 2 * 60 * 60 * 1000);
     const full = await runSync({ ...base, full: true, codexHome: s.codexHome }, s.deps);
     expect(full.uploads.events).toBe(first.uploads.events);
+  });
+  // Re-review NEW-4: the server can replace a stored event (every payload field is in EVENT_KEYS),
+  // but an ordinary run never offers it one — events are filtered to `seq > lastUploadedSeq`. So a
+  // parser fix that corrects an event's source/model/day could only ever reach already-stored rows
+  // if a human remembered `--full`. A parser change now implies exactly one `--full`.
+  it("re-offers every event once when state.json was written by a different parser", async () => {
+    const s = await setup();
+    const first = await runSync({ ...base, codexHome: s.codexHome }, s.deps);
+    expect(first.uploads.events).toBeGreaterThan(0);
+    s.clock.now = NOW + 10 * 60 * 1000;
+    expect((await runSync({ ...base, codexHome: s.codexHome }, s.deps)).uploads.events).toBe(0);
+
+    const stored = (await readState(s.paths)).state;
+    expect(stored.parserVersion).toBe(PARSER_VERSION);
+    await writeState(s.paths, { ...stored, parserVersion: PARSER_VERSION - 1 });
+
+    s.clock.now = NOW + 20 * 60 * 1000;
+    const after = await runSync({ ...base, codexHome: s.codexHome }, s.deps);
+    expect(after.uploads.events).toBe(first.uploads.events);
+    expect(after.warnings.some((w) => w.includes("re-uploading every session once"))).toBe(true);
+    // Stamped, so the very next run is quiet again: one re-upload per parser change, not per run.
+    expect((await readState(s.paths)).state.parserVersion).toBe(PARSER_VERSION);
+    s.clock.now = NOW + 30 * 60 * 1000;
+    expect((await runSync({ ...base, codexHome: s.codexHome }, s.deps)).uploads.events).toBe(0);
   });
   it("halves batches on 413 until the server accepts them", async () => {
     const s = await setup();

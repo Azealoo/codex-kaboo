@@ -39,7 +39,14 @@ export interface FileState {
 
 /** ~/.codex-kaboo/state.json */
 export interface SyncState {
-  version: 1;
+  version: 1; // state.json's own format version
+  /**
+   * The PARSER_VERSION that produced the stored per-file progress. `null` in a state.json written
+   * before this field existed. When it differs from the running parser, `sync` re-uploads every
+   * file once (see `runSync`) — the only way a corrected event field reaches a row the server has
+   * already stored, since an ordinary run never re-sends an event whose seq was acknowledged.
+   */
+  parserVersion: number | null;
   lastSyncAt: number | null;
   lastSyncOk: boolean | null;
   lastError: string | null;

@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { PARSER_VERSION } from "@codex-kaboo/shared";
 import type { FileState, SyncState } from "../types";
 import { writeJsonAtomic } from "./config";
 import type { KabooPaths } from "./paths";
@@ -8,6 +9,7 @@ export const TAIL_BYTES = 64;
 export function emptyState(): SyncState {
   return {
     version: 1,
+    parserVersion: PARSER_VERSION, // nothing uploaded yet, so nothing to re-upload
     lastSyncAt: null,
     lastSyncOk: null,
     lastError: null,
@@ -35,7 +37,19 @@ export async function readState(
     if (!raw || raw.version !== 1 || typeof raw.files !== "object" || raw.files === null) {
       return { state: emptyState(), corrupt: true };
     }
-    return { state: { ...emptyState(), ...raw, version: 1, files: raw.files }, corrupt: false };
+    return {
+      state: {
+        ...emptyState(),
+        ...raw,
+        version: 1,
+        // Spreading `raw` cannot supply an absent key, and emptyState()'s value is the CURRENT
+        // parser — which would silently mean "already up to date" for exactly the old state files
+        // that need the re-upload. Read it explicitly so absent means null, i.e. stale.
+        parserVersion: typeof raw.parserVersion === "number" ? raw.parserVersion : null,
+        files: raw.files,
+      },
+      corrupt: false,
+    };
   } catch {
     return { state: emptyState(), corrupt: true };
   }

@@ -3,6 +3,7 @@ import {
   CLI_MIN_BATCH_EVENTS,
   CLI_RUN_BUDGET_MS,
   HEARTBEAT_INTERVAL_MS,
+  PARSER_VERSION,
 } from "@codex-kaboo/shared/constants";
 import type {
   RateLimitSnapshot,
@@ -174,7 +175,24 @@ export async function runSync(opts: SyncOptions, deps: SyncDeps): Promise<SyncRe
     const loaded = await readState(deps.paths);
     if (loaded.corrupt)
       report.warnings.push("state.json was unreadable; starting from an empty state");
-    const state: SyncState = opts.full ? resetAllFiles(loaded.state) : loaded.state;
+    // A parser upgrade can change what an already-uploaded event says — its source, model, day,
+    // token counts. The server can replace such a row (every payload field is in EVENT_KEYS), but
+    // an ordinary run never offers it one: events are filtered to `seq > lastUploadedSeq`, so an
+    // acked event is never re-sent and the correction has nowhere to land. Sessions have no such
+    // gap — their whole summary is hashed, so any change re-ships. This closes the event half by
+    // treating a parser change as one implicit `--full`. Stamping the new version here rather
+    // than after a successful upload is deliberate: the reset lives in the per-file state, which
+    // is written as each file is acked, so a run that dies partway leaves the un-acked files at
+    // lastUploadedSeq -1 and they re-upload on the next run regardless.
+    const parserChanged = loaded.state.parserVersion !== PARSER_VERSION;
+    if (parserChanged && !opts.full && Object.keys(loaded.state.files).length > 0)
+      report.warnings.push(
+        `parser changed (v${loaded.state.parserVersion ?? "?"} -> v${PARSER_VERSION}); re-uploading every session once so corrected values replace the stored ones`,
+      );
+    const state: SyncState = {
+      ...(opts.full || parserChanged ? resetAllFiles(loaded.state) : loaded.state),
+      parserVersion: PARSER_VERSION,
+    };
     const homes = resolveCodexHomes({
       override: opts.codexHome,
       env: deps.env,

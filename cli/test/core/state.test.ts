@@ -48,6 +48,23 @@ describe("state file", () => {
     writeFileSync(paths.state, JSON.stringify({ version: 99 }));
     expect((await readState(paths)).corrupt).toBe(true);
   });
+  it("reads a state.json written before parserVersion existed as stale, not as current", async () => {
+    // The trap this pins: `{...emptyState(), ...raw}` cannot see an ABSENT key, so the default
+    // (the running parser) would survive and the file would be judged up to date — exactly
+    // backwards for the one state.json that does need its events re-offered.
+    const paths = kabooPaths(path.join(tmp(), "home"));
+    const legacy = { ...emptyState(), files: { s1: emptyFileState("/p/one.jsonl") } } as Record<
+      string,
+      unknown
+    >;
+    delete legacy.parserVersion;
+    mkdirSync(paths.home, { recursive: true });
+    writeFileSync(paths.state, JSON.stringify(legacy));
+    const { state, corrupt } = await readState(paths);
+    expect(corrupt).toBe(false);
+    expect(state.parserVersion).toBeNull();
+    expect(state.files["s1"]).toBeDefined();
+  });
   it("resets file state while bumping the generation", () => {
     const prev = {
       ...emptyFileState("/p/a.jsonl"),
