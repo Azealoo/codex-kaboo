@@ -14,7 +14,7 @@ import { StatCard } from "@/components/primitives/stat-card";
 import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { useStableQuery } from "@/hooks/use-stable-query";
 import { modelTableRows } from "@/lib/breakdowns";
-import { costPerLine, costWithoutCaching } from "@/lib/efficiency";
+import { costPerLine, costWithoutCaching, withUnpriced } from "@/lib/efficiency";
 import { formatUsd } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
 import { cn } from "@/lib/utils";
@@ -72,14 +72,20 @@ function EfficiencyStats({ range, userId }: { range: ResolvedRange; userId: Id<"
         value={summary.cacheSavingsUsd}
         kind="usd"
         help="What the cached input tokens would have cost at the full input price, minus what they cost at the cached price."
-        footer={`Without caching: ${formatUsd(costWithoutCaching(cost, summary.cacheSavingsUsd))}`}
+        footer={withUnpriced(
+          `Without caching: ${formatUsd(costWithoutCaching(cost, summary.cacheSavingsUsd))}`,
+          summary.unpricedModels,
+        )}
       />
       <StatCard
         label="Cost per line"
         value={perLine}
         kind="usd"
         help="Estimated cost divided by generated lines."
-        footer={perLine === null ? "No generated lines in this range" : undefined}
+        footer={withUnpriced(
+          perLine === null ? "No generated lines in this range" : undefined,
+          summary.unpricedModels,
+        )}
       />
       <MetricStatCard metricKey="cacheHitRate" metric={summary.metrics.cacheHitRate} />
       <MetricStatCard metricKey="tokensPerLine" metric={summary.metrics.tokensPerLine} />
