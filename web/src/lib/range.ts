@@ -1,7 +1,8 @@
-import { MAX_CUSTOM_RANGE_DAYS, MAX_QUERY_RANGE_DAYS } from "@shared/constants";
+import { MAX_CUSTOM_RANGE_DAYS } from "@shared/constants";
 import { addDays, compareDays, daysBetween, isValidDay } from "@shared/days";
 import type { BoundsResult } from "@convex/lib/types";
 import { formatDay, formatDayShort } from "@shared/format";
+import { allTimeRange, latestDay } from "@shared/summary";
 
 export const PRESETS = ["1D", "7D", "30D", "90D", "ALL"] as const;
 export type Preset = (typeof PRESETS)[number];
@@ -33,16 +34,6 @@ export type ResolvedRange = {
   invalidCustom?: true;
 };
 
-/**
- * How far past the viewer's own day a machine-local day may legitimately sit.
- *
- * Day buckets are stamped in the reporting machine's zone; range bounds are computed in the
- * viewer's browser zone. UTC-12..UTC+14 is a 26-hour spread, so a teammate can honestly be up to
- * two calendar days ahead of the viewer. Anything beyond that is a wrong clock, not a timezone,
- * and must not drag the whole dashboard forward — hence a cap rather than trusting `lastDay`.
- */
-const MAX_FUTURE_DAY_LEAD = 2;
-
 export function presetLabel(preset: Preset): string {
   switch (preset) {
     case "1D":
@@ -60,20 +51,6 @@ export function isCustom(params: RangeParams): boolean {
 
 function customLabel(from: string, to: string): string {
   return `${formatDayShort(from)} – ${formatDay(to)}`;
-}
-
-/**
- * The latest day a preset window should end on: the viewer's `today`, extended to cover a machine
- * whose day is genuinely ahead (see `MAX_FUTURE_DAY_LEAD`). `bounds` is advisory — presets resolve
- * immediately without it rather than blocking on the query the way ALL must, so `undefined` simply
- * means "no lead known yet" and the window ends at `today`.
- */
-function latestDay(today: string, bounds?: BoundsResult | null): string {
-  const lastDay = bounds?.lastDay;
-  if (lastDay === undefined || lastDay === null) return today;
-  if (compareDays(lastDay, today) <= 0) return today;
-  const cap = addDays(today, MAX_FUTURE_DAY_LEAD);
-  return compareDays(lastDay, cap) > 0 ? cap : lastDay;
 }
 
 function resolvePreset(
@@ -135,25 +112,11 @@ export function resolveRange(
   }
   if (params.range === "ALL") {
     if (bounds === undefined || bounds === null) return null;
-    // `bounds` are machine-local days; `today` is the viewer's browser day. A teammate whose
-    // machine clock runs ahead of the viewer's (UTC+13/+14 vs. e.g. a US zone), or any machine
-    // with a fast RTC, can legitimately own the only rollup dated `today + 1` from this viewer,
-    // which would otherwise leave `from` after `to` and make every query on the page throw
-    // `bad_range` (assertRange is correct to throw on that — the bug is that this function ever
-    // produced it). Clamp both ends against `today` so ALL can never invert: `from` never starts
-    // after `today`, and `to` extends to cover a day that is genuinely ahead of the viewer instead
-    // of silently dropping it. Do not simplify this back to `to: today` — that reintroduces the
-    // silent exclusion.
-    const lastDay = bounds.lastDay ?? today;
-    const to = compareDays(lastDay, today) > 0 ? lastDay : today;
-    // The window is floored against `to`, NOT against `today`: `to` can sit ahead of `today` by
-    // the line above, and a floor measured from `today` would then span MAX_QUERY_RANGE_DAYS + 1
-    // days and throw the same `bad_range` this clamp exists to prevent — the same failure through
-    // a different door.
-    const earliest = addDays(to, -(MAX_QUERY_RANGE_DAYS - 1));
-    const firstDay = bounds.firstDay ?? today;
-    const cappedFirst = compareDays(firstDay, today) > 0 ? today : firstDay;
-    const from = compareDays(cappedFirst, earliest) < 0 ? earliest : cappedFirst;
+    // Shared with the menu bar card's `all` tab, which has to resolve the same window on the
+    // client's own calendar day — see `allTimeRange` for why both ends are clamped against
+    // `today`. Do not reinline this: the two surfaces disagreeing about what "all time" means is
+    // exactly the drift the shared helper exists to prevent.
+    const { from, to } = allTimeRange(today, bounds);
     return {
       kind: "ALL",
       from,

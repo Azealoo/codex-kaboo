@@ -102,4 +102,17 @@ export const TOKEN_PREFIX = "ck_";
 export const SYNC_PATH = "/api/v1/sync";
 export const WHOAMI_PATH = "/api/v1/whoami";
 export const HEALTH_PATH = "/api/v1/health";
+export const SUMMARY_PATH = "/api/v1/summary";
 export const CLI_VERSION_HEADER = "X-Codex-Kaboo-Cli";
+
+/**
+ * How old a quota reading may be before the card labels it stale. Measured against the SERVER's
+ * `receivedAt`, so it says "no machine has reported a limit for an hour", not "this machine's
+ * clock thinks so" — one install with a fast RTC cannot mark the shared gauge fresh.
+ *
+ * Four scheduled syncs' worth (the collector runs every 15 minutes), which leaves room for a
+ * missed run or two before the card starts hedging. The label is a display hint and nothing else:
+ * a stale reading is still shown, because a two-hour-old "7 % used" is far more useful than a
+ * blank row.
+ */
+export const QUOTA_STALE_MS = 60 * 60 * 1000;

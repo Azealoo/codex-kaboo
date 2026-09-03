@@ -27,6 +27,9 @@ function deps(overrides: Partial<LoginDeps> = {}): LoginDeps {
     async sync() {
       throw new Error("unused");
     },
+    async summary() {
+      throw new Error("unused");
+    },
     async health() {
       return { ok: true, serverTime: 7 };
     },
@@ -129,6 +132,9 @@ describe("runLogin", () => {
         },
         async sync() {
           throw new Error("x");
+        },
+        async summary() {
+          throw new Error("unused");
         },
         async health() {
           return { ok: false, serverTime: null };

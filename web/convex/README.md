@@ -4,16 +4,17 @@ This is codex-kaboo's Convex deployment: the `codex-kaboo` collector CLI uploads
 and the Next.js dashboard reads it back. See `docs/superpowers/specs/2026-09-01-codex-kaboo-design.md`
 for the full design; this file is just an orientation to what lives in this directory.
 
-## HTTP surface (`http.ts`, handlers in `ingest.ts`)
+## HTTP surface (`http.ts`, handlers in `ingest.ts` and `summary.ts`)
 
-Three routes, authenticated with a **Bearer sync token** (not Clerk — the CLI has no browser
-session):
+Four routes, authenticated with a **Bearer sync token** (not Clerk — the CLI has no browser
+session). The shared plumbing — token lookup, JSON and error responses — lives in `lib/http.ts`:
 
-| Path             | Method | Purpose                                                                                                          |
-| ---------------- | ------ | ---------------------------------------------------------------------------------------------------------------- |
-| `/api/v1/sync`   | `POST` | Accepts a `SyncBatch` (`shared/src/sync.ts`), upserts sessions/token events, recomputes affected daily rollups   |
-| `/api/v1/whoami` | `GET`  | Validates a token and returns the user/token identity — what `codex-kaboo login` calls to confirm a pasted token |
-| `/api/v1/health` | `GET`  | Unauthenticated liveness check                                                                                   |
+| Path              | Method | Purpose                                                                                                                         |
+| ----------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/v1/sync`    | `POST` | Accepts a `SyncBatch` (`shared/src/sync.ts`), upserts sessions/token events, recomputes affected daily rollups                  |
+| `/api/v1/whoami`  | `GET`  | Validates a token and returns the user/token identity — what `codex-kaboo login` calls to confirm a pasted token                |
+| `/api/v1/summary` | `GET`  | The menu bar card's four ranges plus the account quota (`shared/src/summary.ts`); `?today=YYYY-MM-DD` is the client's local day |
+| `/api/v1/health`  | `GET`  | Unauthenticated liveness check                                                                                                  |
 
 The dashboard itself talks to Convex through the generated `api` object with a Clerk JWT, via
 `authedQuery`/`authedMutation` in `lib/auth.ts` — not through HTTP routes.

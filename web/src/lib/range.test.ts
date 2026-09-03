@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveSummaryRanges } from "@shared/summary";
 import { DEFAULT_PRESET, isCustom, presetLabel, resolveRange, type RangeParams } from "./range";
 
 const preset = (range: RangeParams["range"]): RangeParams => ({ range, from: null, to: null });
@@ -244,4 +245,35 @@ describe("presetLabel", () => {
     expect(presetLabel("90D")).toBe("Last 90 days");
     expect(presetLabel("ALL")).toBe("All time");
   });
+});
+
+/**
+ * The menu bar card resolves its own four tabs, server-side, from the same day math. If these ever
+ * disagree the card and My Page show different totals for what both call "this week", and neither
+ * screen can reveal which one is wrong — so pin them to each other here.
+ */
+describe("the card's tabs match the dashboard's presets", () => {
+  const bounds = { firstDay: "2025-01-15", lastDay: "2026-09-01" };
+  const cases = [
+    ["day", "1D"],
+    ["week", "7D"],
+    ["month", "30D"],
+    ["all", "ALL"],
+  ] as const;
+
+  for (const today of ["2026-09-01", "2026-01-01", "2024-03-01"]) {
+    it(`agrees on every tab for ${today}`, () => {
+      const card = resolveSummaryRanges(today, bounds);
+      for (const [key, presetName] of cases) {
+        const dashboard = resolveRange(preset(presetName), today, bounds);
+        expect({ tab: key, ...card[key].range }).toEqual({
+          tab: key,
+          from: dashboard?.from,
+          to: dashboard?.to,
+        });
+        // The dashboard's `previous` flag and the card's `previousRange` say the same thing.
+        expect(card[key].previousRange !== null).toBe(dashboard?.previous);
+      }
+    });
+  }
 });

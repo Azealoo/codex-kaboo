@@ -145,6 +145,58 @@ describe("whoami / health", () => {
   });
 });
 
+describe("createClient.summary", () => {
+  const range = {
+    range: { from: "2026-09-03", to: "2026-09-03" },
+    previousRange: null,
+    tokens: { input: 100, cachedInput: 40, cacheWrite: 0, output: 20, reasoning: 5, total: 120 },
+    costUsd: 0.5,
+    unpricedModels: [],
+    sessions: 1,
+    changePercent: null,
+    topModel: "gpt-5.6-sol",
+  };
+  const now = Date.UTC(2026, 8, 3, 12);
+  const body = {
+    ok: true,
+    serverTime: now,
+    today: "2026-09-03",
+    user: { userId: "u1", name: "Ada" },
+    ranges: { day: range, week: range, month: range, all: range },
+    quota: { value: null, source: "none", fetchedAt: now, stale: false },
+  };
+
+  it("sends the caller's day as a query parameter and parses the response", async () => {
+    const { client, calls } = stub([json(200, body)]);
+    const res = await client.summary("2026-09-03");
+    expect(res.ranges.day.tokens.total).toBe(120);
+    expect(calls[0]?.url).toBe("https://x.convex.site/api/v1/summary?today=2026-09-03");
+    expect(calls[0]?.init.method).toBe("GET");
+  });
+
+  it("omits the parameter entirely when no day is given", async () => {
+    const { client, calls } = stub([json(200, body)]);
+    await client.summary();
+    expect(calls[0]?.url).toBe("https://x.convex.site/api/v1/summary");
+  });
+
+  it("rejects a malformed body rather than handing the card impossible numbers", async () => {
+    // `cachedInput` above `input` is the parser invariant the shared schema enforces; a card that
+    // accepted it would draw a >100 % cache-hit bar.
+    const broken = {
+      ...body,
+      ranges: {
+        ...body.ranges,
+        day: { ...range, tokens: { ...range.tokens, cachedInput: 900 } },
+      },
+    };
+    const { client } = stub([json(200, broken)]);
+    const e = await client.summary("2026-09-03").catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(SyncHttpError);
+    expect((e as SyncHttpError).code).toBe("invalid_response");
+  });
+});
+
 describe("helpers", () => {
   it("computes jittered backoff and Retry-After", () => {
     expect(backoffMs(1, () => 0.5)).toBe(1000);

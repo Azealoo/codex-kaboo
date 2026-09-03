@@ -9,8 +9,6 @@ import {
 } from "../../shared/src/constants";
 import {
   SyncBatch,
-  type ErrorCode,
-  type ErrorResponse,
   type SessionSummary,
   type SyncResponse,
   type TokenEvent,
@@ -19,15 +17,9 @@ import {
 } from "../../shared/src/sync";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import {
-  httpAction,
-  internalMutation,
-  internalQuery,
-  type ActionCtx,
-  type MutationCtx,
-} from "./_generated/server";
+import { httpAction, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import { LIMITS, latestCliVersion } from "./lib/constants";
-import { parseBearer, sha256Hex } from "./lib/hash";
+import { authenticate, errorResponse, internalError, jsonResponse } from "./lib/http";
 import {
   machineInfoValidator,
   rateLimitSnapshotValidator,
@@ -35,7 +27,7 @@ import {
   tokenEventFields,
 } from "./lib/validators";
 import { recomputeDays } from "./rollups";
-import { touchToken, type TokenLookup } from "./syncTokens";
+import { touchToken } from "./syncTokens";
 
 // ---------- pure helpers ----------
 
@@ -451,59 +443,8 @@ export const finishSync = internalMutation({
 
 // ---------- HTTP handlers ----------
 
-const JSON_HEADERS = { "content-type": "application/json" };
-
-export function jsonResponse(
-  status: number,
-  body: unknown,
-  extraHeaders: Record<string, string> = {},
-): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...JSON_HEADERS, ...extraHeaders },
-  });
-}
-
-export function errorResponse(
-  status: number,
-  error: ErrorCode,
-  message: string,
-  extra: Partial<Pick<ErrorResponse, "issues" | "limits">> = {},
-  extraHeaders: Record<string, string> = {},
-): Response {
-  const body: ErrorResponse = { ok: false, error, message, ...extra };
-  return jsonResponse(status, body, extraHeaders);
-}
-
-type AuthResult = { ok: true; auth: TokenLookup } | { ok: false; response: Response };
-
-async function authenticate(ctx: ActionCtx, request: Request): Promise<AuthResult> {
-  const raw = parseBearer(request.headers.get("authorization"));
-  if (!raw)
-    return { ok: false, response: errorResponse(401, "unauthorized", "missing bearer token") };
-  const auth = await ctx.runQuery(internal.syncTokens.lookupByHash, {
-    tokenHash: await sha256Hex(raw),
-  });
-  if (!auth) return { ok: false, response: errorResponse(401, "unauthorized", "unknown token") };
-  if (auth.revokedAt !== null) {
-    return { ok: false, response: errorResponse(401, "token_revoked", "token has been revoked") };
-  }
-  return { ok: true, auth };
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function internalError(error: unknown): Response {
-  console.error("codex-kaboo ingest failed", error);
-  return errorResponse(
-    503,
-    "internal",
-    "unexpected error, retry later",
-    {},
-    { "retry-after": "5" },
-  );
 }
 
 /**
@@ -615,7 +556,7 @@ export const syncHandler = httpAction(async (ctx, request) => {
     };
     return jsonResponse(200, body);
   } catch (error) {
-    return internalError(error);
+    return internalError("ingest", error);
   }
 });
 
@@ -636,7 +577,7 @@ export const whoamiHandler = httpAction(async (ctx, request) => {
     };
     return jsonResponse(200, body);
   } catch (error) {
-    return internalError(error);
+    return internalError("ingest", error);
   }
 });
 

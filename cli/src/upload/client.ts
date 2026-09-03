@@ -1,9 +1,11 @@
 import {
   CLI_VERSION_HEADER,
   HEALTH_PATH,
+  SUMMARY_PATH,
   SYNC_PATH,
   WHOAMI_PATH,
 } from "@codex-kaboo/shared/constants";
+import { SummaryResponse } from "@codex-kaboo/shared/summary";
 import {
   ErrorResponse,
   SyncResponse,
@@ -28,6 +30,12 @@ export interface ClientOptions {
 export interface SyncClient {
   sync(batch: SyncBatch): Promise<SyncResponse>;
   whoami(): Promise<WhoamiResponse>;
+  /**
+   * The menu bar card's four ranges plus the account's quota reading. `today` is the CALLER's
+   * calendar day — the server runs in UTC and would otherwise resolve "today" to the wrong day for
+   * anyone east of it.
+   */
+  summary(today?: string): Promise<SummaryResponse>;
   health(): Promise<{ ok: boolean; serverTime: number | null }>;
 }
 
@@ -190,6 +198,20 @@ export function createClient(opts: ClientOptions): SyncClient {
           200,
           "invalid_response",
           "server returned an unexpected whoami response",
+          null,
+          null,
+        );
+      return parsed.data;
+    },
+    async summary(today) {
+      const path =
+        today === undefined ? SUMMARY_PATH : SUMMARY_PATH + "?today=" + encodeURIComponent(today);
+      const parsed = SummaryResponse.safeParse(await request(path, "GET"));
+      if (!parsed.success)
+        throw new SyncHttpError(
+          200,
+          "invalid_response",
+          "server returned an unexpected summary response",
           null,
           null,
         );

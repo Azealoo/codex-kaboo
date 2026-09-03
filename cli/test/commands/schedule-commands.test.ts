@@ -264,6 +264,9 @@ describe("doctor", () => {
       async sync() {
         throw new Error("unused");
       },
+      async summary() {
+        throw new Error("unused");
+      },
       async health() {
         return { ok: true, serverTime: 1 };
       },
@@ -319,6 +322,9 @@ describe("doctor", () => {
         };
       },
       async sync() {
+        throw new Error("unused");
+      },
+      async summary() {
         throw new Error("unused");
       },
       async health() {
