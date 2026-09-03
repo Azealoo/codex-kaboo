@@ -16,3 +16,4 @@ web/public/cli/
 cli/test/fixtures/**/*.tmp
 .codegraph/
 .cursor/
+.claude/worktrees/
