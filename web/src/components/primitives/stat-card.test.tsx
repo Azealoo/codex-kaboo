@@ -21,6 +21,17 @@ describe("StatCard", () => {
     expect(pill).toHaveAttribute("data-tone", "up");
     expect(pill).toHaveAttribute("data-good", "true");
   });
+  it("lets a long badge wrap instead of overflowing a narrow card", () => {
+    // The user page lays these out 7-across, so "Estimated cost" wraps to two lines and the
+    // "API list price" badge — `shrink-0 whitespace-nowrap overflow-hidden` by Badge's own
+    // variants — was pushed past the card edge and clipped to "API list pri". jsdom does no
+    // layout, so the guarantee has to be asserted as the layout contract that prevents it:
+    // the row may wrap, and the label may shrink rather than holding the badge out of bounds.
+    render(<StatCard label="Estimated cost" value={20.59} badge="API list price" />);
+    const badge = screen.getByText("API list price");
+    expect(badge.parentElement?.className).toContain("flex-wrap");
+    expect(screen.getByText("Estimated cost").className).toContain("min-w-0");
+  });
   it("hides the delta when change is null and shows an em dash for null values", () => {
     render(
       <StatCard
