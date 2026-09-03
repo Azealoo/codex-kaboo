@@ -8,7 +8,8 @@
   "workspaces": [
     "shared",
     "cli",
-    "web"
+    "web",
+    "desktop"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",

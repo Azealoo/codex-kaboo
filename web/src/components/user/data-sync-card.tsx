@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNow } from "@/hooks/use-now";
 import { useOrigin } from "@/hooks/use-origin";
-import { formatRelative } from "@/lib/format";
+import { formatRelative } from "@shared/format";
 import { installCommands, isNewerThanTested, TESTED_CODEX_VERSION } from "@/lib/install";
 
 export function DataSyncCard({ userId, isMe }: { userId: Id<"users">; isMe: boolean }) {

@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAsyncAction } from "@/hooks/use-async-action";
 import { useNow } from "@/hooks/use-now";
-import { EM_DASH, formatRelative } from "@/lib/format";
+import { EM_DASH, formatRelative } from "@shared/format";
 import { isNewerThanTested, TESTED_CODEX_VERSION } from "@/lib/install";
 
 function RenameCell({ machine }: { machine: MachineRow }) {

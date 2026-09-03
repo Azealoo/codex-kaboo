@@ -7,7 +7,7 @@ import { RankMovement } from "@/components/primitives/rank-movement";
 import { StatCard } from "@/components/primitives/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStableQuery } from "@/hooks/use-stable-query";
-import { formatPercent } from "@/lib/format";
+import { formatPercent } from "@shared/format";
 import type { ResolvedRange } from "@/lib/range";
 
 export function rankSummary(

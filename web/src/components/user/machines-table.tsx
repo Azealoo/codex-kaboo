@@ -6,7 +6,7 @@ import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { QuerySection } from "@/components/primitives/query-section";
 import { useBreakdowns } from "@/hooks/use-breakdowns";
-import { formatCompact, formatInt, formatPercent } from "@/lib/format";
+import { formatCompact, formatInt, formatPercent } from "@shared/format";
 import type { ResolvedRange } from "@/lib/range";
 
 type MachineRow = BreakdownsResult["byMachine"][number];

@@ -1,6 +1,6 @@
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 import { OTHER_KEY, ROLLUP_VERSION } from "../../shared/src/constants";
-import { bucketStart, daysBetween, eachBucket, weekdayOf } from "../../shared/src/days";
+import { bucketStart, eachBucket, weekdayOf } from "../../shared/src/days";
 import {
   addTokens,
   emptyTokens,
@@ -14,9 +14,10 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { mergeRollups, type Aggregate } from "./lib/aggregate";
 import { authedQuery } from "./lib/auth";
-import { MAX_ROLLUP_DOCS_PER_QUERY } from "./lib/constants";
 import { loadPriceMap, priceTokens, sumCost } from "./lib/cost";
 import { assertRange, resolvePeriods } from "./lib/days";
+import { aggregatePeriod, loadBounds, loadRollups } from "./lib/periods";
+import { freshestRateLimit } from "./lib/quota";
 import type {
   ActivityHeatmapResult,
   BoundsResult,
@@ -28,7 +29,6 @@ import type {
   MetricKey,
   ModelRow,
   QuotaResult,
-  Range,
   SummaryResult,
   TrendPoint,
   TrendsResult,
@@ -68,43 +68,6 @@ export const METRIC_KEYS: MetricKey[] = [
 ];
 
 // ---------- shared helpers (also used by Tasks 14–15) ----------
-
-/**
- * Team scope reads by_day, user scope by_user_day; both inclusive on [from, to]. `dailyRollups`
- * holds one document per (user, day), so a team-scope read is bounded only by active users × days
- * in range — unbounded by this function alone. `.take(maxDocs + 1)` peeks one row past the cap
- * (production default `MAX_ROLLUP_DOCS_PER_QUERY`; see its comment for the exact arithmetic) and
- * throws `range_too_large` instead of silently reading toward Convex's ~32,000-document read
- * ceiling, or the 16 MiB payload ceiling, which can bind sooner since each rollup carries several
- * 100-entry sub-arrays.
- */
-export async function loadRollups(
-  ctx: QueryCtx,
-  range: Range,
-  userId?: Id<"users">,
-  maxDocs: number = MAX_ROLLUP_DOCS_PER_QUERY,
-): Promise<Doc<"dailyRollups">[]> {
-  const rows =
-    userId !== undefined
-      ? await ctx.db
-          .query("dailyRollups")
-          .withIndex("by_user_day", (q) =>
-            q.eq("userId", userId).gte("day", range.from).lte("day", range.to),
-          )
-          .take(maxDocs + 1)
-      : await ctx.db
-          .query("dailyRollups")
-          .withIndex("by_day", (q) => q.gte("day", range.from).lte("day", range.to))
-          .take(maxDocs + 1);
-  if (rows.length > maxDocs) {
-    throw new ConvexError({
-      code: "range_too_large",
-      days: daysBetween(range.from, range.to),
-      docs: maxDocs,
-    });
-  }
-  return rows;
-}
 
 /** Every card metric as a plain number; `null` marks an undefined rate (division by zero). */
 export function metricValues(agg: Aggregate, costUsd: number): Record<MetricKey, number | null> {
@@ -200,27 +163,23 @@ export const summary = authedQuery({
   handler: async (ctx, args): Promise<SummaryResult> => {
     const { range, previousRange } = resolvePeriods(args.from, args.to, args.previous);
     const prices = await loadPriceMap(ctx);
-    const currentDocs = await loadRollups(ctx, range, args.userId);
-    const current = mergeRollups(currentDocs);
+    const current = await aggregatePeriod(ctx, range, prices, args.userId);
     const previous = previousRange
-      ? mergeRollups(await loadRollups(ctx, previousRange, args.userId))
+      ? await aggregatePeriod(ctx, previousRange, prices, args.userId)
       : null;
-    const currentCost = sumCost(current.byModel, prices);
-    const previousValues = previous
-      ? metricValues(previous, sumCost(previous.byModel, prices).totalUsd)
-      : null;
+    const previousValues = previous ? metricValues(previous.agg, previous.cost.totalUsd) : null;
     return {
       range,
       previousRange,
-      tokens: current.tokens,
-      previousTokens: previous ? previous.tokens : null,
-      metrics: buildMetrics(metricValues(current, currentCost.totalUsd), previousValues),
-      costByKind: currentCost.byKind,
-      cacheSavingsUsd: currentCost.cacheSavingsUsd,
-      unpricedModels: currentCost.unpricedModels,
+      tokens: current.agg.tokens,
+      previousTokens: previous ? previous.agg.tokens : null,
+      metrics: buildMetrics(metricValues(current.agg, current.cost.totalUsd), previousValues),
+      costByKind: current.cost.byKind,
+      cacheSavingsUsd: current.cost.cacheSavingsUsd,
+      unpricedModels: current.cost.unpricedModels,
       // Free: these documents are already in hand. Counted only over the current range, so the
       // notice the UI draws from it describes the numbers actually on screen.
-      staleRollupDays: currentDocs.filter((doc) => doc.version !== ROLLUP_VERSION).length,
+      staleRollupDays: current.docs.filter((doc) => doc.version !== ROLLUP_VERSION).length,
     };
   },
 });
@@ -548,46 +507,12 @@ export const dayHourHeatmap = authedQuery({
   },
 });
 
-/**
- * How fresh a rate-limit reading actually is, for picking between machines.
- *
- * Ranking on `receivedAt` alone answers "who synced last", not "whose number is newest": a machine
- * that was offline and catches up carries an old reading but the newest arrival time, so it won
- * and the shared gauge walked backwards past a fresher reading.
- *
- * Ranking on `observedAt` alone is worse. That is the reporting machine's own clock, which this
- * codebase already documents twice as untrustworthy (see `quota-card.tsx`): a fast RTC reporting a
- * future observation would outrank every honest machine forever.
- *
- * `min` of the two takes the useful half of each. An honest machine is bounded by its own clock, so
- * a late sync no longer beats a fresh one; a lying one is bounded by when our server actually saw
- * it, so the most it can ever claim is "I synced most recently" — which is true, and harmless.
- * Staleness and the "as of" line stay on `receivedAt`: only the server clock is comparable to the
- * viewer's `now`.
- */
-function freshness(snapshot: { observedAt: number; receivedAt: number }): number {
-  return Math.min(snapshot.observedAt, snapshot.receivedAt);
-}
-
 export const quota = authedQuery({
   args: {},
   handler: async (ctx): Promise<QuotaResult> => {
-    const machines = await ctx.db.query("machines").collect();
-    let best: Doc<"machines"> | null = null;
-    for (const machine of machines) {
-      const candidate = machine.lastRateLimit;
-      if (!candidate) continue;
-      const current = best?.lastRateLimit;
-      if (
-        !current ||
-        freshness(candidate) > freshness(current) ||
-        (freshness(candidate) === freshness(current) && candidate.receivedAt > current.receivedAt)
-      ) {
-        best = machine;
-      }
-    }
-    if (!best?.lastRateLimit) return null;
-    const snapshot = best.lastRateLimit;
+    const best = freshestRateLimit(await ctx.db.query("machines").collect());
+    if (!best) return null;
+    const { machine, snapshot } = best;
     return {
       usedPercent: snapshot.usedPercent,
       windowMinutes: snapshot.windowMinutes,
@@ -596,26 +521,13 @@ export const quota = authedQuery({
       limitId: snapshot.limitId ?? null,
       observedAt: snapshot.observedAt,
       receivedAt: snapshot.receivedAt,
-      machine: { machineId: best.machineId, label: best.label },
-      user: await userRef(ctx, best.userId),
+      machine: { machineId: machine.machineId, label: machine.label },
+      user: await userRef(ctx, machine.userId),
     };
   },
 });
 
 export const bounds = authedQuery({
   args: { userId: v.optional(v.id("users")) },
-  handler: async (ctx, args): Promise<BoundsResult> => {
-    const userId = args.userId;
-    const ordered = (direction: "asc" | "desc") =>
-      userId !== undefined
-        ? ctx.db
-            .query("dailyRollups")
-            .withIndex("by_user_day", (q) => q.eq("userId", userId))
-            .order(direction)
-            .first()
-        : ctx.db.query("dailyRollups").withIndex("by_day").order(direction).first();
-    const first = await ordered("asc");
-    const last = await ordered("desc");
-    return { firstDay: first?.day ?? null, lastDay: last?.day ?? null };
-  },
+  handler: async (ctx, args): Promise<BoundsResult> => loadBounds(ctx, args.userId),
 });

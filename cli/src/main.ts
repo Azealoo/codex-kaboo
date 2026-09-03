@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import os from "node:os";
 import readline from "node:readline";
 import { BAKED_SERVER, BAKED_WEB_ORIGIN, CLI_VERSION } from "./build-info";
+import { formatCard, runCard } from "./commands/card";
 import { formatDoctor, runDoctor } from "./commands/doctor";
 import { formatSyncReport } from "./commands/format";
 import { runInstall } from "./commands/install";
@@ -346,6 +347,36 @@ program
       systemd: o.systemd === true,
     });
     emit(g.json, report, formatStatus(report));
+  });
+
+program
+  .command("card")
+  .description("print the menu bar card's numbers: totals, quota and live tokens/second")
+  .option("--offline", "render from the cached snapshot and local state; no network")
+  .option("--window <minutes>", "width of the live tokens/second window", "3")
+  .option("--codex-home <path>")
+  .action(async (o: { offline?: boolean; window?: string; codexHome?: string }) => {
+    const g = globals();
+    const minutes = Number(o.window);
+    const report = await runCard(
+      {
+        json: g.json,
+        offline: o.offline === true,
+        ...(Number.isFinite(minutes) && minutes > 0 ? { windowMinutes: minutes } : {}),
+        ...(o.codexHome ? { codexHome: o.codexHome } : {}),
+      },
+      {
+        paths,
+        env: process.env,
+        now: () => Date.now(),
+        cliVersion: CLI_VERSION,
+        machineZone: machineZone(),
+        platform: process.platform,
+        createClient: clientFor(CLI_VERSION),
+      },
+    );
+    emit(g.json, report, formatCard(report));
+    process.exitCode = report.exitCode;
   });
 
 program

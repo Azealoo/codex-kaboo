@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNow } from "@/hooks/use-now";
-import { formatRelative, formatResetsIn } from "@/lib/format";
+import { formatRelative, formatResetsIn } from "@shared/format";
 
 const STALE_AFTER_MS = 2 * 3_600_000;
 

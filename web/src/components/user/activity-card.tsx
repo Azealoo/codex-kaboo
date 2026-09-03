@@ -7,7 +7,7 @@ import { ActivityHeatmap } from "@/components/charts/activity-heatmap";
 import { SectionCard } from "@/components/primitives/section-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStableQuery } from "@/hooks/use-stable-query";
-import { formatCompact, formatInt } from "@/lib/format";
+import { formatCompact, formatInt } from "@shared/format";
 import { buildActivityGrid } from "@/lib/heatmap";
 
 const DAYS_BACK = 370; // 53 weeks, aligned to Monday by the grid builder

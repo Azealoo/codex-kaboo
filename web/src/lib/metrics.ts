@@ -7,7 +7,7 @@ import {
   formatInt,
   formatPercent,
   formatUsd,
-} from "./format";
+} from "@shared/format";
 
 export type MetricKind = "tokens" | "usd" | "percent" | "duration" | "hours" | "count" | "ratio";
 /** `"neutral"` = the direction carries no verdict (spending more is neither good nor bad). */

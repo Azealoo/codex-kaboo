@@ -3,7 +3,7 @@ import { ROLLUP_VERSION } from "../../shared/src/constants";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { EventInput, SessionInput } from "./lib/aggregate";
-import { loadRollups } from "./stats";
+import { loadRollups } from "./lib/periods";
 import {
   withUser,
   registerUser,

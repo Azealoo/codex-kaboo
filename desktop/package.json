@@ -1,0 +1,32 @@
+{
+  "name": "codex-kaboo-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "codex-kaboo's menu bar card: totals, quota and live tokens/second, one click from the tray",
+  "license": "MIT",
+  "author": "codex-kaboo",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "tsup && vite build && node scripts/copy-assets.mjs",
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-builder --publish never",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint --config ../eslint.config.mjs --no-error-on-unmatched-pattern src test",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@codex-kaboo/shared": "*",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "44.1.1",
+    "electron-builder": "^26.15.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}

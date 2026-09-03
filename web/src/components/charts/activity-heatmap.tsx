@@ -1,7 +1,7 @@
 "use client";
 
 import { heatColor } from "@/lib/colors";
-import { formatCompact } from "@/lib/format";
+import { formatCompact } from "@shared/format";
 import {
   ACTIVITY_THRESHOLDS,
   describeCell,

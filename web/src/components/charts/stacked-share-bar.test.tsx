@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { formatUsd } from "@/lib/format";
+import { formatUsd } from "@shared/format";
 import { StackedShareBar } from "./stacked-share-bar";
 
 describe("StackedShareBar", () => {

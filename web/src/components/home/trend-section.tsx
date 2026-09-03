@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useModelColors, useUserColors } from "@/hooks/use-entity-colors";
 import { useStableQuery } from "@/hooks/use-stable-query";
 import { trendByModel, trendByUser } from "@/lib/chart-data";
-import { formatCompact } from "@/lib/format";
+import { formatCompact } from "@shared/format";
 import type { ResolvedRange } from "@/lib/range";
 import { cn } from "@/lib/utils";
 

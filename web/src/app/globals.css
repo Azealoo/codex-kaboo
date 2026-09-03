@@ -1,95 +1,10 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+/* The palette itself, shared with the menu bar card in `desktop/` — see the file's own comment. */
+@import "../../../shared/src/tokens.css";
 
 @custom-variant dark (&:is(.dark *));
-
-:root {
-  --background: #f8f9fb;
-  --foreground: #111827;
-  --card: #ffffff;
-  --card-foreground: #111827;
-  --popover: #ffffff;
-  --popover-foreground: #111827;
-  --primary: #008300;
-  --primary-foreground: #ffffff;
-  --secondary: #f1f3f6;
-  --secondary-foreground: #111827;
-  --muted: #f1f3f6;
-  --muted-foreground: #6b7280;
-  --accent: #eef7ee;
-  --accent-foreground: #006300;
-  --destructive: #d03b3b;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #008300;
-  --chart-1: #008300;
-  --chart-2: #2a78d6;
-  --chart-3: #eb6834;
-  --chart-4: #1baf7a;
-  --chart-5: #eda100;
-  --radius: 0.75rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #111827;
-  --sidebar-primary: #008300;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eef7ee;
-  --sidebar-accent-foreground: #006300;
-  --sidebar-border: #e5e7eb;
-  --sidebar-ring: #008300;
-
-  /* codex-kaboo semantic tokens */
-  --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-critical: #d03b3b;
-  --delta-up-fg: #006300;
-  --delta-up-bg: #e6f4e6;
-  --delta-down-fg: #b42318;
-  --delta-down-bg: #fdecec;
-  --heat-0: #eceff3;
-  --heat-1: #6cc482;
-  --heat-2: #2f9f55;
-  --heat-3: #1a7a40;
-  --heat-4: #0d532b;
-  --grid-line: #eceff3;
-  --other-series: #9aa3ae;
-}
-
-/* Dark tokens are defined for completeness; v1 ships light only and does not QA dark. */
-.dark {
-  --background: #0f1115;
-  --foreground: #e5e7eb;
-  --card: #161a21;
-  --card-foreground: #e5e7eb;
-  --popover: #161a21;
-  --popover-foreground: #e5e7eb;
-  --primary: #4fbf4f;
-  --primary-foreground: #0f1115;
-  --secondary: #1f242d;
-  --secondary-foreground: #e5e7eb;
-  --muted: #1f242d;
-  --muted-foreground: #9aa3ae;
-  --accent: #16301a;
-  --accent-foreground: #8fe08f;
-  --destructive: #ef6b6b;
-  --border: #262c36;
-  --input: #262c36;
-  --ring: #4fbf4f;
-  --status-good: #4fbf4f;
-  --status-warning: #f0c454;
-  --status-critical: #ef6b6b;
-  --delta-up-fg: #8fe08f;
-  --delta-up-bg: #16301a;
-  --delta-down-fg: #f4a3a3;
-  --delta-down-bg: #3a1b1b;
-  --heat-0: #1f242d;
-  --heat-1: #2f6b3d;
-  --heat-2: #3d8f52;
-  --heat-3: #57b56e;
-  --heat-4: #8fe08f;
-  --grid-line: #262c36;
-  --other-series: #6b7280;
-}
 
 @theme inline {
   --color-background: var(--background);

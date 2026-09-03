@@ -1,7 +1,7 @@
 import type { Column } from "@/components/primitives/data-table";
 import { Badge } from "@/components/ui/badge";
 import type { ModelTableRow } from "@/lib/breakdowns";
-import { EM_DASH, formatCompact, formatInt, formatPercent, formatUsd } from "@/lib/format";
+import { EM_DASH, formatCompact, formatInt, formatPercent, formatUsd } from "@shared/format";
 
 /** The single per-model table definition. `responses` and `usdPerMTok` are opt-in columns. */
 export function modelTableColumns(

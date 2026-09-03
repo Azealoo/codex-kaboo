@@ -19,6 +19,18 @@ export interface ReadResult {
 export interface ReadOptions {
   compressed?: boolean;
   chunkSize?: number;
+  /**
+   * Byte offset to resume from, which MUST be the `consumed` of an earlier read of the same file
+   * (i.e. sit just after a newline). Defaults to 0, a full pass.
+   *
+   * This exists for the card's live sampler, which re-reads growing rollout files every couple of
+   * seconds: a full pass per tick would re-decode megabytes of history to find the few hundred
+   * bytes that are new. `consumed`, `seq` and the tail all stay ABSOLUTE — as if the file had been
+   * read from the beginning — so a resumed read is interchangeable with a full one.
+   */
+  start?: number;
+  /** `seq` of the first line read; pair it with `start`. Defaults to 0. */
+  startSeq?: number;
 }
 
 export class ZstdUnsupportedError extends Error {
@@ -49,11 +61,22 @@ const NEWLINE = 0x0a;
 class LineSplitter {
   private pending: Buffer[] = [];
   private pendingBytes = 0;
-  private position = 0;
-  seq = 0;
-  consumed = 0;
+  private position: number;
+  seq: number;
+  consumed: number;
+  private readonly start: number;
 
-  constructor(private readonly onLine: (record: LineRecord) => void) {}
+  constructor(
+    private readonly onLine: (record: LineRecord) => void,
+    start = 0,
+    startSeq = 0,
+  ) {
+    this.position = start;
+    this.start = start;
+    this.seq = startSeq;
+    // A resumed read that finds no complete line has still consumed everything before `start`.
+    this.consumed = start;
+  }
 
   push(chunk: Buffer): void {
     let start = 0;
@@ -84,8 +107,9 @@ class LineSplitter {
     return this.pendingBytes > 0;
   }
 
+  /** Bytes read by THIS pass, not the absolute offset. */
   get bytes(): number {
-    return this.position;
+    return this.position - this.start;
   }
 }
 
@@ -102,8 +126,12 @@ export async function readJsonlLines(
   onLine: (record: LineRecord) => void,
   opts: ReadOptions = {},
 ): Promise<ReadResult> {
-  const splitter = new LineSplitter(onLine);
+  const start = opts.start ?? 0;
+  const splitter = new LineSplitter(onLine, start, opts.startSeq ?? 0);
   if (opts.compressed) {
+    // A zstd stream cannot be seeked into, and it never needs to be: compressed rollouts are
+    // Codex's archived, finished sessions, so nothing tails them.
+    if (start > 0) throw new RangeError("cannot resume a compressed rollout from an offset");
     const factory = (zlib as unknown as ZlibWithZstd).createZstdDecompress;
     if (typeof factory !== "function") throw new ZstdUnsupportedError();
     const decompressor = factory();
@@ -126,7 +154,7 @@ export async function readJsonlLines(
   const handle = await fs.open(filePath, "r");
   try {
     const buffer = Buffer.allocUnsafe(chunkSize);
-    let position = 0;
+    let position = start;
     for (;;) {
       const { bytesRead } = await handle.read(buffer, 0, chunkSize, position);
       if (bytesRead === 0) break;
@@ -139,7 +167,7 @@ export async function readJsonlLines(
       lines: splitter.seq,
       tail,
       partial: splitter.partial,
-      bytes: position,
+      bytes: position - start,
     };
   } finally {
     await handle.close();

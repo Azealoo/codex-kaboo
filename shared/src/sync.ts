@@ -247,6 +247,7 @@ export const ErrorCode = z.enum([
   "too_many_items",
   "invalid_json",
   "invalid_batch",
+  "invalid_request",
   "machine_conflict",
   "internal",
 ]);

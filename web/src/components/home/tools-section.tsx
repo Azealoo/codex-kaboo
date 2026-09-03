@@ -9,7 +9,7 @@ import { QuerySection } from "@/components/primitives/query-section";
 import { StatCard } from "@/components/primitives/stat-card";
 import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { toolSegments } from "@/lib/breakdowns";
-import { formatInt, formatPercent } from "@/lib/format";
+import { formatInt, formatPercent } from "@shared/format";
 import type { ResolvedRange } from "@/lib/range";
 
 type McpRow = BreakdownsResult["byMcpTool"][number];

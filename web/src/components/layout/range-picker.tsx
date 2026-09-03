@@ -8,7 +8,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useRange } from "@/hooks/use-range";
 import { localDay } from "@/hooks/use-today";
-import { formatDay } from "@/lib/format";
+import { formatDay } from "@shared/format";
 import { PRESETS, isCustom, presetLabel, type Preset } from "@/lib/range";
 import { cn } from "@/lib/utils";
 

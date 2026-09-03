@@ -1,0 +1,54 @@
+# Packaging for the menu bar card.
+#
+# Artifacts are UNSIGNED in v1: signing needs an Apple Developer ID and a Windows certificate this
+# project does not have. The README documents the one-time Gatekeeper and SmartScreen step. Adding
+# signing later is configuration, not a redesign.
+appId: com.codexkaboo.card
+productName: codex-kaboo
+copyright: codex-kaboo
+
+directories:
+  output: release
+  buildResources: build
+
+# Only the built output ships. `src/` is bundled into `dist/main/index.js` already, and the
+# workspace's node_modules are enormous and entirely unused at runtime — everything the app needs,
+# including the collector's parser, is inside that bundle.
+files:
+  - dist/**
+  - package.json
+
+asar: true
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [universal]
+  icon: build/icon.icns
+  # A status-bar app with no dock icon and no window at launch. Electron also calls `app.dock.hide()`
+  # for the unpackaged case, but this is what makes it true before the app has run a line of code.
+  extendInfo:
+    LSUIElement: true
+  identity: null # unsigned; see the note at the top
+
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: false # it lives in the tray, not on the desktop
+  createStartMenuShortcut: true
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64, arm64]
+  icon: build/icon.png
+  category: Development
+  synopsis: Codex usage in your status bar

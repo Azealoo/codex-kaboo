@@ -58,6 +58,9 @@ function fakeClient(
     async whoami() {
       throw new Error("not used");
     },
+    async summary() {
+      throw new Error("unused");
+    },
     async health() {
       return { ok: true, serverTime: 1 };
     },

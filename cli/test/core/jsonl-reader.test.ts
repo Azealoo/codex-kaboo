@@ -28,7 +28,10 @@ afterEach(() => {
   }
 });
 
-async function collect(file: string, opts?: { compressed?: boolean; chunkSize?: number }) {
+async function collect(
+  file: string,
+  opts?: { compressed?: boolean; chunkSize?: number; start?: number; startSeq?: number },
+) {
   const lines: LineRecord[] = [];
   const result = await readJsonlLines(file, (rec) => lines.push(rec), opts);
   return { lines, result };
@@ -99,4 +102,60 @@ describe("readJsonlLines", () => {
       });
     },
   );
+});
+
+describe("resuming from an offset", () => {
+  const two = '{"a":1}\n{"b":2}\n';
+
+  it("reads only what was appended, with absolute seq and offsets", async () => {
+    const file = tmpFile("append.jsonl", two);
+    const first = await collect(file);
+    expect(first.result.consumed).toBe(16);
+
+    writeFileSync(file, two + '{"c":3}\n');
+    const second = await collect(file, {
+      start: first.result.consumed,
+      startSeq: first.result.lines,
+    });
+    expect(second.lines.map((l) => l.text)).toEqual(['{"c":3}']);
+    expect(second.lines[0]?.seq).toBe(2); // absolute line index, not 0
+    expect(second.lines[0]?.end).toBe(24); // absolute byte offset, not 8
+    expect(second.result).toMatchObject({ consumed: 24, lines: 3, partial: false, bytes: 8 });
+  });
+
+  it("is interchangeable with a full pass", async () => {
+    const file = tmpFile("same.jsonl", two + '{"c":3}\n{"d":4}\n');
+    const whole = await collect(file);
+    const head = await collect(file, { start: 0 });
+    const tail = await collect(file, { start: 16, startSeq: 2 });
+    expect([...head.lines.slice(0, 2), ...tail.lines]).toEqual(whole.lines);
+    expect(tail.result.consumed).toBe(whole.result.consumed);
+    expect(tail.result.lines).toBe(whole.result.lines);
+    expect(tail.result.tail).toBe(whole.result.tail);
+  });
+
+  it("reports the resume point when nothing has been appended yet", async () => {
+    const file = tmpFile("idle.jsonl", two);
+    const { lines, result } = await collect(file, { start: 16, startSeq: 2 });
+    expect(lines).toEqual([]);
+    expect(result).toMatchObject({ consumed: 16, lines: 2, partial: false, bytes: 0 });
+  });
+
+  it("holds a half-written line until its newline arrives", async () => {
+    const file = tmpFile("partial.jsonl", two + '{"c":');
+    const { lines, result } = await collect(file, { start: 16, startSeq: 2 });
+    expect(lines).toEqual([]);
+    expect(result).toMatchObject({ consumed: 16, partial: true });
+
+    writeFileSync(file, two + '{"c":3}\n');
+    const rest = await collect(file, { start: result.consumed, startSeq: result.lines });
+    expect(rest.lines.map((l) => l.text)).toEqual(['{"c":3}']);
+  });
+
+  it("refuses to resume a compressed rollout", async () => {
+    const file = tmpFile("x.jsonl.zst", "not really zstd");
+    await expect(
+      readJsonlLines(file, () => {}, { compressed: true, start: 10 }),
+    ).rejects.toBeInstanceOf(RangeError);
+  });
 });
