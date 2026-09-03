@@ -38,13 +38,13 @@ describe("SEED_PRICES", () => {
 });
 
 describe("prices.seed", () => {
-  it("inserts the 14 seed rows once", async () => {
+  it("inserts the 15 seed rows once", async () => {
     const t = setup();
-    expect(await t.mutation(internal.prices.seed, {})).toEqual({ inserted: 14 });
+    expect(await t.mutation(internal.prices.seed, {})).toEqual({ inserted: 15 });
     expect(await t.mutation(internal.prices.seed, {})).toEqual({ inserted: 0 });
     await registerUser(t, "alice");
     const rows = await withUser(t, "alice").query(api.prices.list, {});
-    expect(rows).toHaveLength(14);
+    expect(rows).toHaveLength(15);
     expect(rows.map((r) => r.model)).toEqual([...rows.map((r) => r.model)].sort());
     expect(rows.find((r) => r.model === "gpt-5.6-sol")).toMatchObject({
       inputUsdPerMTok: 2,
@@ -57,7 +57,15 @@ describe("prices.seed", () => {
       cachedInputUsdPerMTok: 0.03,
       outputUsdPerMTok: 2,
     });
-    expect(rows.find((r) => r.model === "codex-auto-review")).toBeUndefined();
+    // Seeded, so a fresh deployment prices sub-agent review threads instead of counting their
+    // tokens at $0 while the README claims sub-agents count toward cost. There is no published
+    // rate for this model, so it carries gpt-5.6-sol's — editable in Settings like any other.
+    expect(rows.find((r) => r.model === "codex-auto-review")).toMatchObject({
+      inputUsdPerMTok: 2,
+      cachedInputUsdPerMTok: 0.2,
+      outputUsdPerMTok: 10,
+      source: "seed",
+    });
   });
 });
 

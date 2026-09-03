@@ -166,6 +166,9 @@ exactly that and the schedule is repinned to the current Node.
   subscription, not by token, so this is a relative-usage number, not an invoice. Prices live
   under Settings and are editable there; every cost figure on the dashboard re-prices instantly
   when you change one. A model with no price row shows as "unpriced" and contributes $0.
+  `codex-auto-review`, the model Codex's own review sub-agent runs on, has no published rate; it
+  is seeded at `gpt-5.6-sol`'s so that sub-agent tokens are not silently free. That is an
+  assumption — change it under Settings if you have a better number.
 - **Sub-agent threads** (for example an automated review pass Codex spawns on its own) count
   toward token totals and cost, because they draw on the same shared weekly quota — but they're
   excluded from session, turn and message counts, so a user's session/message numbers reflect

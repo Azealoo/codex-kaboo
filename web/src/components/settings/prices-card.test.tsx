@@ -69,4 +69,44 @@ describe("PricesCard", () => {
     // out by the sibling row's success.
     expect(screen.getByText("model-a save rejected")).toBeInTheDocument();
   });
+
+  it("confirms before deleting an existing price", async () => {
+    // `prices.remove` fired on a single click, and the button sits in the exact position and
+    // styling the harmless "Cancel" occupies on the draft row above it — the easiest destructive
+    // control in the app to hit by accident. Deleting a price silently re-prices every chart and
+    // table to $0 for that model.
+    render(<PricesCard />);
+    const rowA = screen.getByText("model-a").closest("tr");
+    if (!rowA) throw new Error("expected the model-a row to render");
+
+    await userEvent.click(within(rowA).getByRole("button", { name: "Remove" }));
+    expect(runMutation).not.toHaveBeenCalled();
+
+    const dialog = await screen.findByRole("alertdialog");
+    // Named, so muscle memory cannot delete the wrong row's price.
+    expect(dialog).toHaveAccessibleName(/model-a/);
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+    expect(runMutation).toHaveBeenCalledWith({ model: "model-a" });
+  });
+
+  it("lets the confirm be dismissed without deleting", async () => {
+    render(<PricesCard />);
+    const rowA = screen.getByText("model-a").closest("tr");
+    if (!rowA) throw new Error("expected the model-a row to render");
+    await userEvent.click(within(rowA).getByRole("button", { name: "Remove" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(runMutation).not.toHaveBeenCalled();
+  });
+
+  it("keeps the draft row's Cancel instant, since discarding a draft destroys nothing", async () => {
+    render(<PricesCard />);
+    await userEvent.click(screen.getByRole("button", { name: "Add model" }));
+    const draftRow = screen.getByLabelText("Model name").closest("tr");
+    if (!draftRow) throw new Error("expected the draft row to render");
+    await userEvent.click(within(draftRow).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Model name")).not.toBeInTheDocument();
+  });
 });

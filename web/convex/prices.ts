@@ -5,9 +5,24 @@ import { internalMutation } from "./_generated/server";
 import { authedMutation, authedQuery } from "./lib/auth";
 import type { PriceRow } from "./lib/types";
 
-/** Spec "Seed price table" (USD per million tokens). `codex-auto-review` stays unpriced on purpose. */
+/**
+ * Spec "Seed price table" (USD per million tokens).
+ *
+ * `codex-auto-review` is the model Codex's own review sub-agent runs on. It used to be left out
+ * deliberately, which made the README's "sub-agent threads count toward token totals and cost"
+ * false on any fresh deployment: those tokens landed in every total but cost $0, and the cost card
+ * carried a permanent "Unpriced: codex-auto-review" footer. OpenAI publishes no rate for it, so it
+ * is seeded at gpt-5.6-sol's — an assumption, not a quote, and editable in Settings like any other
+ * row. A wrong price is still closer than treating a fifth of the tokens as free.
+ */
 export const SEED_PRICES = [
   { model: "gpt-5.6-sol", inputUsdPerMTok: 2, cachedInputUsdPerMTok: 0.2, outputUsdPerMTok: 10 },
+  {
+    model: "codex-auto-review",
+    inputUsdPerMTok: 2,
+    cachedInputUsdPerMTok: 0.2,
+    outputUsdPerMTok: 10,
+  },
   {
     model: "gpt-5.6-luna",
     inputUsdPerMTok: 0.2,
