@@ -210,6 +210,47 @@ async function purgeCountEvents(
   return days;
 }
 
+/**
+ * Deletes one session's events that lie past the end of the rollout file as it now stands, and
+ * returns the days they were on so their rollups get recomputed.
+ *
+ * Rollout files are append-only, so the CLI normally uploads a strictly growing set of
+ * `(sessionId, seq)` rows. When one shrinks, or the bytes behind the CLI's offset stop matching
+ * what it recorded, that assumption has broken: the CLI throws its cursor away, re-reads the file
+ * from byte 0 and re-uploads what the file holds NOW. Every row it uploaded from the old contents
+ * survives that, past the end of a file that no longer reaches it — an upsert keyed on
+ * `(sessionId, seq)` can correct a row and can add one, but nothing in the protocol retracts one.
+ * The damage is quiet and permanent: the replaced summary reports the smaller token total while
+ * rollups, which recompute from the stored events, keep counting the vanished ones, and the next
+ * run finds an unchanged file, uploads nothing, and leaves the two numbers disagreeing for good.
+ *
+ * `seq` is the 0-based line index, so the file's own `lineCount` is exactly the boundary: every
+ * event of the new parse sits below it, and everything at or above it is a leftover. The read is
+ * bounded by the same index rather than scanning the session.
+ *
+ * Ownership is filtered here for the reason spelled out in `purgeCountEvents`: `upsertEvents`
+ * deliberately lets a file's events arrive before its summary, so a sessionId can hold another
+ * user's events with no session document to own them.
+ */
+async function purgeEventsPastEnd(
+  ctx: MutationCtx,
+  sessionId: string,
+  userId: Id<"users">,
+  lineCount: number,
+): Promise<string[]> {
+  const events = await ctx.db
+    .query("tokenEvents")
+    .withIndex("by_session_seq", (q) => q.eq("sessionId", sessionId).gte("seq", lineCount))
+    .collect();
+  const days: string[] = [];
+  for (const event of events) {
+    if (event.userId !== userId) continue;
+    days.push(event.day);
+    await ctx.db.delete(event._id);
+  }
+  return days;
+}
+
 export const upsertSessions = internalMutation({
   args: {
     userId: v.id("users"),
@@ -243,6 +284,21 @@ export const upsertSessions = internalMutation({
       // re-send and a deleted `state.json` all heal rather than corrupt.
       if (session.eventOrigin === "record" && existing?.eventOrigin !== "record") {
         for (const day of await purgeCountEvents(ctx, session.sessionId, userId)) touched.add(day);
+      }
+      // A generation the CLI has moved on means it re-read this rollout from byte 0, which it only
+      // does when the file shrank or changed behind its offset. Checked before the writes below,
+      // which store the new generation, and on both the changed and unchanged-hash paths: a file
+      // truncated and rebuilt to identical bytes bumps the generation without moving the hash.
+      // Safe to run whenever it fires, including on a re-send, because a batch's own events are all
+      // below `lineCount` and the summary rides in the last batch its file sends.
+      if (existing && session.generation > existing.generation) {
+        for (const day of await purgeEventsPastEnd(
+          ctx,
+          session.sessionId,
+          userId,
+          session.lineCount,
+        ))
+          touched.add(day);
       }
       if (!existing) {
         await ctx.db.insert("sessions", { ...session, userId, machineId, syncedAt: now });

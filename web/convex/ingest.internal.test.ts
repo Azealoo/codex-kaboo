@@ -415,3 +415,132 @@ describe("upsertEvents machine stamping", () => {
     expect(stored.map((e) => e.source)).toEqual(["subagent:guardian"]);
   });
 });
+
+describe("a rollout that was re-read from the start", () => {
+  // `generation` counts the times the CLI threw away its cursor and re-read a rollout from byte 0,
+  // which it does when the file shrank or the bytes behind its offset changed. The re-read then
+  // re-uploads what the file holds NOW -- but every `(sessionId, seq)` row it uploaded from the old
+  // contents is still on the server, past the end of a file that no longer reaches it. The summary
+  // that arrives says fewer tokens while the rollups, which recompute from the stored events, keep
+  // counting the vanished ones. Nothing later repairs it: the next run sees an unchanged file,
+  // uploads nothing, and the two numbers stay apart for good.
+  const events = (seqs: number[]) => seqs.map((seq) => makeEvent({ sessionId: "s1", seq }));
+
+  async function storedSeqs(t: ReturnType<typeof setup>): Promise<number[]> {
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("tokenEvents")
+        .withIndex("by_session_seq", (q) => q.eq("sessionId", "s1"))
+        .collect(),
+    );
+    return rows.map((r) => r.seq).sort((a, b) => a - b);
+  }
+
+  it("drops the events the shrunken file no longer reaches", async () => {
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    await t.mutation(internal.ingest.upsertSessions, {
+      userId: alice,
+      machineId: "machine-1",
+      sessions: [makeSession({ sessionId: "s1", lineCount: 40, generation: 0 })],
+      now: T0,
+    });
+    await t.mutation(internal.ingest.upsertEvents, {
+      userId: alice,
+      machineId: "machine-1",
+      events: events([5, 10, 30]),
+      now: T0,
+    });
+    expect(await storedSeqs(t)).toEqual([5, 10, 30]);
+    expect((await getRollup(t, alice, "2026-08-31"))?.responses).toBe(3);
+
+    // The file was truncated to 12 lines, so the CLI bumped the generation and re-read it: seqs 5
+    // and 10 come back identical, seq 30 is past the end of the file that exists now.
+    await t.mutation(internal.ingest.upsertEvents, {
+      userId: alice,
+      machineId: "machine-1",
+      events: events([5, 10]),
+      now: T0 + 1,
+    });
+    await t.mutation(internal.ingest.upsertSessions, {
+      userId: alice,
+      machineId: "machine-1",
+      sessions: [
+        makeSession({
+          sessionId: "s1",
+          lineCount: 12,
+          generation: 1,
+          responses: 2,
+          summaryHash: "b".repeat(40),
+        }),
+      ],
+      now: T0 + 2,
+    });
+
+    expect(await storedSeqs(t)).toEqual([5, 10]);
+    const rollup = await getRollup(t, alice, "2026-08-31");
+    expect(rollup?.responses).toBe(2);
+    expect(rollup?.computedAt).toBe(T0 + 2);
+  });
+
+  it("leaves events alone when the generation did not move", async () => {
+    // The ordinary case is every case but the one above: a growing file re-sends its summary on
+    // every parse, and pruning there would delete the events of any session whose tail has not been
+    // uploaded yet.
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    await t.mutation(internal.ingest.upsertSessions, {
+      userId: alice,
+      machineId: "machine-1",
+      sessions: [makeSession({ sessionId: "s1", lineCount: 40, generation: 0 })],
+      now: T0,
+    });
+    await t.mutation(internal.ingest.upsertEvents, {
+      userId: alice,
+      machineId: "machine-1",
+      events: events([5, 10, 30]),
+      now: T0,
+    });
+    await t.mutation(internal.ingest.upsertSessions, {
+      userId: alice,
+      machineId: "machine-1",
+      sessions: [
+        makeSession({ sessionId: "s1", lineCount: 12, generation: 0, summaryHash: "b".repeat(40) }),
+      ],
+      now: T0 + 1,
+    });
+    expect(await storedSeqs(t)).toEqual([5, 10, 30]);
+  });
+
+  it("never deletes another user's events that share the sessionId", async () => {
+    // `upsertEvents` lets a file's events arrive before its summary, so a sessionId can hold events
+    // with no session document to own them. Deleting by sessionId alone would let whoever posts a
+    // summary for that id first destroy the other user's rows -- and then recompute only their own
+    // days, leaving the victim's rollup counting events that are gone.
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    const bob = await registerUser(t, "bob");
+    await t.mutation(internal.ingest.upsertEvents, {
+      userId: bob,
+      machineId: "machine-2",
+      events: events([30]),
+      now: T0,
+    });
+    await t.mutation(internal.ingest.upsertSessions, {
+      userId: alice,
+      machineId: "machine-1",
+      sessions: [makeSession({ sessionId: "s1", lineCount: 40, generation: 0 })],
+      now: T0,
+    });
+    await t.mutation(internal.ingest.upsertSessions, {
+      userId: alice,
+      machineId: "machine-1",
+      sessions: [
+        makeSession({ sessionId: "s1", lineCount: 12, generation: 1, summaryHash: "b".repeat(40) }),
+      ],
+      now: T0 + 1,
+    });
+    expect(await storedSeqs(t)).toEqual([30]);
+    expect((await getRollup(t, bob, "2026-08-31"))?.responses).toBe(1);
+  });
+});
