@@ -9,7 +9,12 @@
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import { createHash } from "node:crypto";
-import { createSampler, type Sampler, type SamplerOptions } from "@cli/card/sampler";
+import {
+  createSampler,
+  type Sampler,
+  type SamplerOptions,
+  type SamplerTick,
+} from "@cli/card/sampler";
 import { runCard, type CardReport } from "@cli/commands/card";
 import { runSync } from "@cli/commands/sync";
 import { BAKED_WEB_ORIGIN, CLI_VERSION } from "@cli/build-info";
@@ -32,7 +37,15 @@ export interface CardService {
   state(): CardState;
   /** Called whenever the state changes in a way the card would draw differently. */
   subscribe(listener: (state: CardState) => void): () => void;
-  /** Load settings and paint from the cache. Safe to call once, at startup. */
+  /**
+   * Reads the settings file and nothing else.
+   *
+   * Separate from `start` because the popover's window is constructed with a height, and that
+   * height is a setting: creating the window first would open every launch at the default size
+   * and silently discard the one the user resized to.
+   */
+  loadSettings(): Promise<CardSettings>;
+  /** Paint from the cache, start the timers, then fetch. Call once, after `loadSettings`. */
   start(): Promise<void>;
   /** Refetch the server summary. */
   refresh(): Promise<void>;
@@ -54,15 +67,15 @@ export interface CardService {
  */
 function liveSampler(): {
   factory: (opts: SamplerOptions) => Sampler;
-  tick: () => Promise<void>;
   dispose: () => void;
 } {
   let real: Sampler | null = null;
   let chain: Promise<unknown> = Promise.resolve();
+  let lastTick: SamplerTick | null = null;
 
   const tick = async (): Promise<void> => {
     const next = chain.then(async () => {
-      if (real) await real.tick();
+      if (real) lastTick = await real.tick();
     });
     // Never let one failed tick poison the chain for every later one.
     chain = next.catch(() => undefined);
@@ -78,15 +91,16 @@ function liveSampler(): {
       return {
         async tick() {
           await tick();
-          // The facade reports what the sampler holds now rather than what this call read, because
-          // the timer may have done the reading. Only the counts are used, for diagnostics.
+          // Reports the last REAL tick, which may have been the timer's rather than this call's —
+          // that is the point of serialising them. `filesTracked` is re-read because it is the one
+          // number that describes now rather than that tick.
           return {
-            at: Date.now(),
+            at: lastTick?.at ?? Date.now(),
             filesTracked: sampler.trackedSessions().length,
-            filesRead: 0,
-            filesBaselined: 0,
-            newSamples: 0,
-            errors: [],
+            filesRead: lastTick?.filesRead ?? 0,
+            filesBaselined: lastTick?.filesBaselined ?? 0,
+            newSamples: lastTick?.newSamples ?? 0,
+            errors: lastTick?.errors ?? [],
           };
         },
         samples: () => sampler.samples(),
@@ -94,9 +108,9 @@ function liveSampler(): {
         trackedSessions: () => sampler.trackedSessions(),
       };
     },
-    tick,
     dispose() {
       real = null;
+      lastTick = null;
     },
   };
 }
@@ -197,8 +211,12 @@ export function createService(deps: ServiceDeps): CardService {
       return () => listeners.delete(listener);
     },
 
-    async start() {
+    async loadSettings() {
       settings = await readSettings(paths);
+      return settings;
+    },
+
+    async start() {
       // Offline first: the cached snapshot paints immediately, and the quota row comes straight
       // from `state.json` with no network at all. Then the real fetch replaces both.
       await assemble(true);
@@ -279,22 +297,16 @@ export function createService(deps: ServiceDeps): CardService {
         liveTimer = null;
       }
       if (!visible || disposed) return;
-      liveTimer = setInterval(() => {
-        void (async () => {
-          await sampler.tick();
-          // Re-assembling offline is cheap — no network, no disk write unless the digest moved —
-          // and it is what turns a sampler tick into new numbers on the card.
-          await assemble(true);
-          publish();
-        })();
-      }, LIVE_TICK_MS);
-      liveTimer.unref?.();
-      // Paint the moment the card opens rather than after the first tick.
-      void (async () => {
-        await sampler.tick();
+      // `assemble` ticks the sampler itself — `runCard` does, through the factory below — so this
+      // does not tick separately: that would stat every tracked file twice per interval to find
+      // the same bytes. Offline, so it costs no network and no disk write unless the digest moved.
+      const pulse = async (): Promise<void> => {
         await assemble(true);
         publish();
-      })();
+      };
+      liveTimer = setInterval(() => void pulse(), LIVE_TICK_MS);
+      liveTimer.unref?.();
+      void pulse(); // paint the moment the card opens, not one interval later
     },
 
     dispose() {

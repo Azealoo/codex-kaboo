@@ -35,6 +35,12 @@ export interface Popover {
  */
 const REOPEN_GUARD_MS = 250;
 
+/**
+ * How long the drag has to stop before the new height is remembered. `resize` fires on every frame
+ * of a drag, and each one would otherwise be a settings file rewritten from scratch.
+ */
+const RESIZE_SETTLE_MS = 400;
+
 export function createPopover(
   preloadPath: string,
   pagePath: string,
@@ -42,6 +48,7 @@ export function createPopover(
 ): Popover {
   let lastHiddenAt = 0;
   let currentHeight = opts.height;
+  let resizeTimer: NodeJS.Timeout | null = null;
 
   const window = new BrowserWindow({
     width: CARD_WIDTH,
@@ -96,7 +103,12 @@ export function createPopover(
   window.on("resize", () => {
     if (!window.isVisible()) return;
     currentHeight = window.getBounds().height;
-    opts.onResize?.(currentHeight);
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      resizeTimer = null;
+      opts.onResize?.(currentHeight);
+    }, RESIZE_SETTLE_MS);
+    resizeTimer.unref?.();
   });
 
   function hide(): void {
@@ -146,6 +158,7 @@ export function createPopover(
       currentHeight = height;
     },
     destroy() {
+      if (resizeTimer) clearTimeout(resizeTimer);
       window.destroy();
     },
   };

@@ -14,7 +14,6 @@ import { getLaunchAtLogin, setLaunchAtLogin } from "./autostart";
 
 let tray: Tray | null = null;
 let popover: Popover | null = null;
-let service: CardService | null = null;
 
 /**
  * A second launch must not add a second icon to the menu bar. Electron hands the first instance
@@ -40,11 +39,13 @@ async function main(): Promise<void> {
   app.dock?.hide();
   await app.whenReady();
 
-  service = createService({ appVersion: app.getVersion() });
-  const current = service;
+  const current = createService({ appVersion: app.getVersion() });
+  // Settings before the window: its height is one of them, and a window built before they load
+  // opens at the default size every launch, quietly throwing away the size the user chose.
+  const settings = await current.loadSettings();
 
   popover = createPopover(distPath("preload", "index.js"), distPath("renderer", "index.html"), {
-    height: current.state().settings.height,
+    height: settings.height,
     onResize: (height) => void current.updateSettings({ height }),
     onVisibilityChange: (visible) => current.setVisible(visible),
   });
