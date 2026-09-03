@@ -17,8 +17,9 @@
 #   scripts/deploy.sh [project-name]
 #
 # The three CLERK_* values are optional. Without them the script deploys with format-valid
-# PLACEHOLDERS: next.config.ts only checks that the two build-time keys are present, so the build
-# succeeds and the pipeline gets exercised, but nobody can sign in until they are replaced. That is
+# PLACEHOLDERS: the prebuild gate (web/scripts/pack-cli.mjs) only checks that the two build-time
+# keys are present, so the build succeeds and the pipeline gets exercised, but nobody can sign in
+# until they are replaced. That is
 # a deliberate staging mode — re-run with the real values to finish. Nothing is exposed while it is
 # in that state, provided production holds no usage data yet.
 set -euo pipefail
@@ -27,7 +28,11 @@ PROJECT=${1:-codex-kaboo}
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$ROOT"
 
-: "${CONVEX_SITE:?set CONVEX_SITE to the production deployment's .convex.site URL}"
+# No apostrophe in that message, and none in any other `${VAR:?...}`: bash processes quotes inside
+# the word of a `${parameter:?word}` expansion even within double quotes, so a lone `'` opens a
+# string that never closes and the whole file fails to parse. That is a syntax error, not a runtime
+# one -- the script dies on line 1 regardless of which branch would have run.
+: "${CONVEX_SITE:?set CONVEX_SITE to the .convex.site URL of the production deployment}"
 
 PLACEHOLDER_PK=pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk # decodes to example.clerk.accounts.dev
 PLACEHOLDER_SK=sk_test_placeholder_replace_me
@@ -60,11 +65,24 @@ echo "== 2/5  Root Directory -> web"
 # `vercel project update` cannot set this field; the REST API can. Without it the build runs at the
 # repo root, where there is no Next.js app.
 VC_TOKEN=$(node -p "require(require('os').homedir()+'/Library/Application Support/com.vercel.cli/auth.json').token")
-curl -sS -X PATCH "https://api.vercel.com/v9/projects/$PROJECT_ID?teamId=$ORG_ID" \
+# The status has to be inspected, not just printed. curl exits 0 on a 401 or a 500 as long as it
+# got an answer, so `set -e` sails straight past a rejected PATCH and the deploy below then builds
+# at the repo root -- succeeding at the wrong thing, which is the expensive kind of failure here.
+ROOT_DIR_STATUS=$(curl -sS -X PATCH "https://api.vercel.com/v9/projects/$PROJECT_ID?teamId=$ORG_ID" \
   -H "Authorization: Bearer $VC_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"rootDirectory":"web"}' \
-  -o /dev/null -w "    HTTP %{http_code}\n"
+  -o /dev/null -w '%{http_code}')
+echo "    HTTP $ROOT_DIR_STATUS"
+case "$ROOT_DIR_STATUS" in
+2??) ;;
+*)
+  echo "!! Could not set the Root Directory (HTTP $ROOT_DIR_STATUS)." >&2
+  echo "!! Stopping: the build would run at the repo root, where there is no Next.js app." >&2
+  echo "!! Set Root Directory to 'web' on the project's Settings page, then re-run this script." >&2
+  exit 1
+  ;;
+esac
 
 echo "== 3/5  environment variables"
 set_env() {

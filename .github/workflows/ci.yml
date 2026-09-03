@@ -23,6 +23,13 @@ jobs:
       # times only multiplies the same answer.
       - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
         run: npm run format:check
+      # Nothing else in this repo ever parses the deploy script: it is run by hand, a few times a
+      # year, so a syntax error in it stays invisible until the day someone actually needs it. One
+      # was — an apostrophe inside a `${VAR:?message}`, where bash processes quotes even within
+      # double quotes, so it opened a string that never closed and the whole file failed to parse.
+      # `bash -n` would have caught it the day it was written; it costs a second here.
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: bash -n scripts/deploy.sh
       # jsdom 30 bundles an undici that calls `webidl.util.markAsUncloneable`, which arrived in
       # Node 22 — on Node 20 every jsdom worker fails to start, so the web workspace's `dom` project
       # cannot run there at all. Node 20 stays in the matrix regardless: the CLI declares
