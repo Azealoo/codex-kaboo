@@ -183,6 +183,11 @@ npx convex run rollups:rebuildAll        # required: rebuilds any rollup compute
 cd .. && npm run dev -w web              # http://localhost:3000
 ```
 
+Develop on Node 22 or newer. The collector supports Node 20 and CI keeps it covered there, but the
+dashboard's jsdom tests cannot run on it — jsdom 30 bundles an undici that needs a Node 22 API — so
+`npm test` fails on Node 20 with `webidl.util.markAsUncloneable is not a function`. On Node 20, run
+`npm test -w shared -w cli` and `npm run test:no-dom -w web`, which is what CI does.
+
 `web/.env.local` needs `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` and
 `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in` next to the Convex lines written by `npx convex dev`
 (the sign-up URL comes from `<ClerkProvider signUpUrl="/sign-up">`, not from an env var). In the

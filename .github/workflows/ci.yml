@@ -23,7 +23,18 @@ jobs:
       # times only multiplies the same answer.
       - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
         run: npm run format:check
-      - run: npm test
+      # jsdom 30 bundles an undici that calls `webidl.util.markAsUncloneable`, which arrived in
+      # Node 22 — on Node 20 every jsdom worker fails to start, so the web workspace's `dom` project
+      # cannot run there at all. Node 20 stays in the matrix regardless: the CLI declares
+      # `engines.node >= 20` and is the piece people install on machines we do not control, so it is
+      # exactly where this cell earns its keep. Only the dashboard's browser-environment tests sit
+      # it out; `convex` and `unit` still run, and every project runs on 22 and 24.
+      - if: matrix.node == 20
+        run: npm test -w shared -w cli
+      - if: matrix.node == 20
+        run: npm run test:no-dom -w web
+      - if: matrix.node != 20
+        run: npm test
       - run: npm run build -w cli
       - run: node cli/dist/codex-kaboo.js --version
       # Only one cell of the matrix: this doesn't need to run 9 times, and next build is slow.
