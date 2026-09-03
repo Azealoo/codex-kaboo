@@ -131,15 +131,31 @@ export function unpricedFooter(metric: TrendMetric, unpricedModels: string[]): s
   return `Unpriced: ${unpricedModels.join(", ")}`;
 }
 
+/**
+ * Top `n` by value, everything else summed into one `otherKey` row.
+ *
+ * An entry already carrying `otherKey` never occupies one of the `n` slots, however large it is.
+ * Rollups cap their own keyed arrays at 100 and fold the rest, so a breakdown wide enough to have
+ * been capped server-side arrives here with that row already in it — and a tail summed over a
+ * hundred keys routinely outranks the 8th-largest single key. Keeping it and appending another
+ * yields two rows with one key: a duplicate React key, two "Other" slices in the same chart, and a
+ * legend that reads as though the tail were counted twice. Folding the two together is also what
+ * keeps the row honest, since it means "everything not shown" at both levels.
+ */
 export function foldTopN<T extends { key: string; value: number }>(
   items: T[],
   n: number,
   otherKey = OTHER_KEY,
 ): { key: string; value: number }[] {
   const sorted = [...items].sort((a, b) => b.value - a.value || (a.key < b.key ? -1 : 1));
+  // Nothing to fold, so an entry already keyed `otherKey` is simply one more row and stays put.
   if (sorted.length <= n) return sorted.map(({ key, value }) => ({ key, value }));
-  const head = sorted.slice(0, n).map(({ key, value }) => ({ key, value }));
-  const tail = sorted.slice(n).reduce((acc, item) => acc + item.value, 0);
+  const rankable = sorted.filter((item) => item.key !== otherKey);
+  const head = rankable.slice(0, n).map(({ key, value }) => ({ key, value }));
+  const tail = [...rankable.slice(n), ...sorted.filter((item) => item.key === otherKey)].reduce(
+    (acc, item) => acc + item.value,
+    0,
+  );
   return [...head, { key: otherKey, value: tail }];
 }
 

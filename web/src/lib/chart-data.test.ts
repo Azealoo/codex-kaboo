@@ -187,3 +187,41 @@ describe("foldTopN / segments", () => {
     expect(segs[0]).toEqual({ key: "x", label: "x", value: 3, share: 0.75, color: CATEGORICAL[0] });
   });
 });
+
+describe("foldTopN when the server already folded once", () => {
+  // Rollups cap their keyed arrays at 100 and fold the rest into `(other)`, so any breakdown wide
+  // enough to have been capped arrives here with that entry already in it -- and a tail summed over
+  // 100 keys easily outranks the 8th-largest single key. Keeping it and appending another gives two
+  // rows with the same key: a duplicate React key, two "Other" slices in one chart, and a share
+  // total that reads as if the tail were counted twice.
+  const items = [
+    { key: "a", value: 10 },
+    { key: "b", value: 8 },
+    { key: "(other)", value: 30 },
+    { key: "c", value: 2 },
+    { key: "d", value: 1 },
+  ];
+
+  it("merges the existing entry into the fold rather than emitting two", () => {
+    const folded = foldTopN(items, 3);
+    expect(folded.filter((i) => i.key === "(other)")).toHaveLength(1);
+    expect(new Set(folded.map((i) => i.key)).size).toBe(folded.length);
+  });
+
+  it("keeps the folded value equal to everything it stands for", () => {
+    const folded = foldTopN(items, 3);
+    const sum = (rows: { value: number }[]) => rows.reduce((acc, i) => acc + i.value, 0);
+    expect(sum(folded)).toBe(sum(items));
+    // All three slots go to real keys -- a, b and c -- and the fold is the old (other) 30 plus the
+    // only rankable entry left over, d. Under the old behaviour the incoming (other) outranked
+    // both c and d and took a slot, so a real key was pushed out of the chart to make room for it.
+    expect(folded.map((i) => i.key)).toEqual(["a", "b", "c", "(other)"]);
+    expect(folded.find((i) => i.key === "(other)")?.value).toBe(31);
+  });
+
+  it("gives shareSegments one Other slice", () => {
+    const segments = shareSegments(items, new Map(), 3);
+    expect(segments.filter((s) => s.label === "Other")).toHaveLength(1);
+    expect(segments.reduce((acc, s) => acc + s.share, 0)).toBeCloseTo(1);
+  });
+});
