@@ -54,6 +54,21 @@ export function parseRolloutName(name: string): RolloutName | null {
   };
 }
 
+/**
+ * Collects rollout paths under `dir`, NEWEST FIRST, stopping at `limit`.
+ *
+ * Descending name order is what makes the cap survivable. Codex lays sessions out as
+ * `sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`, so name order is date order at every level, and
+ * a depth-first walk of ascending names reaches the oldest rollout first. Filling the cap that way
+ * is not merely a poor choice of which files to defer — it defers the same files forever: every
+ * later run walks the same tree in the same order and stops at the same boundary, so a session
+ * created today is not late, it is unreachable, and a heavy user's dashboard quietly stops
+ * advancing while the CLI keeps reporting success. Newest-first inverts that: the cap now drops the
+ * oldest rollouts, which are finished, already uploaded in the ordinary case, and reachable again
+ * whenever the tree shrinks below the cap.
+ *
+ * Callers still sort the result by path afterwards; this order decides only what gets kept.
+ */
 async function walk(dir: string, out: string[], limit: number): Promise<void> {
   let entries: import("node:fs").Dirent[];
   try {
@@ -61,7 +76,7 @@ async function walk(dir: string, out: string[], limit: number): Promise<void> {
   } catch {
     return;
   }
-  entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  entries.sort((a, b) => (a.name < b.name ? 1 : a.name > b.name ? -1 : 0));
   for (const entry of entries) {
     if (out.length >= limit) return;
     const full = path.join(dir, entry.name);

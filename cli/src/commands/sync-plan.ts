@@ -114,7 +114,7 @@ export async function planSync(
   };
   if (discovered.truncated) {
     plan.warnings.push(
-      `more than ${CLI_MAX_FILES} rollout files found; only the first ${CLI_MAX_FILES} are processed`,
+      `more than ${CLI_MAX_FILES} rollout files found; only the ${CLI_MAX_FILES} newest are processed`,
     );
   }
   for (const duplicate of discovered.duplicates) {

@@ -205,3 +205,66 @@ describe("discoverRolloutFiles", () => {
     expect(capped.homes[1]).toEqual({ path: home2, exists: true, files: 0 });
   });
 });
+
+describe("which files survive the cap", () => {
+  // One rollout per day directory, dated so that path order and chronological order agree — which
+  // is how Codex actually lays sessions out: sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl.
+  function makeDatedHome(days: number[]): string {
+    const home = mkdtempSync(path.join(os.tmpdir(), "ck-codex-dated-"));
+    tmpDirs.push(home);
+    for (const day of days) addDay(home, day);
+    return home;
+  }
+
+  function addDay(home: string, day: number): string {
+    const dd = String(day).padStart(2, "0");
+    const dir = path.join(home, "sessions", "2026", "08", dd);
+    mkdirSync(dir, { recursive: true });
+    const id = `0199a1b2-0000-7000-8000-0000000000${dd}`;
+    const name = `rollout-2026-08-${dd}T10-00-00-${id}.jsonl`;
+    writeFileSync(path.join(dir, name), "{}\n");
+    return id;
+  }
+
+  // The cap exists to bound one run's work, so it has to drop something. Dropping the NEWEST
+  // files is the one choice that never self-corrects: a depth-first walk of sorted names visits
+  // dated directories oldest-first, so every run would fill the cap with the same old prefix and
+  // a heavy user's current sessions would be excluded permanently, not deferred.
+  it("keeps the newest files, not the lexicographically first ones", async () => {
+    const home = makeDatedHome([1, 2, 3, 4, 5]);
+    const capped = await discoverRolloutFiles([home], { maxFiles: 2 });
+    expect(capped.files.map((f) => f.fileTimestamp)).toEqual([
+      "2026-08-04T10-00-00",
+      "2026-08-05T10-00-00",
+    ]);
+    expect(capped.truncated).toBe(true);
+  });
+
+  it("sees a session created after the cap was already full", async () => {
+    const home = makeDatedHome([1, 2, 3]);
+    const before = await discoverRolloutFiles([home], { maxFiles: 2 });
+    const newId = addDay(home, 9);
+    const after = await discoverRolloutFiles([home], { maxFiles: 2 });
+    expect(after.files.map((f) => f.sessionId)).toContain(newId);
+    expect(after.files.map((f) => f.sessionId)).not.toEqual(before.files.map((f) => f.sessionId));
+  });
+
+  it("still spends the cap on live sessions before archived ones", async () => {
+    // `sessions` is walked before `archived_sessions` regardless of dates: an archived rollout is
+    // finished and immutable, so it can wait a run, while a live one is still being appended to.
+    const home = mkdtempSync(path.join(os.tmpdir(), "ck-codex-archived-"));
+    tmpDirs.push(home);
+    const live = path.join(home, "sessions", "2026", "08", "01");
+    const archived = path.join(home, "archived_sessions", "2026", "09", "01");
+    mkdirSync(live, { recursive: true });
+    mkdirSync(archived, { recursive: true });
+    const liveId = "0199a1b2-0000-7000-8000-00000000ff01";
+    writeFileSync(path.join(live, `rollout-2026-08-01T10-00-00-${liveId}.jsonl`), "{}\n");
+    writeFileSync(
+      path.join(archived, `rollout-2026-09-01T10-00-00-0199a1b2-0000-7000-8000-00000000ff02.jsonl`),
+      "{}\n",
+    );
+    const capped = await discoverRolloutFiles([home], { maxFiles: 1 });
+    expect(capped.files.map((f) => f.sessionId)).toEqual([liveId]);
+  });
+});
