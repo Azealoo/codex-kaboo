@@ -105,9 +105,13 @@ describe("an unreadable lock", () => {
     // The other half: a lock left unreadable by a crash must not block sync forever. The clock is
     // advanced rather than the file backdated -- `now` and mtime are the same wall clock in
     // production (`deps.now()` is Date.now()), and utimesSync round-trips differ per filesystem.
+    //
+    // The margin is a whole extra staleMs rather than the 1ms that would prove the boundary,
+    // because mtime comes back at the filesystem's own granularity: staleMs + 1 would leave this
+    // resting on the assumption that no filesystem in the CI matrix ever rounds a timestamp up.
     const lock = tmpLock();
     writeFileSync(lock, "{ truncated mid-writ");
-    const later = Date.now() + 600001;
+    const later = Date.now() + 2 * 600000;
     const result = await acquireLock(lock, {
       now: later,
       staleMs: 600000,
