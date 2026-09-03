@@ -1,14 +1,14 @@
 import type { NextConfig } from "next";
 import path from "node:path";
 
-// A green build with these unset still deploys — every route 500s at runtime because Clerk has no
-// keys to initialize with (verified in the final deployment review). Fail the build instead.
-for (const k of ["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "CLERK_SECRET_KEY"]) {
-  if (process.env.NODE_ENV === "production" && !process.env[k]) {
-    throw new Error(`${k} is not set — the build would deploy an app that 500s on every request`);
-  }
-}
-
+// Nothing here reads the environment on purpose. `next typegen`, which `npm run typecheck` runs,
+// evaluates this file with phase `phase-production-build` and NODE_ENV=production — a real build is
+// indistinguishable from a type check. Anything that throws on a missing deployment value therefore
+// fails typecheck on every machine without a `.env.local`, and passes on the machines that have one
+// for a reason unrelated to whether the value is actually configured.
+//
+// The build-time env gate lives in `scripts/pack-cli.mjs` (the `prebuild`), which only a real
+// `npm run build` reaches. See `buildEnvProblems` there.
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   turbopack: {

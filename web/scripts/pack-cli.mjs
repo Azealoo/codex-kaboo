@@ -50,6 +50,34 @@ export function buildVersion(pkgVersion, sha, date) {
   return `${base}-build.${stamp(date)}.${sha}`;
 }
 
+/**
+ * Build-time values whose absence only bites once the build is SERVED, described in full.
+ *
+ * The Clerk checks used to live in `next.config.ts`, which looked like the natural home and is the
+ * wrong one: `next typegen` — which `npm run typecheck` runs — loads that file with phase
+ * `phase-production-build` and NODE_ENV=production, indistinguishable from a real build. A guard
+ * there fails typecheck on every checkout without a `.env.local`, which is every CI run, and passes
+ * locally for the one reason that has nothing to do with correctness. The prebuild is the real
+ * gate: `npm run build` reaches it, on Vercel and in CI alike.
+ *
+ * Every problem is collected rather than thrown at the first, so one build reports the whole list.
+ */
+export function buildEnvProblems(env) {
+  const problems = [];
+  if (!env.CODEX_KABOO_SERVER)
+    problems.push("CODEX_KABOO_SERVER is not set; the packed CLI would need `--server` at login.");
+  for (const key of ["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "CLERK_SECRET_KEY"]) {
+    if (!env[key])
+      problems.push(`${key} is not set; every route would 500 because Clerk cannot initialize.`);
+  }
+  return problems;
+}
+
+/** Whether this build will be served to someone — the case where the problems above are fatal. */
+export function isDeployBuild(env) {
+  return Boolean(env.CONVEX_DEPLOY_KEY || env.VERCEL);
+}
+
 async function main() {
   const original = readFileSync(cliPkgPath, "utf8");
   const pkg = JSON.parse(original);
@@ -57,11 +85,11 @@ async function main() {
   const now = new Date();
   const version = buildVersion(pkg.version, sha, now);
 
-  if (!process.env.CODEX_KABOO_SERVER) {
-    const msg =
-      "[pack-cli] CODEX_KABOO_SERVER is not set; the packed CLI would need `--server` at login.";
-    if (process.env.CONVEX_DEPLOY_KEY || process.env.VERCEL) throw new Error(msg);
-    console.warn(`${msg} (local build — continuing)`);
+  const problems = buildEnvProblems(process.env);
+  if (problems.length > 0) {
+    const msg = problems.map((p) => `[pack-cli] ${p}`).join("\n");
+    if (isDeployBuild(process.env)) throw new Error(msg);
+    console.warn(`${msg}\n(local build — continuing)`);
   }
 
   try {
