@@ -121,6 +121,52 @@ describe("trendByModel", () => {
   });
 });
 
+describe("trendByModel with a server-folded (other)", () => {
+  // Rollups cap `byModel` at 100 keys and fold the tail into `(other)` before it ever reaches the
+  // browser. `foldTopN` and `capEntries` both refuse to let that sentinel occupy a ranked slot;
+  // `trendByModel` sliced by hand and did not, so the row rendered as a model series literally
+  // named "(other)" beside the chart's own "Other" — the same double-Other defect c2ca0d1 fixed
+  // in the leaderboard fold.
+  const folded: TrendsResult = {
+    bucket: "day",
+    users: [],
+    models: ["a", "b", "(other)"],
+    peak: { bucket: "2026-09-01", total: 160 },
+    unpricedModels: [],
+    points: [
+      {
+        bucket: "2026-09-01",
+        total: 160,
+        tokens: tokens(160),
+        costUsd: 1,
+        activeMs: 0,
+        sessions: 1,
+        byUser: [],
+        byModel: [
+          { key: "a", tokens: 100 },
+          { key: "(other)", tokens: 50 },
+          { key: "b", tokens: 10 },
+        ],
+      },
+    ],
+  };
+
+  it("never gives the sentinel a named slot, even when it outranks real models", () => {
+    const stacked = trendByModel(folded, assignSlots(["a", "b"]), 7);
+    const named = stacked.series.filter((s) => s.key !== "other");
+    expect(named.map((s) => s.entity)).toEqual(["a", "b"]);
+    expect(stacked.series.filter((s) => s.entity === "(other)")).toHaveLength(1);
+    expect(stacked.series.map((s) => s.label)).toEqual(["a", "b", "Other"]);
+  });
+
+  it("carries the folded tokens into the Other series rather than dropping them", () => {
+    const stacked = trendByModel(folded, assignSlots(["a", "b"]), 7);
+    expect(stacked.rows[0]?.other).toBe(50);
+    // Total must survive the regrouping — folding is a relabelling, never a loss.
+    expect(stacked.total).toBe(160);
+  });
+});
+
 describe("trendSingle", () => {
   it("maps tokens, cost and hours to a single series", () => {
     expect(trendSingle(trends, "tokens", "#000").rows.map((r) => r.s0)).toEqual([100, 400]);

@@ -112,6 +112,10 @@ describe("stats.summary", () => {
     expect(s.metrics.totalTokens).toEqual({ current: 4800, previous: 1200, change: 3 });
     expect(s.metrics.sessions).toEqual({ current: 2, previous: 0, change: null });
     expect(s.metrics.subagentTokens.current).toBe(1200);
+    // The rollup has counted sub-agent sessions since day one but never exposed them, so the
+    // README's "excluded from session counts" rule could not be checked against anything. Bob's
+    // 08-31 rollup is sub-agent only: it is the 1 here and the reason `sessions` above is 2, not 3.
+    expect(s.metrics.subagentSessions.current).toBe(1);
     expect(s.metrics.messages.current).toBe(8);
     expect(s.metrics.tokensPerTurn.current).toBe(1200);
     expect(s.metrics.tokensPerLine.current).toBe(240);
@@ -633,10 +637,51 @@ describe("stats.dayHourHeatmap", () => {
     expect(r.grid.flat().every((v) => v === 0)).toBe(true);
     expect(r).toMatchObject({ max: 0, peakHour: null, peakWeekday: null });
   });
+
+  it("reports how many machine timezones the grid mixes", async () => {
+    // Each machine stamps its own hour buckets in its own zone, and this grid sums them all into
+    // one 7x24. For one zone that is a real wall-clock hour; across zones "Peak hour" is an
+    // average of different clocks and cannot be re-projected here, because the hour bucket has
+    // already lost its offset by the time it reaches the server. The count is what lets the UI
+    // say so instead of presenting a fiction.
+    const t = setup();
+    await seedTeam(t);
+    const args = { from: "2026-08-29", to: "2026-08-31" };
+    expect((await withUser(t, "alice").query(api.stats.dayHourHeatmap, args)).zones).toBe(0);
+    await t.run(async (ctx) => {
+      const base = {
+        userId: (await ctx.db.query("users").first())!._id,
+        platform: "darwin",
+        cliVersion: "0.1.0",
+        firstSeenAt: 1,
+        lastSyncAt: 1,
+      };
+      await ctx.db.insert("machines", {
+        ...base,
+        machineId: "machine-1",
+        label: "one",
+        tz: "Europe/London",
+      });
+      await ctx.db.insert("machines", {
+        ...base,
+        machineId: "machine-2",
+        label: "two",
+        tz: "Asia/Tokyo",
+      });
+      // Not a contributor to these rollups, so its zone must not inflate the count.
+      await ctx.db.insert("machines", {
+        ...base,
+        machineId: "machine-elsewhere",
+        label: "three",
+        tz: "America/Denver",
+      });
+    });
+    expect((await withUser(t, "alice").query(api.stats.dayHourHeatmap, args)).zones).toBe(2);
+  });
 });
 
 describe("stats.quota", () => {
-  it("returns null without snapshots and otherwise the most recently received one", async () => {
+  it("returns null without snapshots and otherwise the freshest reading", async () => {
     const t = setup();
     const alice = await registerUser(t, "alice");
     const bob = await registerUser(t, "bob");
@@ -679,17 +724,67 @@ describe("stats.quota", () => {
         lastSyncAt: 300,
       });
     });
+    // machine-2 synced later (receivedAt 200 vs 100) but is carrying an OLDER reading
+    // (observedAt 80 vs 90) — a machine that was offline and caught up. Ranking on arrival time
+    // showed that stale 55% and let the gauge walk backwards past machine-1's fresher 10%.
     expect(await withUser(t, "alice").query(api.stats.quota, {})).toEqual({
-      usedPercent: 55,
+      usedPercent: 10,
       windowMinutes: 10080,
-      resetsAt: null,
-      planType: null,
+      resetsAt: 1000,
+      planType: "team",
       limitId: null,
-      observedAt: 80,
-      receivedAt: 200,
-      machine: { machineId: "machine-2", label: "calm-heron" },
-      user: { userId: bob, name: "Bob", imageUrl: null },
+      observedAt: 90,
+      receivedAt: 100,
+      machine: { machineId: "machine-1", label: "brisk-otter" },
+      user: { userId: alice, name: "Alice", imageUrl: null },
     });
+  });
+
+  it("does not let a machine with a fast clock pin the gauge to its own reading", async () => {
+    // Why the ranking key is `min(observedAt, receivedAt)` and not `observedAt`: observedAt is the
+    // reporting machine's own clock, which the codebase already documents twice as untrustworthy
+    // (see quota-card.tsx). A fast RTC claiming to have observed the quota in 2030 would otherwise
+    // outrank every honest machine forever. Clamping to the server's own receipt time bounds the
+    // damage to "it synced most recently", which is true and harmless.
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    await registerUser(t, "bob");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("machines", {
+        machineId: "honest",
+        userId: alice,
+        label: "brisk-otter",
+        platform: "darwin",
+        cliVersion: "0.1.0",
+        firstSeenAt: 1,
+        lastSyncAt: 5_000,
+        lastRateLimit: {
+          observedAt: 4_900,
+          usedPercent: 42,
+          windowMinutes: 10080,
+          receivedAt: 5_000,
+        },
+      });
+      await ctx.db.insert("machines", {
+        machineId: "fast-clock",
+        userId: alice,
+        label: "wrong-rtc",
+        platform: "linux",
+        cliVersion: "0.1.0",
+        firstSeenAt: 1,
+        lastSyncAt: 1_000,
+        // Claims an observation far in the future, but the server saw it long ago.
+        lastRateLimit: {
+          observedAt: 99_999_999,
+          usedPercent: 3,
+          windowMinutes: 10080,
+          receivedAt: 1_000,
+        },
+      });
+    });
+    const q = await withUser(t, "alice").query(api.stats.quota, {});
+    expect(q?.machine.machineId).toBe("honest");
+    expect(q?.usedPercent).toBe(42);
   });
 });
 

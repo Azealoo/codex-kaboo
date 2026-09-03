@@ -71,7 +71,14 @@ export const METRIC_DEFS: Record<MetricKey, MetricDef> = {
     "Sub-agent tokens",
     "tokens",
     "up",
-    "Tokens used by sub-agent threads such as the auto-review guardian.",
+    "Tokens used by sub-agent threads such as the auto-review guardian. Included in total tokens and cost, because they draw on the same shared quota.",
+  ),
+  subagentSessions: def(
+    "subagentSessions",
+    "Sub-agent threads",
+    "count",
+    "neutral",
+    "Threads Codex spawned on its own. Excluded from the session, turn and message counts above, which reflect only the threads you drove.",
   ),
   costUsd: def(
     "costUsd",
@@ -220,6 +227,10 @@ export const USER_OVERVIEW_KEYS = [
   "wallMs",
   "messages",
   "userMessages",
+  // Last, and adjacent: they are the footnote to `sessions` and `totalTokens` above, explaining
+  // why one counts sub-agent work and the other does not.
+  "subagentTokens",
+  "subagentSessions",
 ] as const;
 
 export function formatMetricValue(kind: MetricKind, value: number | null): string {

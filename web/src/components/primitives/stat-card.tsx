@@ -35,8 +35,15 @@ export function StatCard({
     typeof value === "number" || value === null ? formatMetricValue(kind, value) : value;
   return (
     <Card className={cn("gap-1 rounded-lg border-border p-4 shadow-none", className)}>
-      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <span>{label}</span>
+      {/*
+        `flex-wrap` + `min-w-0` keep the badge inside the card. Badge is `shrink-0` and
+        `whitespace-nowrap` by design, so in a narrow column (the user page renders these
+        7-across) an unwrappable row pushed it past the card edge, where its own
+        `overflow-hidden` clipped "API list price" to "API list pri". Letting the row wrap drops
+        the badge to a second line instead; letting the label shrink keeps that rare.
+      */}
+      <div className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+        <span className="min-w-0">{label}</span>
         {help ? <InfoTooltip text={help} /> : null}
         {badge ? (
           <Badge variant="outline" className="ml-auto rounded-full text-[10px] font-medium">

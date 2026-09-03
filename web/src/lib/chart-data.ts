@@ -91,8 +91,19 @@ export function trendByModel(trends: TrendsResult, colors: ColorMap, topN = 7): 
     p.byModel.map((m) => ({ key: m.key, value: m.tokens })),
   );
   const ordered = sortedEntities(totals);
-  const top = ordered.length > topN + 1 ? ordered.slice(0, topN) : ordered;
-  const rest = ordered.slice(top.length);
+  // Same rule `foldTopN` and the server's `capEntries` both enforce: an entry already keyed
+  // `OTHER_KEY` never occupies one of the `topN` slots, however large it is. Rollups cap `byModel`
+  // at 100 keys and fold the tail themselves, and a tail summed over a hundred models routinely
+  // outranks the 7th-largest single one — so leaving it rankable rendered a series literally
+  // labelled "(other)" next to this chart's own "Other", double-counting the tail to the eye.
+  // It is always merged into the tail instead, which is what keeps "everything not shown" honest
+  // at both levels.
+  const rankable = ordered.filter((key) => key !== OTHER_KEY);
+  const hasSentinel = rankable.length !== ordered.length;
+  // Without a sentinel the original threshold stands: fold only when it saves a slot, so an
+  // "Other" never stands for exactly one model.
+  const top = hasSentinel || rankable.length > topN + 1 ? rankable.slice(0, topN) : rankable;
+  const rest = ordered.filter((key) => !top.includes(key));
   return assemble(
     trends,
     top,

@@ -7,6 +7,17 @@ import { useState } from "react";
 import { api } from "@convex/_generated/api";
 import type { PriceRow } from "@convex/lib/types";
 import { EmptyState } from "@/components/primitives/empty-state";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { InlineError } from "@/components/primitives/inline-error";
 import { SectionCard } from "@/components/primitives/section-card";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +45,7 @@ function PriceEditor({
   onSave,
   onRemove,
   removeLabel = "Remove",
+  confirmRemove = false,
   modelEditable,
   error,
 }: {
@@ -42,6 +54,12 @@ function PriceEditor({
   onSave: () => void;
   onRemove?: () => void;
   removeLabel?: string;
+  /**
+   * Gate `onRemove` behind a confirm dialog. Set for existing rows, where the button deletes a
+   * stored price, and left off for the draft row, where the same slot is a harmless "Cancel" —
+   * the two look identical, so only the destructive one may ask.
+   */
+  confirmRemove?: boolean;
   modelEditable: boolean;
   error: string | null;
 }) {
@@ -86,7 +104,28 @@ function PriceEditor({
             <Button size="sm" disabled={!valid} onClick={onSave}>
               Save
             </Button>
-            {onRemove ? (
+            {onRemove && confirmRemove ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" variant="ghost" className="text-destructive">
+                    {removeLabel}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Remove the price for “{draft.model}”?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      “{draft.model}” becomes unpriced, so its tokens contribute $0 to every cost on
+                      the dashboard until a price is added again. Usage data is not affected.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={onRemove}>{removeLabel}</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : onRemove ? (
               <Button size="sm" variant="ghost" className="text-destructive" onClick={onRemove}>
                 {removeLabel}
               </Button>
@@ -167,6 +206,7 @@ function ExistingPriceRow({
       onChange={onChange}
       onSave={() => void save.run(draft)}
       onRemove={() => void remove.run({ model: price.model })}
+      confirmRemove
       error={save.error ?? remove.error}
     />
   );

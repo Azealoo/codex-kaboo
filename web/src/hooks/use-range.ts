@@ -24,16 +24,19 @@ export function useRange(): {
   const [params, setParams] = useQueryStates(rangeParsers);
   const today = useToday();
   // Exactly the inverse of `resolveRange`'s ALL branch: a half-filled custom range
-  // (`?range=ALL&from=<day>` with no `to`) must still fetch bounds, or the page never resolves.
-  const needBounds = !isCustom(params) && params.range === "ALL" && today !== null;
-  const bounds = useQuery(api.stats.bounds, needBounds ? {} : "skip");
-  const resolved = useMemo(
-    () =>
-      today === null
-        ? null
-        : resolveRange(params, today, needBounds ? (bounds ?? null) : undefined),
-    [params, today, needBounds, bounds],
-  );
+  // (`?range=ALL&from=<day>` with no `to`) is still an ALL range, not a custom one.
+  const isAll = !isCustom(params) && params.range === "ALL";
+  // Fetched for every range, not just ALL: the fixed presets need `lastDay` to extend past the
+  // viewer's own day for a teammate in a zone ahead. It is two indexed lookups, and Convex keeps
+  // one subscription for the whole session.
+  const bounds = useQuery(api.stats.bounds, today !== null ? {} : "skip");
+  const resolved = useMemo(() => {
+    if (today === null) return null;
+    // ALL cannot be resolved at all without bounds, so it maps "still loading" to `null` and holds
+    // the skeleton. Every other range resolves on the first render and merely refines once bounds
+    // land — blocking them too would put an extra round trip in front of every page load.
+    return resolveRange(params, today, isAll ? (bounds ?? null) : bounds);
+  }, [params, today, isAll, bounds]);
   const setPreset = useCallback(
     (preset: Preset) => {
       void setParams({ range: preset, from: null, to: null });

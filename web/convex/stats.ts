@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { ROLLUP_VERSION } from "../../shared/src/constants";
+import { OTHER_KEY, ROLLUP_VERSION } from "../../shared/src/constants";
 import { bucketStart, daysBetween, eachBucket, weekdayOf } from "../../shared/src/days";
 import {
   addTokens,
@@ -43,6 +43,7 @@ export const METRIC_KEYS: MetricKey[] = [
   "outputTokens",
   "reasoningTokens",
   "subagentTokens",
+  "subagentSessions",
   "costUsd",
   "linesAdded",
   "linesRemoved",
@@ -115,6 +116,7 @@ export function metricValues(agg: Aggregate, costUsd: number): Record<MetricKey,
     outputTokens: t.output,
     reasoningTokens: t.reasoning,
     subagentTokens: agg.subagentTokens.total,
+    subagentSessions: agg.subagentSessions,
     costUsd,
     linesAdded: agg.linesAdded,
     linesRemoved: agg.linesRemoved,
@@ -530,9 +532,42 @@ export const dayHourHeatmap = authedQuery({
         }
       }
     }
-    return { grid, max, peakHour, peakWeekday };
+    // Machines that actually contributed to these rollups, so an idle laptop in a fourth zone
+    // does not make the grid look more mixed than it is. `(other)` is a fold sentinel, not an id.
+    const contributors = new Set<string>();
+    for (const doc of docs) {
+      for (const entry of doc.byMachine) if (entry.key !== OTHER_KEY) contributors.add(entry.key);
+    }
+    const zones = new Set<string>();
+    if (contributors.size > 0) {
+      for (const machine of await ctx.db.query("machines").collect()) {
+        if (machine.tz && contributors.has(machine.machineId)) zones.add(machine.tz);
+      }
+    }
+    return { grid, max, peakHour, peakWeekday, zones: zones.size };
   },
 });
+
+/**
+ * How fresh a rate-limit reading actually is, for picking between machines.
+ *
+ * Ranking on `receivedAt` alone answers "who synced last", not "whose number is newest": a machine
+ * that was offline and catches up carries an old reading but the newest arrival time, so it won
+ * and the shared gauge walked backwards past a fresher reading.
+ *
+ * Ranking on `observedAt` alone is worse. That is the reporting machine's own clock, which this
+ * codebase already documents twice as untrustworthy (see `quota-card.tsx`): a fast RTC reporting a
+ * future observation would outrank every honest machine forever.
+ *
+ * `min` of the two takes the useful half of each. An honest machine is bounded by its own clock, so
+ * a late sync no longer beats a fresh one; a lying one is bounded by when our server actually saw
+ * it, so the most it can ever claim is "I synced most recently" — which is true, and harmless.
+ * Staleness and the "as of" line stay on `receivedAt`: only the server clock is comparable to the
+ * viewer's `now`.
+ */
+function freshness(snapshot: { observedAt: number; receivedAt: number }): number {
+  return Math.min(snapshot.observedAt, snapshot.receivedAt);
+}
 
 export const quota = authedQuery({
   args: {},
@@ -545,8 +580,8 @@ export const quota = authedQuery({
       const current = best?.lastRateLimit;
       if (
         !current ||
-        candidate.receivedAt > current.receivedAt ||
-        (candidate.receivedAt === current.receivedAt && candidate.observedAt > current.observedAt)
+        freshness(candidate) > freshness(current) ||
+        (freshness(candidate) === freshness(current) && candidate.receivedAt > current.receivedAt)
       ) {
         best = machine;
       }

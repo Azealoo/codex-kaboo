@@ -14,7 +14,14 @@ describe("METRIC_DEFS", () => {
       expect(METRIC_DEFS[key].label.length).toBeGreaterThan(0);
       expect(METRIC_DEFS[key].help.length).toBeGreaterThan(0);
     }
-    expect(USER_OVERVIEW_KEYS).toHaveLength(13);
+    expect(USER_OVERVIEW_KEYS).toHaveLength(15);
+  });
+  it("surfaces the sub-agent split the rollups compute", () => {
+    // Both were folded into every rollup and rendered nowhere, so the README's rule — sub-agent
+    // threads count toward tokens but not toward sessions — was unverifiable on screen. Showing
+    // them next to `sessions` and `totalTokens` is what makes those two numbers legible.
+    expect(USER_OVERVIEW_KEYS).toContain("subagentTokens");
+    expect(USER_OVERVIEW_KEYS).toContain("subagentSessions");
   });
   it("marks latency and waste metrics as lower-is-better", () => {
     expect(METRIC_DEFS.ttftP50Ms.goodDirection).toBe("down");

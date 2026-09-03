@@ -33,6 +33,54 @@ describe("resolveRange presets", () => {
   });
 });
 
+describe("resolveRange presets vs. a machine dated ahead of the viewer", () => {
+  // The ALL branch already clamps for this and warns against reintroducing `to: today`. The fixed
+  // presets had no such clamp, so a teammate in UTC+9 whose rollup is dated `today + 1` from this
+  // viewer's browser clock was silently dropped from 1D/7D/30D/90D — no error, just missing data.
+  const ahead = { firstDay: "2026-08-01", lastDay: "2026-09-02" };
+
+  it("extends `to` to cover a day dated ahead of the viewer", () => {
+    const r = resolveRange(preset("30D"), "2026-09-01", ahead);
+    expect(r?.to).toBe("2026-09-02");
+    // Anchored on `to`, so the window stays exactly 30 days and the previous period stays adjacent.
+    expect(r?.from).toBe("2026-08-04");
+    expect(r?.days).toBe(30);
+  });
+
+  it("extends 1D as well, so 'Today' still shows a teammate already in tomorrow", () => {
+    const r = resolveRange(preset("1D"), "2026-09-01", ahead);
+    expect(r?.to).toBe("2026-09-02");
+    expect(r?.from).toBe("2026-09-02");
+    expect(r?.days).toBe(1);
+  });
+
+  it("leaves the ordinary case unchanged when no machine is ahead", () => {
+    expect(
+      resolveRange(preset("30D"), "2026-09-01", { firstDay: "2026-01-01", lastDay: null }),
+    ).toEqual(resolveRange(preset("30D"), "2026-09-01"));
+    expect(
+      resolveRange(preset("30D"), "2026-09-01", { firstDay: "2026-01-01", lastDay: "2026-08-31" }),
+    ).toEqual(resolveRange(preset("30D"), "2026-09-01"));
+  });
+
+  it("resolves without waiting for bounds", () => {
+    // Presets must not block on the bounds query the way ALL does, or every page load would sit
+    // behind an extra round trip. Undefined bounds simply means "no lead known yet".
+    expect(resolveRange(preset("7D"), "2026-09-01", undefined)?.to).toBe("2026-09-01");
+  });
+
+  it("caps the lead so a machine with a broken clock cannot shift the window", () => {
+    // UTC-12..UTC+14 is a 26-hour spread, so a legitimate lead is at most 2 calendar days. A
+    // machine with a wrong RTC claiming 2027 must not drag the whole dashboard forward with it.
+    const r = resolveRange(preset("30D"), "2026-09-01", {
+      firstDay: "2026-08-01",
+      lastDay: "2027-05-01",
+    });
+    expect(r?.to).toBe("2026-09-03");
+    expect(r?.days).toBe(30);
+  });
+});
+
 describe("resolveRange ALL", () => {
   it("is unresolved until bounds are known", () => {
     expect(resolveRange(preset("ALL"), "2026-09-01")).toBeNull();
@@ -154,6 +202,34 @@ describe("resolveRange custom", () => {
       resolveRange({ range: "7D", from: "2026-09-05", to: "2026-09-06" }, "2026-09-01")?.kind,
     ).toBe("30D");
   });
+  it("flags the fallback so the UI can say why the range changed", () => {
+    // Falling back silently shows a range the user did not ask for with nothing explaining it.
+    // The flag is only present on the fallback path, so valid ranges keep their exact shape.
+    const tooLong = resolveRange(
+      { range: DEFAULT_PRESET, from: "2024-01-01", to: "2026-09-01" },
+      "2026-09-01",
+    );
+    expect(tooLong?.invalidCustom).toBe(true);
+    const badDay = resolveRange(
+      { range: "7D", from: "2026-02-30", to: "2026-03-01" },
+      "2026-09-01",
+    );
+    expect(badDay?.invalidCustom).toBe(true);
+    const inverted = resolveRange(
+      { range: "7D", from: "2026-03-05", to: "2026-03-01" },
+      "2026-09-01",
+    );
+    expect(inverted?.invalidCustom).toBe(true);
+  });
+
+  it("does not flag a valid custom range or a plain preset", () => {
+    expect(
+      resolveRange({ range: DEFAULT_PRESET, from: "2026-08-01", to: "2026-08-15" }, "2026-09-01")
+        ?.invalidCustom,
+    ).toBeUndefined();
+    expect(resolveRange(preset("30D"), "2026-09-01")?.invalidCustom).toBeUndefined();
+  });
+
   it("isCustom requires both ends", () => {
     expect(isCustom({ range: "7D", from: "2026-08-01", to: null })).toBe(false);
     expect(isCustom({ range: "7D", from: "2026-08-01", to: "2026-08-02" })).toBe(true);
