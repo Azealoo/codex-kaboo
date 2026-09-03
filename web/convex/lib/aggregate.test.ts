@@ -509,3 +509,40 @@ describe("mergeRollups", () => {
     expect(capped.byMcpTool[0]).toEqual({ key: "(other)", count: 21 });
   });
 });
+
+describe("capping an input that already holds an (other) entry", () => {
+  // Merging a range of days feeds capEntries its own output: every day is capped on its own, so a
+  // range wide enough to have capped twice arrives with an `(other)` already among its entries.
+  // That sentinel must not survive the second fold, or the row is emitted twice.
+  const cappedDay = (offset: number) =>
+    computeDayRollup(
+      userId,
+      "2026-08-30",
+      [],
+      [
+        {
+          ...sessions[1]!,
+          mcpTools: Array.from({ length: 150 }, (_, i) => ({
+            key: `tool-${String(offset + i).padStart(4, "0")}`,
+            count: i + 1,
+          })),
+        },
+      ],
+      AT,
+    );
+
+  it("folds it into the remainder instead of emitting (other) twice", () => {
+    const merged = mergeRollups([cappedDay(0), cappedDay(1000)]);
+    const others = merged.byMcpTool.filter((e) => e.key === "(other)");
+    expect(others).toHaveLength(1);
+    expect(merged.byMcpTool).toHaveLength(100);
+    expect(new Set(merged.byMcpTool.map((e) => e.key)).size).toBe(merged.byMcpTool.length);
+  });
+
+  it("keeps the folded entry counting everything it stands for", () => {
+    const days = [cappedDay(0), cappedDay(1000)];
+    const total = (r: { byMcpTool: { count: number }[] }) =>
+      r.byMcpTool.reduce((sum, e) => sum + e.count, 0);
+    expect(total(mergeRollups(days))).toBe(total(days[0]!) + total(days[1]!));
+  });
+});

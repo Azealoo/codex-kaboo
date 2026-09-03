@@ -110,6 +110,15 @@ export function compareEntries(
 /**
  * Sorts entries by key and enforces MAX_ROLLUP_ENTRIES: when there are more, the highest-ranked
  * `MAX_ROLLUP_ENTRIES - 1` stay and the remainder is folded into one `OTHER_KEY` entry.
+ *
+ * An entry already keyed `OTHER_KEY` is never eligible to be kept, however it ranks. This function
+ * consumes its own output — `mergeRollups` folds days that were each capped on the way in — so a
+ * wide enough range arrives with a sentinel already among the entries, and by then it usually
+ * ranks near the top, being the sum of a whole tail. Keeping it would emit `(other)` twice: two
+ * rows with one key, the remainder split between them on no principle a reader could follow, and
+ * a duplicate React key wherever the array is rendered. Folding it back in is also what makes the
+ * fold associative — the sentinel means "everything not listed", which stays true across a second
+ * pass only if the two are combined.
  */
 export function capEntries<T extends { key: string; effort?: string }>(
   entries: T[],
@@ -119,8 +128,12 @@ export function capEntries<T extends { key: string; effort?: string }>(
   const sorted = [...entries].sort(compareEntries);
   if (sorted.length <= MAX_ROLLUP_ENTRIES) return sorted;
   const byRank = [...sorted].sort((a, b) => rank(b) - rank(a) || compareEntries(a, b));
-  const keep = byRank.slice(0, MAX_ROLLUP_ENTRIES - 1);
-  const rest = byRank.slice(MAX_ROLLUP_ENTRIES - 1);
+  const rankable = byRank.filter((entry) => entry.key !== OTHER_KEY);
+  const keep = rankable.slice(0, MAX_ROLLUP_ENTRIES - 1);
+  const rest = [
+    ...rankable.slice(MAX_ROLLUP_ENTRIES - 1),
+    ...byRank.filter((e) => e.key === OTHER_KEY),
+  ];
   return [...keep, fold(rest)].sort(compareEntries);
 }
 
