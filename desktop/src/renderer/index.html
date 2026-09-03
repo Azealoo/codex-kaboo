@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      The card loads over file:// and talks to nothing: every number it draws arrives over IPC.
+      The policy below says exactly that, so a stray <img src="https://…"> or an injected script
+      fails loudly in development instead of quietly reaching the network in someone's menu bar.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'"
+    />
+    <title>codex-kaboo</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

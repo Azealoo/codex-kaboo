@@ -1,0 +1,81 @@
+name: release-card
+
+# Builds the menu bar card for all three platforms and attaches the installers to a Release.
+#
+# Triggered by a `card-v*` tag, so releasing the card is independent of the collector's own
+# versioning — they ship on different clocks and a card fix should not force a CLI release.
+# `workflow_dispatch` is there for a dry run that builds everything and uploads nothing.
+on:
+  push:
+    tags:
+      - "card-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: dmg
+          - os: windows-latest
+            artifact: exe
+          - os: ubuntu-latest
+            artifact: AppImage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # No ELECTRON_SKIP_BINARY_DOWNLOAD here, unlike ci.yml: electron-builder needs the real
+      # binary to package against.
+      - run: npm ci
+      - run: npm run build -w desktop
+        env:
+          # The dashboard the card's "Open dashboard" button opens. Without it the button is
+          # hidden rather than pointing somewhere wrong.
+          CODEX_KABOO_WEB_ORIGIN: ${{ vars.CODEX_KABOO_WEB_ORIGIN }}
+      # Unsigned in v1: signing needs an Apple Developer ID and a Windows certificate this project
+      # does not have. `CSC_IDENTITY_AUTO_DISCOVERY: false` stops electron-builder finding an
+      # unrelated keychain identity on a self-hosted runner and signing with it by accident.
+      - run: npx electron-builder --publish never --config electron-builder.yml
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: card-${{ matrix.artifact }}
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.exe
+            desktop/release/*.AppImage
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/card-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          draft: true # a human checks the artifacts before anyone downloads them
+          body: |
+            The codex-kaboo menu bar card.
+
+            These builds are **unsigned**. macOS: right-click the app and choose Open the first
+            time, or run `xattr -dr com.apple.quarantine /Applications/codex-kaboo.app`. Windows:
+            SmartScreen will warn once — choose More info, then Run anyway. Linux: `chmod +x` the
+            AppImage; GNOME needs the AppIndicator extension for any tray icon to appear.
+
+            The card reads the login written by `codex-kaboo login`; install the collector first.

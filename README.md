@@ -160,6 +160,48 @@ exactly that and the schedule is repinned to the current Node.
 - **Settings**: sync tokens, install instructions, machines (rename), model prices (USD per
   million tokens; edits re-price everything instantly).
 
+## Menu bar card
+
+A small always-there card in the macOS menu bar, the Windows tray or a Linux panel: today's tokens
+with the change against yesterday, estimated cost, the cached-vs-new split, live tokens per second
+from the session you are running right now, and the shared Codex quota. Click the icon, glance,
+click again.
+
+It is a **separate download** from the collector, not part of `npm i -g` — it carries a browser
+engine, and nobody who only wants the collector should pay 200 MB for it. Install the collector and
+run `codex-kaboo login` first; the card reads that login and never asks for a token of its own.
+
+Get the installer for your platform from the [Releases](../../releases) page (`card-v*` tags):
+
+| Platform | File          | First run                                                                         |
+| -------- | ------------- | --------------------------------------------------------------------------------- |
+| macOS    | `.dmg`        | Unsigned: right-click the app → Open, or `xattr -dr com.apple.quarantine <app>`   |
+| Windows  | `.exe` (NSIS) | Unsigned: SmartScreen warns once → More info → Run anyway                         |
+| Linux    | `.AppImage`   | `chmod +x` it. **GNOME needs the AppIndicator extension** or no tray icon appears |
+
+Signing needs an Apple Developer ID and a Windows certificate this project does not have, so the
+one-time warning above is expected rather than a sign something is wrong.
+
+**What it shows.** Day / Week / Month / All tabs — the same four ranges as the dashboard's presets,
+so a number here and the same number on My Page always agree. Totals, cost and the cache split come
+from the dashboard over `GET /api/v1/summary`; the last response is cached at
+`~/.codex-kaboo/menubar-snapshot.json`, so the card paints instantly, works offline and tells you
+how old the numbers are. The quota row paints from this machine's `state.json` before any request
+returns, then the account-wide value replaces it. Live tokens per second is sampled locally by
+tailing the rollout files, so it moves within seconds and never waits on a sync.
+
+**What it does not do.** It talks to exactly one host — the Convex deployment you configured — and
+reads exactly the local files the collector already reads. It does not read credentials for any AI
+vendor, and no prompt text, command, file path or repository name reaches it, let alone leaves the
+machine. `codex-kaboo sync --dry-run --json` remains the auditable proof of that, unchanged.
+
+**Headless.** `codex-kaboo card --json` prints the card's exact payload on any platform, GUI or
+not. It is the first thing to check when a number looks wrong, and the reason the whole data layer
+is testable in CI.
+
+Settings (the gear) covers the refresh interval, the width of the live window, start-at-login and
+the macOS menu bar label. They live in `~/.codex-kaboo/menubar.json`.
+
 ## How the numbers are defined
 
 - **Cache hit rate** = cached input tokens ÷ input tokens.
@@ -255,5 +297,7 @@ sentence under "Install the collector" above accordingly.
 
 - `shared/` — sync payload schema (zod), day math and metric helpers used by the CLI, backend and UI.
 - `cli/` — the collector (`codex-kaboo`), bundled into one file by tsup.
-- `web/` — Next.js dashboard; `web/convex/` — Convex schema, HTTP sync endpoint and queries.
+- `web/` — Next.js dashboard; `web/convex/` — Convex schema, HTTP endpoints and queries.
+- `desktop/` — the menu bar card (Electron). Its main process bundles the collector's parser from
+  source, so there is one implementation of the numbers, not two.
 - `docs/superpowers/specs/` — the design spec; `docs/superpowers/plans/` — implementation plans.

@@ -2,6 +2,7 @@ node_modules
 dist
 .next
 web/public/cli
+desktop/release
 cli/test/fixtures
 package-lock.json
 docs

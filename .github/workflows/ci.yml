@@ -17,6 +17,13 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+        env:
+          # Electron's ~100 MB binary is only needed to RUN the menu bar card, which CI never does:
+          # typecheck, lint, test and build all work from the package's types alone (tsup marks
+          # `electron` external and the tests import types only). Skipping the download saves it in
+          # every one of the nine matrix cells; the release workflow, which does need it, does not
+          # set this.
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - run: npm run typecheck
       - run: npm run lint
       # One cell is enough: formatting is platform- and Node-independent, and running it nine
@@ -37,7 +44,7 @@ jobs:
       # exactly where this cell earns its keep. Only the dashboard's browser-environment tests sit
       # it out; `convex` and `unit` still run, and every project runs on 22 and 24.
       - if: matrix.node == 20
-        run: npm test -w shared -w cli
+        run: npm test -w shared -w cli -w desktop
       - if: matrix.node == 20
         run: npm run test:no-dom -w web
       - if: matrix.node != 20
@@ -47,6 +54,11 @@ jobs:
       # Only one cell of the matrix: this doesn't need to run 9 times, and next build is slow.
       # This is the only thing that exercises pack-cli.mjs and `next build` at all — neither ran in
       # CI before, so a Vercel deploy could go green while either was broken.
+      # One cell: a broken main or renderer build must fail CI, but building it nine times only
+      # multiplies the same answer. Not packaged here — that is the release workflow's job, and it
+      # needs the Electron binary this install deliberately skips.
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: npm run build -w desktop
       - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
         run: npm run build -w web
         env:
