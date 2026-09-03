@@ -15,7 +15,7 @@ import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { useStableQuery } from "@/hooks/use-stable-query";
 import { modelTableRows } from "@/lib/breakdowns";
 import { costPerLine, costWithoutCaching, withUnpriced } from "@/lib/efficiency";
-import { formatUsd } from "@/lib/format";
+import { formatUsd } from "@shared/format";
 import type { ResolvedRange } from "@/lib/range";
 import { cn } from "@/lib/utils";
 

@@ -1,5 +1,5 @@
 import type { Segment } from "@/lib/chart-data";
-import { formatPercent } from "@/lib/format";
+import { formatPercent } from "@shared/format";
 
 /** A 100 % horizontal bar with 2 px surface gaps, plus a legend row per segment (never a pie). */
 export function StackedShareBar({

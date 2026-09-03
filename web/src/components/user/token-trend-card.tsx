@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useStableQuery } from "@/hooks/use-stable-query";
 import { trendSingle, unpricedFooter, type TrendMetric } from "@/lib/chart-data";
 import { CATEGORICAL } from "@/lib/colors";
-import { formatCompact, formatUsd } from "@/lib/format";
+import { formatCompact, formatUsd } from "@shared/format";
 import type { ResolvedRange } from "@/lib/range";
 
 const METRICS = [

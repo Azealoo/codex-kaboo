@@ -8,7 +8,7 @@ import { SectionCard } from "@/components/primitives/section-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { useStableQuery } from "@/hooks/use-stable-query";
-import { formatCompact } from "@/lib/format";
+import { formatCompact } from "@shared/format";
 import type { ResolvedRange } from "@/lib/range";
 import { timeAnalysisRows } from "@/lib/time-analysis";
 

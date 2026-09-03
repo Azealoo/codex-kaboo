@@ -6,7 +6,7 @@ import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { QuerySection } from "@/components/primitives/query-section";
 import { useBreakdowns } from "@/hooks/use-breakdowns";
-import { formatInt } from "@/lib/format";
+import { formatInt } from "@shared/format";
 import type { ResolvedRange } from "@/lib/range";
 
 type SkillRow = BreakdownsResult["bySkill"][number];

@@ -1,6 +1,6 @@
 import { addDays, compareDays, weekStart } from "@shared/days";
 import type { ActivityHeatmapResult } from "@convex/lib/types";
-import { formatCompact, formatDay, formatUsd } from "./format";
+import { formatCompact, formatDay, formatUsd } from "@shared/format";
 
 export type HeatLevel = 0 | 1 | 2 | 3 | 4;
 export type ActivityDay = ActivityHeatmapResult["days"][number];

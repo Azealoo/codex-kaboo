@@ -1,5 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
-import { formatDeltaPercent } from "@/lib/format";
+import { formatDeltaPercent } from "@shared/format";
 import { deltaTone, type GoodDirection } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 

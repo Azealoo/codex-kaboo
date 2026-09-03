@@ -1,7 +1,7 @@
 import { OTHER_KEY } from "@shared/constants";
 import type { CostByKind, TrendsResult } from "@convex/lib/types";
 import { CATEGORICAL, OTHER_COLOR, colorFor, type ColorMap } from "./colors";
-import { formatDayShort, formatMonth } from "./format";
+import { formatDayShort, formatMonth } from "@shared/format";
 
 export type SeriesDef = { key: string; label: string; color: string; entity: string };
 export type ChartRow = { x: string; label: string } & Record<string, number | string>;

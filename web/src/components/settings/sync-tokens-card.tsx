@@ -37,7 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAsyncAction } from "@/hooks/use-async-action";
 import { useNow } from "@/hooks/use-now";
 import { useOrigin } from "@/hooks/use-origin";
-import { EM_DASH, formatDateTime, formatRelative } from "@/lib/format";
+import { EM_DASH, formatDateTime, formatRelative } from "@shared/format";
 import { installCommands } from "@/lib/install";
 
 type Created = { token: string; prefix: string; name: string };

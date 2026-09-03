@@ -19,7 +19,7 @@ import {
   formatInt,
   formatPercent,
   formatUsd,
-} from "@/lib/format";
+} from "@shared/format";
 
 const PAGE_SIZE = 20;
 

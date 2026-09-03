@@ -19,7 +19,7 @@ import { useUserColors } from "@/hooks/use-entity-colors";
 import { useRangeHref } from "@/hooks/use-range";
 import { useStableQuery } from "@/hooks/use-stable-query";
 import { colorFor } from "@/lib/colors";
-import { formatDeltaPercent } from "@/lib/format";
+import { formatDeltaPercent } from "@shared/format";
 import {
   LEADER_METRICS,
   leaderKind,

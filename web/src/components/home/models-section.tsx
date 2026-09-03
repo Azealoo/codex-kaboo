@@ -12,7 +12,7 @@ import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { useModelColors } from "@/hooks/use-entity-colors";
 import { modelSegments, modelTableRows, sourceSegments } from "@/lib/breakdowns";
 import { colorFor } from "@/lib/colors";
-import { formatCompact, formatInt, formatNullable, formatPercent } from "@/lib/format";
+import { formatCompact, formatInt, formatNullable, formatPercent } from "@shared/format";
 import type { ResolvedRange } from "@/lib/range";
 import { modelTableColumns } from "./model-columns";
 

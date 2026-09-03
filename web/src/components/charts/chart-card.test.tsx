@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { Stacked } from "@/lib/chart-data";
-import { formatCompact } from "@/lib/format";
+import { formatCompact } from "@shared/format";
 import { ChartCard } from "./chart-card";
 
 const stacked: Stacked = {

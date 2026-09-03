@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { buildActivityGrid } from "@/lib/heatmap";
-import { formatCompact } from "@/lib/format";
+import { formatCompact } from "@shared/format";
 import { ActivityHeatmap } from "./activity-heatmap";
 import { DayHourHeatmap } from "./day-hour-heatmap";
 

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { TooltipContentProps } from "recharts";
 import type { SeriesDef } from "@/lib/chart-data";
-import { formatCompact } from "@/lib/format";
+import { formatCompact } from "@shared/format";
 import { SeriesTooltip } from "./series-tooltip";
 
 const series: SeriesDef[] = [

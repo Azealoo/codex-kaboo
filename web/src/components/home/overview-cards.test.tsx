@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Metric, MetricKey, SummaryResult } from "@convex/lib/types";
-import { EM_DASH } from "@/lib/format";
+import { EM_DASH } from "@shared/format";
 import type { ResolvedRange } from "@/lib/range";
 
 // OverviewCards issues its own top-level `stats.summary` query via useStableQuery, which wraps

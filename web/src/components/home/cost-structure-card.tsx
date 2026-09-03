@@ -3,7 +3,7 @@ import { StackedShareBar } from "@/components/charts/stacked-share-bar";
 import { InfoTooltip } from "@/components/primitives/info-tooltip";
 import { Card } from "@/components/ui/card";
 import { costStructureSegments } from "@/lib/chart-data";
-import { formatUsd } from "@/lib/format";
+import { formatUsd } from "@shared/format";
 
 export function CostStructureCard({
   costByKind,

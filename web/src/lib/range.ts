@@ -1,7 +1,7 @@
 import { MAX_CUSTOM_RANGE_DAYS, MAX_QUERY_RANGE_DAYS } from "@shared/constants";
 import { addDays, compareDays, daysBetween, isValidDay } from "@shared/days";
 import type { BoundsResult } from "@convex/lib/types";
-import { formatDay, formatDayShort } from "./format";
+import { formatDay, formatDayShort } from "@shared/format";
 
 export const PRESETS = ["1D", "7D", "30D", "90D", "ALL"] as const;
 export type Preset = (typeof PRESETS)[number];
