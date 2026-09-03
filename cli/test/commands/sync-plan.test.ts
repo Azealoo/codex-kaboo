@@ -7,7 +7,6 @@ import {
   rmSync,
   statSync,
   truncateSync,
-  utimesSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -26,7 +25,7 @@ import { zstdSupported } from "../../src/core/jsonl-reader";
 import { silentLogger } from "../../src/util/log";
 import { buildBatches } from "../../src/upload/batch";
 import type { SyncState } from "../../src/types";
-import { FIXTURE_HOME, FX } from "../fixture-ids";
+import { FIXTURE_HOME, FX, parseableFiles } from "../fixture-ids";
 
 const NOW = Date.UTC(2026, 8, 1, 12);
 const deps = { env: {}, now: () => NOW, log: silentLogger, machineZone: "UTC" };
@@ -96,7 +95,9 @@ describe("planSync", () => {
       };
     }
     const plan = await planSync(state, [home], { full: false }, deps);
-    expect(plan.files.every((f) => f.action === "unchanged")).toBe(true);
+    expect(
+      parseableFiles(plan.files, (f) => f.file.sessionId).every((f) => f.action === "unchanged"),
+    ).toBe(true);
     expect(plan.uploads).toEqual([]);
     const full = await planSync(
       {
@@ -273,16 +274,26 @@ describe("relocated files, oversize skip and .zst fast path (carry-over coverage
     const newPath = path.join(archivedDir, path.basename(oldPath));
     renameSync(oldPath, newPath);
 
-    // Prove the fast path never re-reads the file: corrupt its bytes in place (same length, so
-    // size still matches state) and restore the exact original mtime — using raw epoch-seconds
-    // numbers, not Date objects, because Date truncates the sub-millisecond remainder utimesSync
-    // would otherwise lose, which would make mtimeMs mismatch and defeat isUnchanged. If planSync
-    // ever opened this file again, parsing garbage would raise parseErrors and change the summary
-    // hash (or throw), neither of which "unchanged" with the original hash/offset intact allows.
+    // Prove the fast path never re-reads the file: corrupt its bytes in place, same length, so size
+    // still matches state. If planSync ever opened this file again, parsing garbage would raise
+    // parseErrors and change the summary hash (or throw), neither of which "unchanged" with the
+    // original hash/offset intact allows.
     const beforeCorrupt = statSync(newPath);
     writeFileSync(newPath, Buffer.alloc(beforeCorrupt.size, 0x2a));
-    utimesSync(newPath, beforeCorrupt.atimeMs / 1000, beforeCorrupt.mtimeMs / 1000);
-    expect(statSync(newPath).mtimeMs).toBe(beforeCorrupt.mtimeMs); // the restore itself is exact
+
+    // Corrupting the bytes moved mtime, so re-seed state from what is now on disk — that is the
+    // value isUnchanged compares against, and matching it is the whole precondition of this test.
+    //
+    // Restoring the ORIGINAL mtime with utimesSync reads better and is what this test used to do.
+    // It does not survive the CI matrix: the double goes to the kernel as seconds, is stored at the
+    // filesystem's own timestamp granularity and re-derived on the way back, and ext4, APFS and
+    // NTFS disagree about the final digits. It round-tripped exactly on the machine it was written
+    // on and nowhere else, failing as `expected 1788394998635.408 to be 1788394998635.4087`. The
+    // subject here is the unchanged fast path, not the fidelity of utimesSync.
+    state.files[FX.paginatedSmall] = {
+      ...state.files[FX.paginatedSmall]!,
+      mtimeMs: statSync(newPath).mtimeMs,
+    };
 
     const plan = await planSync(state, [home], { full: false }, deps);
     const moved = plan.files.find((f) => f.file.sessionId === FX.paginatedSmall)!;
@@ -379,7 +390,10 @@ describe("rate limit: seeded from state, changed only when newer than stored", (
     state.rateLimit = stored;
 
     const plan = await planSync(state, [home], { full: false }, deps);
-    expect(plan.files.every((f) => f.action === "unchanged")).toBe(true); // genuinely idle: nothing reparsed
+    // genuinely idle: nothing reparsed
+    expect(
+      parseableFiles(plan.files, (f) => f.file.sessionId).every((f) => f.action === "unchanged"),
+    ).toBe(true);
     expect(plan.rateLimit).toEqual(stored);
     expect(plan.rateLimitChanged).toBe(false);
   });

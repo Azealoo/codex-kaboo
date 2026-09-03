@@ -18,7 +18,7 @@ import { kabooPaths } from "../../src/core/paths";
 import { MAX_FILE_FAILURES, readState, writeState } from "../../src/core/state";
 import { SyncHttpError, SyncNetworkError, type SyncClient } from "../../src/upload/client";
 import { silentLogger } from "../../src/util/log";
-import { FIXTURE_HOME, FX } from "../fixture-ids";
+import { FIXTURE_HOME, FX, parseableFiles } from "../fixture-ids";
 
 const NOW = Date.UTC(2026, 8, 1, 12);
 
@@ -152,7 +152,9 @@ describe("runSync dry-run", () => {
     );
     expect(dry.heartbeat).toBe(true);
     expect(dry.uploads).toEqual({ sessions: 0, events: 0, requests: 1 });
-    expect(dry.files.every((f) => f.action === "unchanged")).toBe(true);
+    expect(
+      parseableFiles(dry.files, (f) => f.sessionId).every((f) => f.action === "unchanged"),
+    ).toBe(true);
     expect(dry.batches).toHaveLength(1);
     const shown = dry.batches![0]!;
     expect(shown.sessions).toEqual([]); // machine-only: no session or event data
@@ -231,7 +233,9 @@ describe("runSync upload", () => {
     const second = await runSync({ ...base, codexHome: s.codexHome }, s.deps);
     expect(second.uploads.requests).toBe(0);
     expect(second.heartbeat).toBe(false);
-    expect(second.files.every((f) => f.action === "unchanged")).toBe(true);
+    expect(
+      parseableFiles(second.files, (f) => f.sessionId).every((f) => f.action === "unchanged"),
+    ).toBe(true);
     s.clock.now = NOW + 2 * 60 * 60 * 1000;
     const third = await runSync({ ...base, codexHome: s.codexHome }, s.deps);
     expect(third.heartbeat).toBe(true);
