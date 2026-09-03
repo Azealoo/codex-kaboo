@@ -98,6 +98,31 @@ export const CLI_IN_PROGRESS_WINDOW_MS = 10 * 60 * 1000;
  */
 export const MIN_NODE_MAJOR = 20;
 
+// The menu bar card's live tokens-per-second strip. The collector samples it locally by tailing
+// rollout files, so none of this depends on a sync having run.
+
+/**
+ * Bucket width for the live rate. Five seconds is small enough that a burst is visible almost as
+ * soon as it happens and wide enough that one response does not draw a spike a single pixel wide.
+ */
+export const TPS_BUCKET_MS = 5_000;
+
+/** Default width of the strip. Matches the card's "3m avg" label. */
+export const TPS_WINDOW_MS = 3 * 60 * 1000;
+
+/** How much history the sampler keeps, so a wider window can be selected without re-reading. */
+export const TPS_RETAIN_MS = 30 * 60 * 1000;
+
+/** A session counts as active while it has produced output within this long. */
+export const TPS_ACTIVE_MS = 2 * 60 * 1000;
+
+/**
+ * How far back a rollout file must have been modified to be worth tailing. Wider than
+ * TPS_ACTIVE_MS so a session that pauses to think, or one the user returns to, is still tracked
+ * without a re-baseline.
+ */
+export const TPS_FILE_WINDOW_MS = 30 * 60 * 1000;
+
 export const TOKEN_PREFIX = "ck_";
 export const SYNC_PATH = "/api/v1/sync";
 export const WHOAMI_PATH = "/api/v1/whoami";

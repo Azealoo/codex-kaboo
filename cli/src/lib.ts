@@ -41,4 +41,23 @@ export type { SyncClient } from "./upload/client";
 export { runSync } from "./commands/sync";
 export type { SyncDeps, SyncOptions, SyncReport } from "./commands/sync";
 
+// The menu bar card's data layer. `runCard` is the whole assembly — server summary, local quota
+// fallback, live sampler — so the desktop app renders what `codex-kaboo card --json` prints,
+// rather than reimplementing the same fallbacks a second time and drifting from it.
+export { runCard, formatCard, localQuota, pickQuota } from "./commands/card";
+export type { CardDeps, CardOptions, CardReport, CardSource } from "./commands/card";
+export { createSampler } from "./card/sampler";
+export type { Sampler, SamplerOptions, SamplerTick } from "./card/sampler";
+export { bucketize, niceMax, trimSamples } from "./card/buckets";
+export type { BucketOptions, TpsBucket, TpsSample, TpsWindow } from "./card/buckets";
+export {
+  clearSnapshotCache,
+  identityMatches,
+  identityOf,
+  readSnapshotCache,
+  snapshotDigest,
+  writeSnapshotCache,
+} from "./card/snapshot";
+export type { CachedSnapshot, SnapshotIdentity } from "./card/snapshot";
+
 export { CLI_VERSION } from "./build-info";

@@ -110,20 +110,22 @@ doctor` and report anything red — Windows is covered by unit tests only.
 | `codex-kaboo status [--codex-home PATH] [--systemd]`                                               | Login state, Codex homes found, last sync, tracked/parked files, scheduler health, weekly quota                                                                                                                                 |
 | `codex-kaboo doctor [--codex-home PATH] [--systemd]`                                               | Checks Node version, Codex home, login, token validity, scheduler and local state                                                                                                                                               |
 | `codex-kaboo logout`                                                                               | Removes the token (`state.json` sync progress is kept, so logging back in resumes where it left off)                                                                                                                            |
+| `codex-kaboo card [--offline] [--window MINUTES] [--codex-home PATH]`                              | The menu bar card's numbers on stdout: the four range totals, the quota row and live tokens/second sampled from the rollout files. `--json` prints exactly what the desktop app renders                                         |
 
 Every command also accepts `--json` (machine-readable output on stdout) and `--verbose` (debug
 logging on stderr). Exit codes are command-specific — check the table below rather than assuming
 one scheme covers all of them:
 
-| Command     | Exit codes                                                                                     |
-| ----------- | ---------------------------------------------------------------------------------------------- |
-| `sync`      | `0` ok · `1` partial failure (see the message) · `2` not logged in or the token was rejected   |
-| `login`     | `0` ok · `2` failed (bad/missing token, unreachable or unconfigured server)                    |
-| `install`   | `0` ok · `1` the sync it runs right after installing had a partial failure · `2` not logged in |
-| `uninstall` | `0` ok · `1` failed to remove the schedule                                                     |
-| `doctor`    | `0` all checks passed · `1` any check failed, including not being logged in                    |
-| `logout`    | `0` always                                                                                     |
-| `status`    | never sets an exit code (always exits `0`) — read the printed state instead                    |
+| Command     | Exit codes                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| `sync`      | `0` ok · `1` partial failure (see the message) · `2` not logged in or the token was rejected            |
+| `login`     | `0` ok · `2` failed (bad/missing token, unreachable or unconfigured server)                             |
+| `install`   | `0` ok · `1` the sync it runs right after installing had a partial failure · `2` not logged in          |
+| `uninstall` | `0` ok · `1` failed to remove the schedule                                                              |
+| `doctor`    | `0` all checks passed · `1` any check failed, including not being logged in                             |
+| `logout`    | `0` always                                                                                              |
+| `card`      | `0` ok, including cached numbers with no network · `1` no totals and nothing cached · `2` not logged in |
+| `status`    | never sets an exit code (always exits `0`) — read the printed state instead                             |
 
 State lives in `~/.codex-kaboo/` (`CODEX_KABOO_HOME` overrides it); the Codex home is
 `CODEX_HOME` or `~/.codex`.

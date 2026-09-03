@@ -10,6 +10,10 @@ export interface KabooPaths {
   launchdLog: string;
   cronLog: string;
   vbs: string;
+  /** The menu bar card's cached server snapshot; see `cli/src/card/snapshot.ts`. */
+  cardSnapshot: string;
+  /** The menu bar card's own settings, written by the desktop app. */
+  cardSettings: string;
 }
 
 function expandHome(p: string): string {
@@ -35,6 +39,8 @@ export function kabooPaths(home: string = kabooHome()): KabooPaths {
     launchdLog: path.join(home, "launchd.log"),
     cronLog: path.join(home, "cron.log"),
     vbs: path.join(home, "sync-hidden.vbs"),
+    cardSnapshot: path.join(home, "menubar-snapshot.json"),
+    cardSettings: path.join(home, "menubar.json"),
   };
 }
 
