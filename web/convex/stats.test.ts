@@ -112,6 +112,10 @@ describe("stats.summary", () => {
     expect(s.metrics.totalTokens).toEqual({ current: 4800, previous: 1200, change: 3 });
     expect(s.metrics.sessions).toEqual({ current: 2, previous: 0, change: null });
     expect(s.metrics.subagentTokens.current).toBe(1200);
+    // The rollup has counted sub-agent sessions since day one but never exposed them, so the
+    // README's "excluded from session counts" rule could not be checked against anything. Bob's
+    // 08-31 rollup is sub-agent only: it is the 1 here and the reason `sessions` above is 2, not 3.
+    expect(s.metrics.subagentSessions.current).toBe(1);
     expect(s.metrics.messages.current).toBe(8);
     expect(s.metrics.tokensPerTurn.current).toBe(1200);
     expect(s.metrics.tokensPerLine.current).toBe(240);
@@ -632,6 +636,47 @@ describe("stats.dayHourHeatmap", () => {
     });
     expect(r.grid.flat().every((v) => v === 0)).toBe(true);
     expect(r).toMatchObject({ max: 0, peakHour: null, peakWeekday: null });
+  });
+
+  it("reports how many machine timezones the grid mixes", async () => {
+    // Each machine stamps its own hour buckets in its own zone, and this grid sums them all into
+    // one 7x24. For one zone that is a real wall-clock hour; across zones "Peak hour" is an
+    // average of different clocks and cannot be re-projected here, because the hour bucket has
+    // already lost its offset by the time it reaches the server. The count is what lets the UI
+    // say so instead of presenting a fiction.
+    const t = setup();
+    await seedTeam(t);
+    const args = { from: "2026-08-29", to: "2026-08-31" };
+    expect((await withUser(t, "alice").query(api.stats.dayHourHeatmap, args)).zones).toBe(0);
+    await t.run(async (ctx) => {
+      const base = {
+        userId: (await ctx.db.query("users").first())!._id,
+        platform: "darwin",
+        cliVersion: "0.1.0",
+        firstSeenAt: 1,
+        lastSyncAt: 1,
+      };
+      await ctx.db.insert("machines", {
+        ...base,
+        machineId: "machine-1",
+        label: "one",
+        tz: "Europe/London",
+      });
+      await ctx.db.insert("machines", {
+        ...base,
+        machineId: "machine-2",
+        label: "two",
+        tz: "Asia/Tokyo",
+      });
+      // Not a contributor to these rollups, so its zone must not inflate the count.
+      await ctx.db.insert("machines", {
+        ...base,
+        machineId: "machine-elsewhere",
+        label: "three",
+        tz: "America/Denver",
+      });
+    });
+    expect((await withUser(t, "alice").query(api.stats.dayHourHeatmap, args)).zones).toBe(2);
   });
 });
 

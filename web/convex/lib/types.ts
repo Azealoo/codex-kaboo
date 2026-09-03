@@ -12,6 +12,7 @@ export type MetricKey =
   | "outputTokens"
   | "reasoningTokens"
   | "subagentTokens"
+  | "subagentSessions"
   | "costUsd"
   | "linesAdded"
   | "linesRemoved"
@@ -148,6 +149,14 @@ export type DayHourHeatmapResult = {
   max: number;
   peakHour: number | null;
   peakWeekday: number | null;
+  /**
+   * Distinct timezones among the machines that contributed to this grid, or 0 when none of them
+   * reported one. Hour buckets are stamped in each machine's own zone and summed together here,
+   * so above 1 the grid — and "Peak hour" with it — is an average over different clocks rather
+   * than a wall-clock hour. The offset is gone by the time the rollup reaches the server, so this
+   * cannot be re-projected; the count exists so the UI can say so instead of implying precision.
+   */
+  zones: number;
 };
 
 export type QuotaResult = null | {

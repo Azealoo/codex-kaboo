@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { ROLLUP_VERSION } from "../../shared/src/constants";
+import { OTHER_KEY, ROLLUP_VERSION } from "../../shared/src/constants";
 import { bucketStart, daysBetween, eachBucket, weekdayOf } from "../../shared/src/days";
 import {
   addTokens,
@@ -43,6 +43,7 @@ export const METRIC_KEYS: MetricKey[] = [
   "outputTokens",
   "reasoningTokens",
   "subagentTokens",
+  "subagentSessions",
   "costUsd",
   "linesAdded",
   "linesRemoved",
@@ -115,6 +116,7 @@ export function metricValues(agg: Aggregate, costUsd: number): Record<MetricKey,
     outputTokens: t.output,
     reasoningTokens: t.reasoning,
     subagentTokens: agg.subagentTokens.total,
+    subagentSessions: agg.subagentSessions,
     costUsd,
     linesAdded: agg.linesAdded,
     linesRemoved: agg.linesRemoved,
@@ -530,7 +532,19 @@ export const dayHourHeatmap = authedQuery({
         }
       }
     }
-    return { grid, max, peakHour, peakWeekday };
+    // Machines that actually contributed to these rollups, so an idle laptop in a fourth zone
+    // does not make the grid look more mixed than it is. `(other)` is a fold sentinel, not an id.
+    const contributors = new Set<string>();
+    for (const doc of docs) {
+      for (const entry of doc.byMachine) if (entry.key !== OTHER_KEY) contributors.add(entry.key);
+    }
+    const zones = new Set<string>();
+    if (contributors.size > 0) {
+      for (const machine of await ctx.db.query("machines").collect()) {
+        if (machine.tz && contributors.has(machine.machineId)) zones.add(machine.tz);
+      }
+    }
+    return { grid, max, peakHour, peakWeekday, zones: zones.size };
   },
 });
 

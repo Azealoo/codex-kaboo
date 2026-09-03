@@ -39,6 +39,16 @@ export function TimeAnalysisCard({ range, userId }: { range: ResolvedRange; user
             ))}
           </dl>
           <DayHourHeatmap grid={heatmap.grid} format={formatCompact} />
+          {/* Each machine stamps its hour buckets in its own zone and they are summed into one
+              grid, so across zones "Peak hour" is an average of different clocks. The offset is
+              gone before the rollup reaches the server, so this cannot be re-projected — saying so
+              is the honest option. */}
+          {heatmap.zones > 1 ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              Hours come from {heatmap.zones} machine timezones, each in its own local time, so
+              “Peak hour” here is not a single wall-clock hour.
+            </p>
+          ) : null}
         </>
       )}
     </SectionCard>

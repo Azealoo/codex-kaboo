@@ -42,6 +42,7 @@ describe("time analysis", () => {
       max: 0,
       peakHour: 21,
       peakWeekday: 2,
+      zones: 1,
     });
     expect(rows.map((r) => [r.label, r.value])).toEqual([
       ["Total hours", "10h"],
@@ -69,6 +70,7 @@ describe("time analysis", () => {
       max: 0,
       peakHour: null,
       peakWeekday: null,
+      zones: 0,
     });
     expect(rows.map((r) => [r.label, r.value])).toEqual([
       ["Total hours", "0h"],
