@@ -1,0 +1,56 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      # One cell is enough: formatting is platform- and Node-independent, and running it nine
+      # times only multiplies the same answer.
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: npm run format:check
+      # Nothing else in this repo ever parses the deploy script: it is run by hand, a few times a
+      # year, so a syntax error in it stays invisible until the day someone actually needs it. One
+      # was — an apostrophe inside a `${VAR:?message}`, where bash processes quotes even within
+      # double quotes, so it opened a string that never closed and the whole file failed to parse.
+      # `bash -n` would have caught it the day it was written; it costs a second here.
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: bash -n scripts/deploy.sh
+      # jsdom 30 bundles an undici that calls `webidl.util.markAsUncloneable`, which arrived in
+      # Node 22 — on Node 20 every jsdom worker fails to start, so the web workspace's `dom` project
+      # cannot run there at all. Node 20 stays in the matrix regardless: the CLI declares
+      # `engines.node >= 20` and is the piece people install on machines we do not control, so it is
+      # exactly where this cell earns its keep. Only the dashboard's browser-environment tests sit
+      # it out; `convex` and `unit` still run, and every project runs on 22 and 24.
+      - if: matrix.node == 20
+        run: npm test -w shared -w cli
+      - if: matrix.node == 20
+        run: npm run test:no-dom -w web
+      - if: matrix.node != 20
+        run: npm test
+      - run: npm run build -w cli
+      - run: node cli/dist/codex-kaboo.js --version
+      # Only one cell of the matrix: this doesn't need to run 9 times, and next build is slow.
+      # This is the only thing that exercises pack-cli.mjs and `next build` at all — neither ran in
+      # CI before, so a Vercel deploy could go green while either was broken.
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: npm run build -w web
+        env:
+          NEXT_PUBLIC_CONVEX_URL: https://example.convex.cloud
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk
+          CLERK_SECRET_KEY: sk_test_ci
+          CODEX_KABOO_SERVER: https://example.convex.site

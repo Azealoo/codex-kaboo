@@ -1,0 +1,31 @@
+{
+  "name": "codex-kaboo-cli",
+  "version": "0.1.0",
+  "description": "Collector that reports Codex CLI usage metadata to a codex-kaboo dashboard",
+  "license": "MIT",
+  "bin": {
+    "codex-kaboo": "dist/codex-kaboo.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint --config ../eslint.config.mjs --no-error-on-unmatched-pattern src test scripts",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@codex-kaboo/shared": "*",
+    "@types/node": "^24.0.0",
+    "commander": "^14.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11",
+    "zod": "^4.1.0"
+  }
+}

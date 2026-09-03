@@ -34,7 +34,7 @@ package.json, package-lock.json, tsconfig.base.json, .prettierrc, .prettierignor
 shared/package.json, shared/tsconfig.json, shared/vitest.config.ts
 shared/src/{index,constants,days,sync,metrics}.ts + *.test.ts
 web/ (create-next-app scaffold + shadcn init + vitest.config.ts + vitest.setup.ts + convex/tsconfig.json + 3 bootstrap tests)
-cli/package.json, cli/tsconfig.json, cli/tsup.config.ts, cli/vitest.config.ts
+cli/package.json, cli/tsconfig.json, cli/tsup.config.ts, cli/vitest.config.mts
 cli/src/main.ts                 commander wiring, exit codes
 cli/src/build-info.ts           build-time constants (version, baked server / web origin)
 cli/src/types.ts                Config, FileState, SyncState, shared CLI types
@@ -57,7 +57,7 @@ README.md                       CLI section (install, commands, per-OS notes)
 **Files:**
 - Create: `package.json`, `tsconfig.base.json`, `.prettierrc`, `.prettierignore`, `eslint.config.mjs`, `.github/workflows/ci.yml`
 - Create: `shared/package.json`, `shared/tsconfig.json`, `shared/vitest.config.ts`, `shared/src/index.ts`
-- Create: `cli/package.json`, `cli/tsconfig.json`, `cli/tsup.config.ts`, `cli/vitest.config.ts`, `cli/src/main.ts`, `cli/src/build-info.ts`, `cli/test/build-info.test.ts`
+- Create: `cli/package.json`, `cli/tsconfig.json`, `cli/tsup.config.ts`, `cli/vitest.config.mts`, `cli/src/main.ts`, `cli/src/build-info.ts`, `cli/test/build-info.test.ts`
 - Modify: `.gitignore` (append `cli/test/fixtures/**/*.tmp`)
 
 **Interfaces:**
@@ -285,7 +285,7 @@ export default defineConfig({
 });
 ```
 
-`cli/vitest.config.ts`:
+`cli/vitest.config.mts`:
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -1243,12 +1243,12 @@ MSG
 
 **Files:**
 - Create (generated): `web/**` via create-next-app; `web/components.json`, `web/src/lib/utils.ts` via shadcn init; `web/convex/tsconfig.json`, `web/convex/README.md`, `web/convex/_generated/**` (git-ignored) via `convex codegen --init`
-- Create: `web/vitest.config.ts`, `web/vitest.setup.ts`, `web/src/lib/alias.test.ts`, `web/convex/bootstrap.test.ts`, `web/src/components/bootstrap.test.tsx`
+- Create: `web/vitest.config.mts`, `web/vitest.setup.ts`, `web/src/lib/alias.test.ts`, `web/convex/bootstrap.test.ts`, `web/src/components/bootstrap.test.tsx`
 - Modify: `package.json` (root workspaces), `web/package.json` (scripts + deps), `web/tsconfig.json` (`@shared/*` path), `web/next.config.ts` (`turbopack.root`), `web/README.md`
 
 **Interfaces:**
 - Consumes: `shared/src/constants.ts`, `shared/src/days.ts` (alias smoke tests).
-- Produces: the `web` workspace that Plans 2 and 3 fill; test projects `convex` (edge-runtime), `unit` (node), `dom` (jsdom); scripts `typecheck` (`convex codegen && tsc --noEmit`), `test` (`vitest run`), `codegen`.
+- Produces: the `web` workspace that Plans 2 and 3 fill; test projects `convex` (edge-runtime), `unit` (node), `dom` (jsdom); scripts `typecheck` (`next typegen && tsc --noEmit`), `test` (`vitest run`), `codegen`.
 
 - [ ] **Step 1: Scaffold the Next app (non-interactive) and register the workspace**
 
@@ -1272,7 +1272,7 @@ npm install -w web -D convex-test@latest @edge-runtime/vm@latest vitest@^4.1.11 
 node -e '
 const fs=require("fs");const p=JSON.parse(fs.readFileSync("web/package.json","utf8"));
 p.name="web";p.private=true;
-p.scripts=Object.assign({},p.scripts,{typecheck:"convex codegen && tsc --noEmit",test:"vitest run",codegen:"convex codegen"});
+p.scripts=Object.assign({},p.scripts,{typecheck:"next typegen && tsc --noEmit",test:"vitest run",codegen:"convex codegen"});
 fs.writeFileSync("web/package.json",JSON.stringify(p,null,2)+"\n");'
 ```
 
@@ -1312,7 +1312,7 @@ export default nextConfig;
 
 - [ ] **Step 5: Write the vitest configuration with three projects**
 
-`web/vitest.config.ts`:
+`web/vitest.config.mts`:
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -1371,7 +1371,7 @@ cd web && npx convex codegen --init && cd ..
 ls web/convex
 ```
 
-Expected: `README.md  _generated  tsconfig.json` (and `_generated` is git-ignored by the root `.gitignore`). If `convex codegen` refuses to run without a configured deployment, run `npx convex dev --once` inside `web/` (this needs `npx convex login`, which Plan 2 requires anyway) and then re-run `npx convex codegen --init`.
+Expected: `README.md  _generated  tsconfig.json` (and `_generated` is committed, as the Convex CLI recommends). If `convex codegen` refuses to run without a configured deployment, run `npx convex dev --once` inside `web/` (this needs `npx convex login`, which Plan 2 requires anyway) and then re-run `npx convex codegen --init`.
 
 - [ ] **Step 7: Write the three bootstrap tests**
 
@@ -2430,7 +2430,7 @@ MSG
 - Test: `cli/test/core/jsonl-reader.test.ts`
 
 **Interfaces:**
-- Consumes: nothing.
+- Consumes: `TAIL_BYTES` (core/state).
 - Produces: `interface LineRecord { seq: number; text: string; end: number }`, `interface ReadResult { consumed: number; lines: number; tail: string; partial: boolean; bytes: number }`, `readJsonlLines(filePath, onLine, { compressed?, chunkSize? })`, `zstdSupported()`, `parseJsonLine(text)` → `unknown | undefined`.
 
 Behaviour: reads from byte 0 in `chunkSize` (default 256 KiB) chunks with positioned `filehandle.read`; a line is complete only when its `\n` was seen (a trailing `\r` is stripped); `end` is the byte offset just after that `\n`; the trailing bytes without `\n` are never yielded (`partial: true`); `consumed` = end of the last complete line; `tail` = base64 of the last ≤ 64 bytes before `consumed` (empty for compressed input). Multi-byte UTF-8 is safe because decoding happens on the assembled line bytes, never on chunk boundaries. Compressed files stream through `zlib.createZstdDecompress()` when `zstdSupported()`; otherwise the function throws `ZstdUnsupportedError`.
@@ -2523,6 +2523,7 @@ Expected: FAIL — cannot find `../../src/core/jsonl-reader`.
 ```ts
 import { createReadStream, promises as fs } from "node:fs";
 import zlib from "node:zlib";
+import { TAIL_BYTES } from "./state"; // one definition: the tail this reader writes is the window detectReset compares
 
 export interface LineRecord {
   seq: number; // 0-based complete-line index
@@ -2564,7 +2565,6 @@ export function parseJsonLine(text: string): unknown | undefined {
   }
 }
 
-const TAIL_BYTES = 64;
 const NEWLINE = 0x0a;
 
 class LineSplitter {
@@ -2676,7 +2676,7 @@ MSG
 - Test: `cli/test/core/discover.test.ts`
 
 **Interfaces:**
-- Consumes: nothing.
+- Consumes: `CLI_MAX_FILES` (`@codex-kaboo/shared/constants`).
 - Produces: `ROLLOUT_RE`, `parseRolloutName(name)` → `{ fileTimestamp, fileTimestampMs, threadId, rolloutId, compressed } | null`, `interface DiscoveredFile { path; codexHome; name; fileTimestamp; fileTimestampMs; threadId; rolloutId; sessionId; compressed; size; mtimeMs }`, `discoverRolloutFiles(codexHomes, { maxFiles? })` → `{ files, truncated, homes: { path, exists, files }[] }`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -2751,13 +2751,13 @@ Expected: FAIL — cannot find `../../src/core/discover`.
 ```ts
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { CLI_MAX_FILES } from "@codex-kaboo/shared/constants";
 
 const UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 export const ROLLOUT_RE = new RegExp(
   `^rollout-(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2})-(${UUID})(?:_(${UUID}))?\\.jsonl(\\.zst)?$`,
 );
 const SUBDIRS = ["sessions", "archived_sessions"] as const;
-export const DEFAULT_MAX_FILES = 20000;
 
 export interface RolloutName {
   fileTimestamp: string;
@@ -2817,7 +2817,7 @@ export async function discoverRolloutFiles(
   codexHomes: string[],
   opts: { maxFiles?: number } = {},
 ): Promise<DiscoverResult> {
-  const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES;
+  const maxFiles = opts.maxFiles ?? CLI_MAX_FILES;
   const files: DiscoveredFile[] = [];
   const homes: DiscoverResult["homes"] = [];
   let truncated = false;
@@ -3353,7 +3353,7 @@ MSG
 
 **Interfaces:**
 - Consumes: `classify.ts` (`asRecord`, `clipString`, `toCount`, `projectOf`, `sourceOf`, `isSubagentSource`), `time.ts` (`parseLineTimestamp`, `secondsToMs`, `isValidZone`, `resolveZone`, `dayHour`), `jsonl-reader.ts` (`parseJsonLine`), `util/hash.ts` (`summaryHashOf`), shared constants/metrics/types.
-- Produces: `interface ReducerContext { sessionId; threadId; rolloutId; fileTimestampMs: number | null; machineZone?: string }`, `interface ReducerState` (exported, fields listed below), `createReducerState(ctx)`, `reduceLine(state, seq, text)`, `reduce(state, seq, line)`, `interface FinalizeOptions { mtimeMs: number; now: number; generation: number }`, `interface ParsedSession { summary: SessionSummary; events: TokenEvent[]; rateLimit: RateLimitSnapshot | null; diagnostics: { unknownTypes: Record<string, number>; itemTypes: Record<string, number>; mcpFallbackUsed: boolean; zone: string | undefined } }`, `finalize(state, opts)`.
+- Produces: `interface ReducerContext { sessionId; threadId; rolloutId; fileTimestampMs: number | null; machineZone?: string }`, `interface ReducerState` (exported, fields listed below), `createReducerState(ctx)`, `reduceLine(state, seq, text)`, `reduce(state, seq, line)`, `interface FinalizeOptions { now: number; generation: number }`, `interface ParsedSession { summary: SessionSummary; events: TokenEvent[]; rateLimit: RateLimitSnapshot | null; diagnostics: { unknownTypes: Record<string, number>; itemTypes: Record<string, number>; mcpFallbackUsed: boolean; zone: string | undefined } }`, `finalize(state, opts)`.
 
 Rules implemented here (spec table rows `session_meta`, `turn_context`, `task_started`, `task_complete`, `token_count`, `token_usage_record`, "any line"): model/effort of a token event are joined by `turn_id` at finalize time (never "latest turn_context"); an all-zero `last_token_usage` produces no event; when any `token_usage_record` line exists the `token_count`-derived events are dropped; the newest rate-limit snapshot wins (by line timestamp); `activeMs` uses `duration_ms`, else `(completed_at − started_at) × 1000`; `time_to_first_token_ms` may be `null` and is then ignored; day/hour use the session zone → machine zone → UTC; `summaryHash` per contracts §6. The `item_completed`, legacy message, `response_item` and `compacted` rows are added in Task 16 (until then they land in `diagnostics.unknownTypes`).
 
@@ -3389,7 +3389,7 @@ function ctx(overrides: Partial<ReducerContext> = {}): ReducerContext {
   return { sessionId: TID, threadId: TID, rolloutId: null, fileTimestampMs: Date.UTC(2026, 7, 30, 17), machineZone: "UTC", ...overrides };
 }
 
-function run(lines: string[], c = ctx(), opts = { mtimeMs: Date.UTC(2026, 7, 30, 17, 30), now: Date.UTC(2026, 7, 30, 18), generation: 0 }) {
+function run(lines: string[], c = ctx(), opts = { now: Date.UTC(2026, 7, 30, 18), generation: 0 }) {
   const state = createReducerState(c);
   lines.forEach((text, seq) => reduceLine(state, seq, text));
   return finalize(state, opts);
@@ -3438,10 +3438,10 @@ describe("reducer: sessions, turns and token events", () => {
     expect(JSON.stringify(parsed)).not.toContain("SECRET");
     expect(JSON.stringify(parsed)).not.toContain("/redacted");
   });
-  it("keeps the hash stable across generation and a recent mtime but not across token changes", () => {
+  it("keeps the hash stable across generation but not across token changes", () => {
     const a = run(twoTurns);
-    const b = run(twoTurns, ctx(), { mtimeMs: Date.UTC(2026, 7, 30, 17, 59), now: Date.UTC(2026, 7, 30, 18), generation: 5 });
-    expect(b.summary.inProgress).toBe(false); // both turns completed; mtime recency never marks a session in progress
+    const b = run(twoTurns, ctx(), { now: Date.UTC(2026, 7, 30, 18), generation: 5 });
+    expect(b.summary.inProgress).toBe(false); // both turns completed; `inProgress` is structural — file mtime is never consulted
     expect(b.summary.generation).toBe(5);
     expect(b.summary.summaryHash).toBe(a.summary.summaryHash);
     const c = run([...twoTurns, line("event_msg", { type: "token_count", info: { last_token_usage: usage(1, 0, 1, 0) }, rate_limits: null }, T(14), 10)]);
@@ -3598,7 +3598,6 @@ export interface ReducerState {
 }
 
 export interface FinalizeOptions {
-  mtimeMs: number;
   now: number;
   generation: number;
 }
@@ -3977,7 +3976,7 @@ const ctx: ReducerContext = { sessionId: TID, threadId: TID, rolloutId: null, fi
 function run(lines: string[]) {
   const state = createReducerState(ctx);
   lines.forEach((text, seq) => reduceLine(state, seq, text));
-  return finalize(state, { mtimeMs: 0, now: Date.UTC(2026, 7, 30, 18), generation: 0 });
+  return finalize(state, { now: Date.UTC(2026, 7, 30, 18), generation: 0 });
 }
 
 const SKILL_PATH = "/Users/me/.codex/skills/.system/openai-docs/SKILL.md";
@@ -4258,11 +4257,13 @@ MSG
 **Files:**
 - Create: `cli/src/core/parse-file.ts`, `cli/scripts/make-fixture.mjs`, `cli/scripts/make-synthetic-fixtures.mjs`
 - Create (generated, committed after review): `cli/test/fixtures/codex-home/sessions/2026/08/30/rollout-*.jsonl`, `cli/test/fixtures/codex-home/sessions/2026/08/31/rollout-*_*.jsonl`, `cli/test/fixtures/codex-home/archived_sessions/2026/07/01/rollout-*.jsonl.zst`
-- Test: `cli/test/fixtures.test.ts`
+- Test: `cli/test/fixture-ids.ts`, `cli/test/fixtures.test.ts`
+
+**The fixtures are the source of truth; the pinned numbers are expectations.** The fixtures are generated once, on this machine, by `cli/scripts/make-fixture.mjs` and `cli/scripts/make-synthetic-fixtures.mjs` (Step 4) from the real rollouts, and are then committed — after that they never change. Every pinned number in Tasks 17, 20, 21 and 23 (line counts, token totals, tool counts, event and response counts) was derived by hand from those real logs and is therefore an *expectation to verify against the generated fixtures*, not a fact about them. When a pinned number disagrees with the fixture, the implementer first re-reads the reduction rule in Tasks 15–16 to confirm the code is right, then recomputes the correct value from the fixture — `node cli/scripts/raw-totals.mjs cli/test/fixtures/codex-home` once Task 26 exists, or an equivalent one-liner over the fixture file (e.g. `node -e '…'` summing `info.last_token_usage`) — corrects the expectation in the test, and records the correction (old value, new value, how it was recomputed) in the task report. A fixture is never edited to match a number, and a failing expectation is never deleted.
 
 **Interfaces:**
 - Consumes: `DiscoveredFile`, `discoverRolloutFiles` (core/discover), `readJsonlLines`, `zstdSupported` (core/jsonl-reader), `createReducerState`/`reduceLine`/`finalize` (parser/session), `SessionSummary` (shared).
-- Produces: `interface ParseFileOptions { machineZone?: string; now: number; generation: number; mtimeMs?: number }`, `interface ParseFileResult { parsed: ParsedSession; read: ReadResult }`, `class InvalidSummaryError extends Error { issues: string[] }`, `parseRolloutFile(file, opts)`; fixture session ids `FX.paginatedCli`, `FX.execCompaction`, `FX.legacySubagent`, `FX.paginatedSmall`, `FX.partial`, `FX.corrupt`, `FX.future`, `FX.forkedThread`, `FX.forkedRollout`, `FX.zst`, `FX.parent` exported from `cli/test/fixtures.test.ts`'s sibling `cli/test/fixture-ids.ts`.
+- Produces: `interface ParseFileOptions { machineZone?: string; now: number; generation: number }`, `interface ParseFileResult { parsed: ParsedSession; read: ReadResult }`, `class InvalidSummaryError extends Error { issues: string[] }`, `parseRolloutFile(file, opts)`; fixture session ids `FX.parent`, `FX.paginatedCli`, `FX.execCompaction`, `FX.legacySubagent`, `FX.paginatedSmall`, `FX.partial`, `FX.corrupt`, `FX.future`, `FX.zst`, `FX.forkedRollout` exported from `cli/test/fixtures.test.ts`'s sibling `cli/test/fixture-ids.ts` (that list is exactly the `FX` object; the forked file has no id of its own — its thread is `FX.corrupt` and its session id is `` `${FX.corrupt}_${FX.forkedRollout}` ``).
 
 - [ ] **Step 1: Write `cli/src/core/parse-file.ts`**
 
@@ -4276,7 +4277,6 @@ export interface ParseFileOptions {
   machineZone?: string;
   now: number;
   generation: number;
-  mtimeMs?: number;
 }
 
 export interface ParseFileResult {
@@ -4303,7 +4303,7 @@ export async function parseRolloutFile(file: DiscoveredFile, opts: ParseFileOpti
   const read = await readJsonlLines(file.path, (record) => reduceLine(state, record.seq, record.text), {
     compressed: file.compressed,
   });
-  const parsed = finalize(state, { mtimeMs: opts.mtimeMs ?? file.mtimeMs, now: opts.now, generation: opts.generation });
+  const parsed = finalize(state, { now: opts.now, generation: opts.generation });
   const check = SessionSummary.safeParse(parsed.summary);
   if (!check.success) {
     throw new InvalidSummaryError(check.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));
@@ -4314,7 +4314,7 @@ export async function parseRolloutFile(file: DiscoveredFile, opts: ParseFileOpti
 
 - [ ] **Step 2: Write the redaction script `cli/scripts/make-fixture.mjs`**
 
-Rules (spec): structure and numbers are kept; identifiers/enums are kept; `cwd` → `/redacted/project-a`; path-like keys → `/redacted/<n>` unless the basename is `SKILL.md` (then `/redacted/skills/<name>/SKILL.md`, so skill detection still works); `command` elements and `parsed_cmd[].cmd` → `redacted` (or the synthetic SKILL.md path when they reference one); `unified_diff` → synthesized hunks with identical `+`/`-` counts; `content` → `"x\n".repeat(lineCount)`; `changes` object keys → `/redacted/<n>`; the session's own `id`/`session_id`/`parent_thread_id` → the synthetic UUIDs passed on the command line; payloads of unknown top-level types (`world_state`, …) → `{ "redacted": true }`; every other string → `"<r:len>"`.
+Rules (spec): structure and numbers are kept; identifiers/enums are kept; `cwd` → `/redacted/project-a`; path-like keys → `/redacted/<n>` unless the basename is `SKILL.md` (then `/redacted/skills/<name>/SKILL.md`, so skill detection still works); `command` elements and `parsed_cmd[].cmd` → `redacted` (or the synthetic SKILL.md path when they reference one); `unified_diff` → synthesized hunks with identical `+`/`-` counts; `content` → `"x\n".repeat(lineCount)`; `changes` object keys → `/redacted/<n>`; the session's own `id`/`session_id`/`parent_thread_id` → the synthetic UUIDs passed on the command line; `name` → kept only outside `parsed_cmd` (so `response_item`/`function_call` MCP names survive) and replaced with `"<r>"` inside `parsed_cmd[]`, where it is a real file basename; payloads of unknown top-level types (`world_state`, …) → `{ "redacted": true }`; every other string → `"<r:len>"`.
 
 ```js
 #!/usr/bin/env node
@@ -4331,10 +4331,15 @@ const opt = (flag) => {
   return i === -1 ? undefined : args[i + 1];
 };
 const uuid = opt("--uuid");
-const parent = opt("--parent") ?? "0199f1c0-0000-7000-8000-0000000000a0";
+const parentUuid = opt("--parent") ?? "0199f1c0-0000-7000-8000-0000000000a0";
 if (!input || !output || !uuid) {
   console.error("usage: make-fixture.mjs <input.jsonl> <output.jsonl> --uuid <uuid> [--parent <uuid>]");
   process.exit(2);
+}
+if (!fs.existsSync(input)) {
+  console.error(`make-fixture: source rollout not found: ${input}`);
+  console.error("Substitute any real rollout of the same shape (see the table in Task 17 Step 4: same history_mode/originator and roughly the same size), keep the synthetic UUID, then re-verify every pinned number against the regenerated fixture.");
+  process.exit(1);
 }
 
 const KNOWN_TYPES = new Set(["session_meta", "turn_context", "event_msg", "response_item", "compacted", "token_usage_record"]);
@@ -4343,8 +4348,11 @@ const KEEP = new Set([
   "thread_source", "timezone", "mode", "kind", "status", "role", "phase", "plan_type", "limit_id", "limit_name",
   "branch", "server", "tool", "timestamp", "current_date", "approval_policy", "rate_limit_reached_type",
   "collaboration_mode_kind", "multi_agent_version", "other", "window_id", "first_window_id", "previous_window_id",
-  "window_number", "reasoning_effort", "exit_code", "duration", "name",
+  "window_number", "reasoning_effort", "exit_code", "duration",
 ]);
+// `name` is deliberately absent from KEEP: it is decided by the enclosing key below — kept on a
+// payload/item (`response_item`/`function_call` names drive MCP detection), redacted inside
+// `parsed_cmd[]`, where it is a real file basename (spec privacy trap).
 const PATH_KEYS = new Set(["path", "move_path", "workspace_roots", "writable_roots"]);
 const SKILL_RE = /(?:^|[\\/])([^\\/\s"']+)[\\/]SKILL\.md\b/i;
 const pathIds = new Map();
@@ -4388,13 +4396,14 @@ function synthDiff(diff) {
     .join("");
 }
 
-function redactString(key, value) {
+function redactString(key, value, parent) {
   if (key === "cwd") return "/redacted/project-a";
   if (PATH_KEYS.has(key)) return redactPath(value);
   if (key === "cmd" || key === "command") return redactCommandText(value);
+  if (key === "name") return parent === "parsed_cmd" ? "<r>" : value;
   if (key === "id") return value === originalId ? uuid : value;
-  if (key === "session_id") return value === originalId ? uuid : parent;
-  if (key === "parent_thread_id") return parent;
+  if (key === "session_id") return value === originalId ? uuid : parentUuid;
+  if (key === "parent_thread_id") return parentUuid;
   if (key === "unified_diff") return synthDiff(value);
   if (key === "content") return "x\n".repeat(countLines(value));
   if (key === "source" || key === "subagent") return value; // enum-like
@@ -4402,14 +4411,15 @@ function redactString(key, value) {
   return `<r:${value.length}>`;
 }
 
-function redact(value, key) {
-  if (typeof value === "string") return redactString(key, value);
-  if (Array.isArray(value)) return value.map((v) => redact(v, key));
+/** `parent` is the key of the enclosing object (or array), so `parsed_cmd[].name` is distinguishable. */
+function redact(value, key, parent) {
+  if (typeof value === "string") return redactString(key, value, parent);
+  if (Array.isArray(value)) return value.map((v) => redact(v, key, parent));
   if (value !== null && typeof value === "object") {
     const out = {};
     for (const [k, v] of Object.entries(value)) {
       const newKey = key === "changes" ? redactPath(k) : k;
-      out[newKey] = redact(v, k);
+      out[newKey] = redact(v, k, key);
     }
     return out;
   }
@@ -4441,7 +4451,7 @@ const outLines = lines.map((line) => {
     return "{corrupt line}";
   }
   if (!KNOWN_TYPES.has(obj.type)) return JSON.stringify({ ...obj, payload: { redacted: true } });
-  return JSON.stringify(redact(obj, ""));
+  return JSON.stringify(redact(obj, "", ""));
 });
 fs.mkdirSync(path.dirname(output), { recursive: true });
 fs.writeFileSync(output, outLines.join("\n") + (endsWithNewline ? "\n" : ""));
@@ -4564,25 +4574,32 @@ Pick the four real rollouts by the last four characters of their thread id (`ls 
 
 ```bash
 FX=cli/test/fixtures/codex-home/sessions/2026/08/30
-mk() { node cli/scripts/make-fixture.mjs "$(ls ~/.codex/sessions/*/*/*/rollout-*-*"$1".jsonl | head -1)" "$FX/rollout-2026-08-30T1$2-00-00-0199f1c0-0000-7000-8000-0000000000$3.jsonl" --uuid "0199f1c0-0000-7000-8000-0000000000$3" --parent 0199f1c0-0000-7000-8000-0000000000a0; }
-mk 8170 0 a1
-mk 1e6c 1 a2
-mk d795 2 a3
-mk 1180 3 a4
-node cli/scripts/make-synthetic-fixtures.mjs
+mk() {
+  src=$(ls ~/.codex/sessions/*/*/*/rollout-*-*"$1".jsonl 2>/dev/null | head -1)
+  if [ -z "$src" ]; then
+    echo "FIXTURE SOURCE MISSING: no rollout whose thread id ends in '$1' under ~/.codex/sessions." >&2
+    echo "Substitute any rollout of the same shape (see the table above for '$1'), keep the synthetic UUID …$3, then re-verify every pinned number in Tasks 17/20/21/23 against the regenerated fixture and record the corrections in the task report." >&2
+    return 1
+  fi
+  node cli/scripts/make-fixture.mjs "$src" "$FX/rollout-2026-08-30T1$2-00-00-0199f1c0-0000-7000-8000-0000000000$3.jsonl" --uuid "0199f1c0-0000-7000-8000-0000000000$3" --parent 0199f1c0-0000-7000-8000-0000000000a0
+}
+mk 8170 0 a1 && mk 1e6c 1 a2 && mk d795 2 a3 && mk 1180 3 a4 && node cli/scripts/make-synthetic-fixtures.mjs
+echo "generation exit=$?"
 ```
 
-Expected: four `… lines, N distinct paths redacted` lines (805, 575, 13 and 159 lines respectively) and five synthetic files. If a real file id has changed on this machine, pick the file with the matching line count instead and keep the same synthetic UUID.
+Expected: four `… lines, N distinct paths redacted` lines (805, 575, 13 and 159 lines respectively), five synthetic files and `generation exit=0`. The chain stops at the first missing source: `mk` returns non-zero with the `FIXTURE SOURCE MISSING` message above, and `make-fixture.mjs` itself exits 1 with the same instruction if the path it is handed does not exist — never continue with a partially generated fixture set. If a real file id has changed on this machine, substitute the file with the matching line count, keep the same synthetic UUID, and treat the Step 6 numbers as expectations to re-derive (see the note at the top of this task).
 
 - [ ] **Step 5: Review the fixtures for leaks (mandatory before committing)**
 
 ```bash
-grep -rlE '/Users/|/home/|C:\\\\|https?://|\.bytedance|@' cli/test/fixtures/codex-home --include='*.jsonl' ; echo "exit=$?"
+# absolute home paths, URLs, the internal domain and e-mail addresses. NOT a bare `@`:
+# `synthDiff` writes `@@ … @@` hunk headers, so a bare `@` would make this gate unpassable.
+grep -rlE '/Users/|/home/|C:\\\\|https?://|\.bytedance|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' cli/test/fixtures/codex-home --include='*.jsonl' ; echo "exit=$?"
 grep -rhoE '"(cwd|path|move_path|cmd|command|stdout|stderr|aggregated_output|formatted_output|message|text|query|arguments|input|unified_diff|content|last_agent_message|developer_instructions|repository_url|raw_content|summary_text)":"[^"]{0,60}' cli/test/fixtures/codex-home --include='*.jsonl' | sort | uniq -c | sort -rn | head -40
 for f in cli/test/fixtures/codex-home/sessions/2026/08/30/rollout-*-0199f1c0-0000-7000-8000-0000000000a?.jsonl; do echo "== $f"; head -c 400 "$f"; echo; done
 ```
 
-Expected: the first grep prints nothing (exit 1). The second prints only values that are `/redacted/…`, `redacted`, `cat /redacted/skills/<name>/SKILL.md`, `<r:N>`, `x\n…`, `@@ -1,N +1,M @@…` or empty. Read the `head` output of each redacted file and confirm nothing recognisable remains. Only then continue.
+Expected: the first grep prints no file names and `exit=1` (the `@@` hunk headers written by `synthDiff` must not match it — if they do, the pattern was mistyped). The second prints only values that are `/redacted/…`, `redacted`, `cat /redacted/skills/<name>/SKILL.md`, `<r:N>`, `<r>`, `x\n…`, `@@ -1,N +1,M @@…` or empty. Also check that no real basename survived in `parsed_cmd`: `grep -rhoE '"name":"[^"]*"' cli/test/fixtures/codex-home --include='*.jsonl' | sort -u` must print only `"<r>"` and MCP/function-call names (`mcp__…`, `shell`, `apply_patch`, …). Read the `head` output of each redacted file and confirm nothing recognisable remains. Only then continue.
 
 - [ ] **Step 6: Write the fixture ids and tests**
 
@@ -4728,7 +4745,7 @@ describe("fixtures", () => {
 - [ ] **Step 7: Run the tests**
 
 Run: `npm run test -w cli && npm run typecheck -w cli && npm run lint -w cli`
-Expected: PASS. If a pinned number disagrees, first check the reduction rule in Tasks 15–16 against the spec table (the numbers above were derived with those exact rules from the real files) and the fixture generation mapping; only change an expectation when the rule, not the code, was misread.
+Expected: PASS. If a pinned number disagrees, follow the rule at the top of this task: check the reduction rule in Tasks 15–16 against the spec table (the numbers above were derived with those exact rules from the real files) and the fixture generation mapping; when the code applies the rule as written, recompute the value from the committed fixture, correct the expectation, and record the correction in the task report. Fix the code when the rule was misread; never edit a fixture to match a number.
 
 - [ ] **Step 8: Commit**
 
@@ -4979,7 +4996,7 @@ MSG
 - Consumes: shared constants (`SYNC_PATH`, `WHOAMI_PATH`, `HEALTH_PATH`, `CLI_VERSION_HEADER`), schemas `SyncResponse`, `ErrorResponse`, `WhoamiResponse`, type `SyncBatch`.
 - Produces: `type FetchLike`, `interface ClientOptions { server; token; cliVersion; fetch?; sleep?; timeoutMs?; maxAttempts?; random?; now? }`, `class SyncHttpError { status; code; body; retryAfterMs }`, `class SyncNetworkError { cause }`, `isAuthError(e)`, `isPayloadTooLarge(e)`, `isBadRequest(e)`, `backoffMs(attempt, random)`, `parseRetryAfter(header, now)`, `interface SyncClient { sync(batch): Promise<SyncResponse>; whoami(): Promise<WhoamiResponse>; health(): Promise<{ ok: boolean; serverTime: number | null }> }`, `createClient(opts)`.
 
-Policy (spec): `fetch` + `AbortSignal.timeout(30 s)`; up to 5 attempts with delays 1/2/4/8 s ± 25 % jitter, honouring `Retry-After`, on network errors and 408/425/429/5xx; 401/403, 413, 400/422 and every other 4xx throw immediately without retrying.
+Policy (spec): `fetch` + `AbortSignal.timeout(30 s)`; up to 6 attempts (5 retries) with delays 1/2/4/8/16 s ± 25 % jitter, honouring `Retry-After`, on network errors and 408/425/429/5xx; 401/403, 413, 400/422 and every other 4xx throw immediately without retrying.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -5183,7 +5200,7 @@ export function createClient(opts: ClientOptions): SyncClient {
   const doFetch: FetchLike = opts.fetch ?? ((url, init) => fetch(url, init));
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const timeoutMs = opts.timeoutMs ?? 30_000;
-  const maxAttempts = opts.maxAttempts ?? 5;
+  const maxAttempts = opts.maxAttempts ?? 6; // 1 initial attempt + 5 retries
   const random = opts.random ?? Math.random;
   const now = opts.now ?? (() => Date.now());
   const base = opts.server.replace(/\/+$/, "");
@@ -5276,7 +5293,7 @@ MSG
 - Test: `cli/test/commands/sync-plan.test.ts`
 
 **Interfaces:**
-- Consumes: `discoverRolloutFiles`, `DEFAULT_MAX_FILES`, `DiscoveredFile` (core/discover); `zstdSupported` (core/jsonl-reader); `parseRolloutFile` (core/parse-file); `detectReset`, `isUnchanged`, `resetFileState`, `emptyFileState` (core/state); `newestVersion` (util/version); `FileUpload`, `Batch` (upload/batch); types `Config`, `FileState`, `SyncState`; shared `MachineInfo`, `RateLimitSnapshot`, `SyncBatch`, constants.
+- Consumes: `discoverRolloutFiles`, `DiscoveredFile` (core/discover); `zstdSupported` (core/jsonl-reader); `parseRolloutFile` (core/parse-file); `detectReset`, `isUnchanged`, `resetFileState`, `emptyFileState` (core/state); `newestVersion` (util/version); `FileUpload`, `Batch` (upload/batch); types `Config`, `FileState`, `SyncState`; shared `MachineInfo`, `RateLimitSnapshot`, `SyncBatch`, constants.
 - Produces: `type FileAction = "unchanged" | "parsed" | "reset" | "skipped" | "error"`, `interface PlannedFile { file; prev; next: FileState; upload: FileUpload | null; summaryHash: string; action; reason?; rateLimit; codexVersion?; diagnostics? }`, `interface SyncPlan { homes; truncated; files: PlannedFile[]; uploads: FileUpload[]; rateLimit; codexVersion: string | null; codexLatestVersion: string | undefined; warnings: string[]; errors: string[]; budgetExhausted: boolean }`, `interface PlanOptions { full: boolean; codexHome?: string }`, `interface PlanDeps { env; now; log; machineZone; budgetMs?; startedAt? }`, `planSync(state, homes, opts, deps)`, `readCodexLatestVersion(homes)`, `buildMachineInfo(input)`, `toSyncBatch(batch, machine, meta)`.
 
 Decision order per discovered file (spec "Per run"): moved file → keep progress under the same sessionId; `complete` (immutable `.zst` already processed) → unchanged; > 256 MB → skipped with a warning; `.zst` without zstd → skipped with a one-time warning; same size + mtime as last time (and no recorded error) → unchanged without reading; shrunk or tail mismatch → reset (`offset 0`, `generation + 1`, warning); run budget exhausted → stop, leave the rest for the next run; parse from byte 0; new events = `seq > lastUploadedSeq`; `summaryChanged` = hash differs from the acknowledged one.
@@ -5417,9 +5434,9 @@ Expected: FAIL — cannot find `../../src/commands/sync-plan`.
 ```ts
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { CLI_MAX_FILE_BYTES, CLI_RUN_BUDGET_MS, PARSER_VERSION, SCHEMA_VERSION } from "@codex-kaboo/shared/constants";
+import { CLI_MAX_FILE_BYTES, CLI_MAX_FILES, CLI_RUN_BUDGET_MS, PARSER_VERSION, SCHEMA_VERSION } from "@codex-kaboo/shared/constants";
 import type { MachineInfo, RateLimitSnapshot, SyncBatch } from "@codex-kaboo/shared/sync";
-import { DEFAULT_MAX_FILES, discoverRolloutFiles, type DiscoveredFile } from "../core/discover";
+import { discoverRolloutFiles, type DiscoveredFile } from "../core/discover";
 import { zstdSupported } from "../core/jsonl-reader";
 import { parseRolloutFile } from "../core/parse-file";
 import { detectReset, emptyFileState, isUnchanged, resetFileState } from "../core/state";
@@ -5504,7 +5521,7 @@ export async function planSync(state: SyncState, homes: string[], opts: PlanOpti
     budgetExhausted: false,
   };
   if (discovered.truncated) {
-    plan.warnings.push(`more than ${DEFAULT_MAX_FILES} rollout files found; only the first ${DEFAULT_MAX_FILES} are processed`);
+    plan.warnings.push(`more than ${CLI_MAX_FILES} rollout files found; only the first ${CLI_MAX_FILES} are processed`);
   }
   let zstdWarned = false;
 
@@ -6223,7 +6240,7 @@ MSG
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks (pure modules + `fs`).
-- Produces (index.ts): `interface ScheduleTarget { nodePath; scriptPath; kabooHome; homeDir; codexHome?; uid?; pathEnv? }`, `interface SpawnResult { code: number | null; stdout: string; stderr: string }`, `interface Spawner { run(command, args, opts?: { input?: string }): Promise<SpawnResult> }`, `interface ScheduleStatus { installed: boolean; healthy: boolean; detail: string }`, `type SchedulerName = "launchd" | "cron" | "systemd" | "schtasks"`, `interface SchedulerAdapter { name; install(target, spawner): Promise<string>; uninstall(target, spawner): Promise<string>; status(target, spawner): Promise<ScheduleStatus> }`, `pickScheduler(platform, { systemd? })`, `checkTargetPaths(target)` → missing paths, `SCHEDULE_INTERVAL_SECONDS = 900`, `scheduledArgs(target)` → `["sync", "--scheduled"]`.
+- Produces (index.ts): `interface ScheduleTarget { nodePath; scriptPath; kabooHome; homeDir; codexHome?; uid?; pathEnv? }`, `interface SpawnResult { code: number | null; stdout: string; stderr: string }`, `interface Spawner { run(command, args, opts?: { input?: string }): Promise<SpawnResult> }`, `interface ScheduleStatus { installed: boolean; healthy: boolean; detail: string }`, `type SchedulerName = "launchd" | "cron" | "systemd" | "schtasks"`, `interface SchedulerAdapter { name; install(target, spawner): Promise<string>; uninstall(target, spawner): Promise<string>; status(target, spawner): Promise<ScheduleStatus> }`, `pickScheduler(platform, { systemd? })`, `checkTargetPaths(target)` → missing paths, `SCHEDULE_INTERVAL_SECONDS = 900`, `scheduledArgs()` → `["sync", "--scheduled"]` (no parameter: the arguments never depend on the target, and an unused one would fail the root `no-unused-vars` rule).
 - Produces (launchd.ts): `LAUNCHD_LABEL`, `plistPath(homeDir)`, `xmlEscape(s)`, `renderPlist(target)`, `launchdAdapter`. (cron.ts): `CRON_BEGIN`, `CRON_END`, `renderCronLine(target)`, `upsertCronBlock(existing, line)`, `removeCronBlock(existing)`, `cronAdapter`. (systemd.ts): `systemdDir(homeDir)`, `renderService(target)`, `renderTimer()`, `systemdAdapter`. (schtasks.ts): `TASK_NAME`, `vbsQuote(s)`, `renderVbs(target)`, `renderPowershellCommand(target)`, `schtasksCreateArgs(command)`, `schtasksDeleteArgs()`, `schtasksQueryArgs()`, `parseSchtasksStatus(stdout)`, `schtasksAdapter`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -6362,7 +6379,7 @@ describe("schtasks", () => {
     const create = calls.find((c) => c.command === "schtasks" && c.args[0] === "/Create")!;
     expect(create.args[create.args.length - 1]).toContain("wscript.exe //B //Nologo");
     const status = await schtasksAdapter.status({ ...t, homeDir, kabooHome }, mockSpawner(() => ({ code: 0, stdout: "TaskName: \\codex-kaboo-sync\nStatus: Ready\n", stderr: "" })).spawner);
-    expect(status).toMatchObject({ installed: true, healthy: true });
+    expect(status).toMatchObject({ installed: true }); // `healthy` depends on checkTargetPaths, which cannot see the fake C:\ paths
     expect((await schtasksAdapter.status(t, mockSpawner(() => ({ code: 1, stdout: "", stderr: "ERROR: The system cannot find the file specified." })).spawner)).installed).toBe(false);
   });
 });
@@ -6466,8 +6483,9 @@ import { SCHEDULE_INTERVAL_SECONDS, checkTargetPaths, scheduledArgs, type Schedu
 
 export const LAUNCHD_LABEL = "com.codex-kaboo.sync";
 
+/** macOS-only generator: `path.posix` so the plist is byte-identical wherever the tests run (Windows CI included). */
 export function plistPath(homeDir: string): string {
-  return path.join(homeDir, "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`);
+  return path.posix.join(homeDir, "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`);
 }
 
 export function xmlEscape(value: string): string {
@@ -6481,7 +6499,7 @@ export function xmlEscape(value: string): string {
 
 export function renderPlist(target: ScheduleTarget): string {
   const args = [target.nodePath, target.scriptPath, ...scheduledArgs()];
-  const log = path.join(target.kabooHome, "launchd.log");
+  const log = path.posix.join(target.kabooHome, "launchd.log");
   const env: [string, string][] = [
     ["PATH", target.pathEnv ?? "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"],
     ["CODEX_KABOO_SCHEDULED", "1"],
@@ -6571,9 +6589,10 @@ import { checkTargetPaths, scheduledArgs, type SchedulerAdapter, type ScheduleTa
 export const CRON_BEGIN = "# BEGIN codex-kaboo";
 export const CRON_END = "# END codex-kaboo";
 
+/** POSIX-only generator: `path.posix` so the crontab line is byte-identical wherever the tests run (Windows CI included). */
 export function renderCronLine(target: ScheduleTarget): string {
   const env = ["CODEX_KABOO_SCHEDULED=1", ...(target.codexHome ? [`CODEX_HOME="${target.codexHome}"`] : [])].join(" ");
-  const log = path.join(target.kabooHome, "cron.log");
+  const log = path.posix.join(target.kabooHome, "cron.log");
   return `*/15 * * * * ${env} "${target.nodePath}" "${target.scriptPath}" ${scheduledArgs().join(" ")} >> "${log}" 2>&1`;
 }
 
@@ -6856,7 +6875,7 @@ describe("nodeSpawner", () => {
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { cpSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { runDoctor } from "../../src/commands/doctor";
@@ -6907,7 +6926,7 @@ describe("install / uninstall", () => {
   it("builds the target from realpaths, installs the scheduler, then runs one sync", async () => {
     const s = await setup();
     const target = await buildScheduleTarget(s.deps);
-    expect(target).toMatchObject({ nodePath: process.execPath, kabooHome: s.paths.home, codexHome: s.codexHome, uid: 501 });
+    expect(target).toMatchObject({ nodePath: realpathSync(process.execPath), kabooHome: s.paths.home, codexHome: s.codexHome, uid: 501 }); // buildScheduleTarget realpaths execPath (nvm/homebrew symlinks)
     let synced = 0;
     const result = await runInstall({ systemd: false, json: false }, { ...s.deps, runSync: async () => { synced += 1; return emptyReport; } });
     expect(result).toMatchObject({ ok: true, exitCode: 0, scheduler: "launchd" });
@@ -7864,7 +7883,7 @@ MSG
 
 **Interfaces:**
 - Consumes: the built `cli/dist/codex-kaboo.js`, the real `~/.codex` on this Mac (read-only; `auth.json` is never opened — the CLI only reads `sessions/`, `archived_sessions/` and `version.json`).
-- Produces: `raw-totals.mjs <codex-home>` → JSON `{ [sessionId]: { input, cachedInput, cacheWrite, output, reasoning, events, lines } }` computed independently of the parser; `check-dry-run.mjs <dry-run.json> <raw-totals.json>` → exit 0 with `PASS`, else the list of problems.
+- Produces: `raw-totals.mjs <codex-home>` → JSON `{ [sessionId]: { input, cachedInput, cacheWrite, output, reasoning, events, lines } }` computed independently of the parser but with the same `token_usage_record`-over-`token_count` precedence (Task 15); `check-dry-run.mjs <dry-run.json> <raw-totals.json>` → exit 0 with `PASS`, else the list of problems.
 
 The dry-run JSON is the privacy audit: it contains the exact request bodies. The check asserts that no forbidden key (`command`, `cwd`, `path`, `stdout`, `unified_diff`, `content`, …) and no path-like string appears anywhere in them, that `machine.hostname` is null, and that every session's token totals, event count and line count equal the independent raw sums. At the time of writing this Mac holds 11 sessions and 426 non-zero `token_count` lines (four `token_count` lines are all-zero and produce no event); the session whose id ends in `1180` has input 1,437,354 / output 6,554 tokens over 23 responses. Those numbers drift as Codex keeps being used, so the check compares against the raw sums instead of hardcoding them.
 
@@ -7873,9 +7892,11 @@ The dry-run JSON is the privacy audit: it contains the exact request bodies. The
 ```js
 #!/usr/bin/env node
 // Usage: node cli/scripts/raw-totals.mjs [<codex-home>]
-// Independent cross-check for the real-data smoke test: per rollout file, sums info.last_token_usage
-// over `token_count` lines (skipping all-zero usage and the trailing partial line). Prints session ids
-// and numbers only — never text or paths.
+// Independent cross-check for the real-data smoke test. Mirrors the reducer's precedence rule
+// (Task 15): if a file has any recognisable `token_usage_record` line, its usages are the totals and
+// every `token_count` line in that file is ignored; otherwise the totals come from `token_count`
+// `info.last_token_usage`. Null and all-zero usages are skipped either way, as is the trailing
+// partial line. Prints session ids and numbers only — never text or paths.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7911,7 +7932,10 @@ for (const file of files) {
   const text = buffer.toString("utf8");
   const lines = text.split("\n");
   lines.pop(); // "" after a trailing newline, or the unterminated partial line
-  const totals = { input: 0, cachedInput: 0, cacheWrite: 0, output: 0, reasoning: 0, events: 0, lines: lines.length };
+  const empty = () => ({ input: 0, cachedInput: 0, cacheWrite: 0, output: 0, reasoning: 0, events: 0 });
+  const fromTokenCount = empty();
+  const fromUsageRecord = empty();
+  let hasUsageRecords = false;
   for (const line of lines) {
     let obj;
     try {
@@ -7919,9 +7943,21 @@ for (const file of files) {
     } catch {
       continue;
     }
-    if (obj.type !== "event_msg" || obj.payload?.type !== "token_count") continue;
-    const usage = obj.payload.info?.last_token_usage;
-    if (!usage) continue;
+    let usage;
+    let totals;
+    if (obj.type === "token_usage_record") {
+      const payload = obj.payload ?? {};
+      usage = payload.usage ?? payload.info?.last_token_usage ?? (typeof payload.input_tokens === "number" ? payload : null);
+      if (!usage) continue; // unrecognised shape: the reducer ignores it and keeps the token_count events
+      hasUsageRecords = true;
+      totals = fromUsageRecord;
+    } else if (obj.type === "event_msg" && obj.payload?.type === "token_count") {
+      usage = obj.payload.info?.last_token_usage;
+      if (!usage) continue;
+      totals = fromTokenCount;
+    } else {
+      continue;
+    }
     const values = [usage.input_tokens, usage.cached_input_tokens, usage.cache_write_input_tokens, usage.output_tokens, usage.reasoning_output_tokens]
       .map((v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0));
     if (values.every((v) => v === 0)) continue;
@@ -7932,7 +7968,7 @@ for (const file of files) {
     totals.reasoning += values[4];
     totals.events += 1;
   }
-  out[sessionId] = totals;
+  out[sessionId] = { ...(hasUsageRecords ? fromUsageRecord : fromTokenCount), lines: lines.length };
 }
 process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
 ```
@@ -8049,7 +8085,7 @@ If the check fails on totals, compare with `node cli/scripts/raw-totals.mjs ~/.c
 
 Append to `README.md`:
 
-```markdown
+````markdown
 ## Collector CLI (`codex-kaboo`)
 
 Each teammate installs the collector once; it parses the local Codex rollout logs
@@ -8109,7 +8145,7 @@ keyed by session id), `sync.log` (rotated at 1 MB), `sync.lock`, `launchd.log` /
 `npm run test -w cli`, `npm run build -w cli` (single-file bundle in `cli/dist/codex-kaboo.js`),
 `cli/scripts/make-fixture.mjs` (redacts a real rollout into a synthetic fixture),
 `cli/scripts/check-dry-run.mjs` (privacy + totals audit against `cli/scripts/raw-totals.mjs`).
-```
+````
 
 - [ ] **Step 5: Run the whole workspace once more and commit**
 
@@ -8122,10 +8158,9 @@ Add the real-data dry-run audit scripts and CLI documentation
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01Q8G1yVYF1rfbje5mJGvMVt
 MSG
-git push origin main
 ```
 
-Expected: everything green; CI runs on the push (check with `gh run list --limit 1`).
+Expected: everything green and the commit created locally. Do not push: this plan runs on a working branch that is integrated separately, and CI runs when that branch is pushed by whoever integrates it.
 
 ---
 

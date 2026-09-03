@@ -27,7 +27,7 @@ codex-kaboo/
   cli/                  package "codex-kaboo-cli", "bin": { "codex-kaboo": "dist/codex-kaboo.js" },
                         "files": ["dist"], "dependencies": {} (everything bundled by tsup),
                         devDeps: @codex-kaboo/shared "*", commander ^14, zod ^4, tsup ^8, vitest ^4.1, @types/node
-                        engines.node ">=18"
+                        engines.node ">=20"
   web/                  package "web" (Next 16 app), also hosts web/convex/
                         vitest projects: "convex" (edge-runtime, convex/**/*.test.ts, server.deps.inline ["convex-test"]),
                         "unit" (node, src/**/*.test.ts), "dom" (jsdom, src/**/*.test.tsx)
@@ -49,7 +49,7 @@ npm run test -w cli
 npm run test -w web -- --project convex     # convex-test suite only
 npm run test -w web -- --project unit
 npm run test -w web -- --project dom
-npm run typecheck -w web                     # runs `convex codegen` then `tsc --noEmit`
+npm run typecheck -w web                     # runs `next typegen` then `tsc --noEmit` (convex/_generated is committed)
 npm run typecheck                            # all workspaces
 ```
 
@@ -61,7 +61,7 @@ Single-test invocation: `npx vitest run <path> -t "<name>"` inside the workspace
 ```ts
 export const SCHEMA_VERSION = 1 as const;
 export const PARSER_VERSION = 1;
-export const ROLLUP_VERSION = 1;
+export const ROLLUP_VERSION = 2; // bumped for the byMachine/bySource event-basis change, §8/§9
 
 // Server-side request limits (also advertised in every sync response as `limits`).
 export const MAX_BODY_BYTES = 8 * 1024 * 1024;
@@ -70,12 +70,31 @@ export const MAX_EVENTS_PER_REQUEST = 5000;
 // Server-side mutation chunking.
 export const MAX_SESSIONS_PER_MUTATION = 200;
 export const MAX_EVENTS_PER_MUTATION = 1000;
-export const MAX_DAYS_PER_EVENT_CHUNK = 30;
+/**
+ * Distinct `day` values one upsert mutation may touch. Each touched day costs a full
+ * `recomputeDay` — that day's `tokenEvents` and `sessions` re-read — inside the same mutation, so
+ * this multiplied by MAX_EVENTS_PER_MUTATION bounds the mutation's document reads: ~10k here, and
+ * ~20k even when a resend moves events to a different day and touches both. Convex's ceiling is
+ * ~32k documents, and blowing it yields a permanent 503 (the identical retry hits the same wall),
+ * so the margin is deliberate. More mutations per sync is the intended trade. If this is ever
+ * approached again, the next step is the "mark dirty -> scheduled drain" pattern from the design
+ * doc rather than a larger bound.
+ */
+export const MAX_DAYS_PER_EVENT_CHUNK = 10;
 // Payload shape limits.
 export const MAX_KEYED_ENTRIES_PER_SESSION = 64; // mcpTools / skills per session
 export const MAX_ROLLUP_ENTRIES = 100; // per keyed array in a daily rollup
 export const OTHER_KEY = "(other)";
 export const MAX_STRING_LENGTH = 256;
+
+/**
+ * Upper bound on a manually entered model price (USD per million tokens), checked by both
+ * `parsePrice` (client) and `prices.upsert` (server) so the two cannot drift. This is a typo
+ * guard, not a pricing policy — it exists to catch a fat-fingered entry (e.g. `2000000` typed for
+ * `2.00`), not to express a real ceiling: it is roughly 333x the priciest seed-table entry
+ * (`gpt-5.5` output at 30), so no real model price can hit it.
+ */
+export const MAX_PRICE_USD_PER_MTOK = 10000;
 
 export const TTFT_BUCKETS_MS = [
   250, 500, 750, 1000, 1500, 2000, 3000, 4000, 6000, 8000, 12000, 16000, 24000, 32000, 60000,
@@ -178,6 +197,13 @@ export const Ttft = z.object({
 });
 export type Ttft = z.infer<typeof Ttft>;
 
+// Which of Codex's two token-usage mechanisms produced a row: `token_count` event_msg lines
+// (`count`) or `token_usage_record` lines (`record`). A file that emits both is parsed as
+// `record`-only; carrying the mechanism on the wire is what lets the server retract a `count`
+// event an earlier, truncated parse of the same file already shipped. See `SessionSummary.eventOrigin`.
+export const TokenEventOrigin = z.enum(["count", "record"]);
+export type TokenEventOrigin = z.infer<typeof TokenEventOrigin>;
+
 export const SessionSummary = z.object({
   sessionId: nonEmptyString, // threadId or `${threadId}_${rolloutId}`
   threadId: nonEmptyString,
@@ -211,6 +237,10 @@ export const SessionSummary = z.object({
   ttft: Ttft,
   tokens: TokenCounts,
   responses: count, // number of token events
+  // The mechanism this parse chose for the WHOLE file, re-derived from scratch every parse — the
+  // file's current, authoritative answer. `record` here retracts any `count` event the server
+  // still holds for this session.
+  eventOrigin: TokenEventOrigin,
   inProgress: z.boolean(),
   lineCount: count,
   generation: count,
@@ -230,7 +260,10 @@ export const TokenEvent = z.object({
   effort: shortString.optional(),
   turnId: shortString.optional(),
   project: nonEmptyString,
+  source: nonEmptyString, // the parent session's source, denormalised (the day rollup needs it
+                          // on the EVENT's own day, and the session may sit on a different day)
   isSubagent: z.boolean(),
+  origin: TokenEventOrigin, // the line type this row was derived from
   input: count,
   cachedInput: count,
   cacheWrite: count,
@@ -362,8 +395,8 @@ export interface ModelPrice { inputUsdPerMTok: number; cachedInputUsdPerMTok: nu
 export interface CostBreakdown { total: number; input: number; cached: number; output: number; reasoning: number }
 //   input     = (input − cachedInput) / 1e6 × inputUsdPerMTok
 //   cached    = cachedInput / 1e6 × cachedInputUsdPerMTok
-//   output    = (output − reasoning) / 1e6 × outputUsdPerMTok
-//   reasoning = reasoning / 1e6 × outputUsdPerMTok
+//   output    = max(0, output − reasoning) / 1e6 × outputUsdPerMTok   (clamped: malformed logs may report reasoning > output)
+//   reasoning = min(reasoning, output) / 1e6 × outputUsdPerMTok  (clamped, so input+cached+output+reasoning stays exact)
 //   total     = input + cached + output + reasoning
 export function costOf(tokens: Tokens, price: ModelPrice): CostBreakdown;
 export function cacheSavings(tokens: Tokens, price: ModelPrice): number; // cachedInput/1e6 × (input − cached price)
@@ -416,12 +449,30 @@ Events keyed by `(sessionId, seq)` — insert / `unchanged` when all fields equa
 `conflicts.events` count. `machine_conflict` when `machineId` exists for another user (409, no data
 written). Machine `hostname: null` is stored as absent.
 
+A 503 may follow a batch that partially committed, since the sync handler's mutations are
+independent `ctx.runMutation` calls rather than one transaction; this is safe because every upsert
+above is keyed and idempotent and the CLI only advances its per-file replay state on a 200, so
+retrying the identical batch converges with no loss or duplication. `lastSyncAt` only advances via
+`finishSync`, which runs last and only after the whole batch has committed — `upsertMachine` never
+advances it when patching an existing row (only when inserting a new one).
+
 ## 8. Convex data model additions to the spec
 
 - `sessions` gains `effort?: string` (from `SessionSummary.effort`). `machineId` is stamped by the
   server from `batch.machine.machineId`; `SessionSummary` does not carry it.
+- `tokenEvents` documents likewise gain a server-stamped `machineId` (same `batch.machine.machineId`
+  source as `sessions`) — a machine is constant for a whole batch by construction, so `TokenEvent`
+  does not carry it on the wire (a required field the CLI cannot populate before login, e.g. for
+  `sync --dry-run`, does not belong there). The wire *does* carry `TokenEvent.source` (denormalised
+  from the parent session) and `TokenEvent.origin` (`TokenEventOrigin`); both are stored as sent.
 - `machines.lastRateLimit` = `RateLimitSnapshot & { receivedAt: number }` (`receivedAt` = server time
-  of the request that carried it; replaced only when the incoming `observedAt` is newer).
+  of the request that carried it; the stored snapshot is replaced when the incoming `receivedAt` is
+  newer-or-equal to the one on file — `now >= machine.lastRateLimit.receivedAt`, so a same-millisecond
+  resend still overwrites — the server clock, never the client's). The client's `observedAt` is
+  stored for display only and never gates storage: one machine with a fast RTC would otherwise store
+  a future date and freeze the shared quota gauge for good. On read, `quota()` picks the snapshot
+  with the greatest `receivedAt` across all machines, breaking a millisecond tie on `receivedAt` by
+  the greater `observedAt`. `usedPercent` is clamped to [0, 100] on ingest.
 - Every keyed array (`mcpTools`, `skills`, rollup `by*`) is an array of `{ key: string, … }`, sorted
   by `key` ascending, capped at 100 in rollups with the overflow folded into `key: "(other)"`.
 - `SessionSummary.inProgress` is purely structural: `true` while a turn has started without completing
@@ -440,9 +491,14 @@ run yet). Range arguments are inclusive `YYYY-MM-DD` strings; the server validat
 the UI passes `previous: false` for the ALL preset. All money is USD numbers; all rates are
 fractions (0.42 = 42 %), `null` when undefined (division by zero or unpriced).
 
+Two `MetricKey` entries whose names do not fix their meaning are defined here and nowhere else:
+`activeDays` = the number of **distinct calendar days** in the range with `tokens.total > 0` or
+`sessions > 0` (days, never rollup documents: two users active on the same day count once);
+`tokensPerLine` = `tokens.total / linesAdded`, `null` when `linesAdded` is 0.
+
 ```ts
 import type { Id } from "../_generated/dataModel";
-import type { Tokens, Ttft, ToolCounts } from "../../../shared/src/sync";
+import type { Tokens, ToolCounts } from "../../../shared/src/sync";
 
 export type Metric = { current: number; previous: number | null; change: number | null };
 export type Range = { from: string; to: string };
@@ -505,6 +561,8 @@ export type TrendsResult = {
   users: UserRef[];                      // every user that appears in `points`
   models: string[];                      // every model that appears, by total tokens desc
   peak: { bucket: string; total: number } | null;
+  unpricedModels: string[];              // models with tokens in range but no price row: every
+                                         // `costUsd` above understates spend by their share
 };
 
 export type ModelRow = { key: string; effort: string | null; tokens: Tokens; responses: number; costUsd: number | null; share: number };
@@ -517,6 +575,14 @@ export type BreakdownsResult = {
   byMcpTool: { key: string; count: number }[];
   bySkill: { key: string; count: number; sessions: number }[];
   byProject: { key: string; tokens: number; responses: number; sessions: number; userMessages: number; linesAdded: number; linesRemoved: number; share: number }[];
+  // byMachine/bySource mix two bases on the SAME row, same convention as byProject: `tokens` is
+  // event-derived (from tokenEvents.machineId/source, on the EVENT's own day — ROLLUP_VERSION 2;
+  // before that they were session-derived and could show a machine at 250% beside a 100% project
+  // table), while `sessions` stays session-derived (attributed to the session's START day, and
+  // excludes sub-agent threads — the spec's attribution rule: token metrics on the event's day,
+  // session metrics on the session's start day). Because `tokens` is now on the same basis as
+  // `totalTokens`, `share` is plain (against `totalTokens`, like every other breakdown) rather than
+  // normalised within its own group.
   byMachine: { key: string; label: string; tokens: number; sessions: number; share: number }[]; // key = machineId
   bySource: { key: string; tokens: number; sessions: number; share: number }[];
   byHour: number[];                      // 24 entries, total tokens
@@ -528,6 +594,8 @@ export type ActivityHeatmapResult = {
   days: { day: string; tokens: number; sessions: number; costUsd: number }[]; // only days with data
   activeDays: number;
   maxTokens: number;
+  unpricedModels: string[];              // models with tokens in range but no price row: every
+                                         // day's `costUsd` understates spend by their share
 };
 
 export type DayHourHeatmapResult = {
@@ -627,11 +695,18 @@ export type MeResult = { _id: Id<"users">; clerkId: string; email: string | null
 | `prices.upsert` | authedMutation | `{ model, inputUsdPerMTok, cachedInputUsdPerMTok, outputUsdPerMTok }` | `Id<"modelPrices">`; all ≥ 0, source "manual" |
 | `prices.remove` | authedMutation | `{ model: string }` | `null` |
 | `prices.seed` | internalMutation | `{}` | `{ inserted: number }`; inserts the spec's table where the model is absent |
-| `rollups.rebuildAll` | internalMutation | `{ cursor?: string }` | `{ done: boolean }`; reschedules itself |
+| `rollups.rebuildAll` | internalMutation | `{ cursor?: string; pageSize?: number }` | `{ done: boolean; recomputed: number }`; reschedules itself until `done` |
 
 Cost rules used by every function: a `(model, tokens)` pair is priced with `costOf` when a
 `modelPrices` row with that exact `model` exists; otherwise it contributes 0 to `costUsd` and the
-model is listed in `unpricedModels` / the row is flagged `unpriced` / `costUsd: null`.
+model is listed in `unpricedModels` / the row is flagged `unpriced` / `costUsd: null`. The
+`"(other)"` fold key is never listed in `unpricedModels`: it is the keyed-array fold, not a model
+name. `byModel` is keyed at the (model, effort) grain (`lib/aggregate.ts`'s `addModel`), so the
+`MAX_ROLLUP_ENTRIES` (100) cap that produces that fold bounds 100 distinct (model, effort) PAIRS,
+not 100 distinct models — with Codex's five effort levels, the real margin is roughly 21 distinct
+models. Below that margin (and only below it), `unpricedModels` and `leaderboard.unpriced` are
+exact; above it, a priced-but-folded pair can silently contribute cost that is not reflected in
+either signal.
 
 ## 10. Web ↔ CLI strings (Plan 3 shows, Plan 1 implements)
 
