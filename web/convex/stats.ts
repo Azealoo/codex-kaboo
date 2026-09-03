@@ -534,6 +534,27 @@ export const dayHourHeatmap = authedQuery({
   },
 });
 
+/**
+ * How fresh a rate-limit reading actually is, for picking between machines.
+ *
+ * Ranking on `receivedAt` alone answers "who synced last", not "whose number is newest": a machine
+ * that was offline and catches up carries an old reading but the newest arrival time, so it won
+ * and the shared gauge walked backwards past a fresher reading.
+ *
+ * Ranking on `observedAt` alone is worse. That is the reporting machine's own clock, which this
+ * codebase already documents twice as untrustworthy (see `quota-card.tsx`): a fast RTC reporting a
+ * future observation would outrank every honest machine forever.
+ *
+ * `min` of the two takes the useful half of each. An honest machine is bounded by its own clock, so
+ * a late sync no longer beats a fresh one; a lying one is bounded by when our server actually saw
+ * it, so the most it can ever claim is "I synced most recently" — which is true, and harmless.
+ * Staleness and the "as of" line stay on `receivedAt`: only the server clock is comparable to the
+ * viewer's `now`.
+ */
+function freshness(snapshot: { observedAt: number; receivedAt: number }): number {
+  return Math.min(snapshot.observedAt, snapshot.receivedAt);
+}
+
 export const quota = authedQuery({
   args: {},
   handler: async (ctx): Promise<QuotaResult> => {
@@ -545,8 +566,8 @@ export const quota = authedQuery({
       const current = best?.lastRateLimit;
       if (
         !current ||
-        candidate.receivedAt > current.receivedAt ||
-        (candidate.receivedAt === current.receivedAt && candidate.observedAt > current.observedAt)
+        freshness(candidate) > freshness(current) ||
+        (freshness(candidate) === freshness(current) && candidate.receivedAt > current.receivedAt)
       ) {
         best = machine;
       }
