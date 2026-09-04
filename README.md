@@ -148,15 +148,59 @@ exactly that and the schedule is repinned to the current Node.
 
 - **Insights** (`/`): range pill (Today / Last 7 days / Last 30 days / Last 90 days / All time /
   custom), Volume and Efficiency cards with change vs. the previous period, the shared weekly
-  quota gauge, Users (podium + ranked table), Models, Tools, Projects and Skills, token trend by
-  user and by model.
+  quota gauge with a 7-day history line (the sawtooth drop is the weekly reset), Users (podium +
+  ranked table), Models, Tools, Projects, Skills and Sessions (the whole team's threads, newest
+  first), token trend by user and by model.
 - **My Page** (`/users/<id>`): rank, 13 stat cards, a 12-month activity heatmap, token trend
   (tokens / cost / hours), Data Sync (your machines and the install commands), Breakdown
   (time analysis + weekday × hour heatmap, then model / tool / project / skill / machine and
   source tables), Efficiency (cost structure, cache savings, cost per line, per-model pricing),
-  Sessions (newest first).
+  Sessions (newest first, with a free-text filter; tap a row for the full breakdown of one thread:
+  token structure, tools, MCP tools, skills, timings).
 - **Settings**: sync tokens, install instructions, machines (rename), model prices (USD per
   million tokens; edits re-price everything instantly).
+- Every table and chart offers a **CSV export** of the rows it shows (raw numbers, not the
+  abbreviated display values). The theme toggle in the top bar switches between light, dark and
+  the OS setting; the choice is remembered per browser. On a phone the dashboard uses a bottom
+  tab bar and can be added to the home screen (it ships a web manifest), and the native apps
+  below cover the rest.
+
+## Mobile apps (iOS and Android)
+
+`mobile/` is an [Expo](https://expo.dev) app (React Native, Expo Router) that talks to the same
+Convex deployment with the same Clerk accounts as the web dashboard — nothing is duplicated
+server-side, and the range presets, number formatting and metric definitions come from `shared/`,
+so a figure reads the same on a phone as on the web. Tabs: **Insights** (overview cards, quota
+gauge with history, leaderboard, trends, breakdowns), **My Page** (rank, stat cards, activity
+heatmap, trend, cost structure, breakdown, time analysis, machines), **Sessions** (team threads,
+filter, tap-through detail) and **Settings** (theme, sync tokens — create and revoke — machines,
+prices, sign-out). Sign-in opens Clerk's hosted Account Portal for the same instance, so whatever
+methods the dashboard allows (email, Google, …) work here too, and the app comes back through the
+`codex-kaboo://` scheme.
+
+Configure it once (both values are public by design and ship inside the binary):
+
+```bash
+cd mobile
+cp .env.example .env          # EXPO_PUBLIC_CONVEX_URL, EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
+npx expo start                # dev server; press i / a for a simulator, or scan with Expo Go*
+```
+
+\* Expo Go cannot run this app's native modules (secure store, Clerk's auth session); use a
+development build: `npx expo run:ios` / `npx expo run:android` locally, or
+`npx eas build --profile development --platform ios|android` in the cloud. Store builds are
+`npx eas build --profile production --platform ios|android` (`mobile/eas.json`; run `eas login`
+and `eas init` first, and add the two `EXPO_PUBLIC_*` values as EAS environment variables). The
+Clerk Expo config plugin in `app.json` registers the Android intent filter the hosted sign-in
+redirect needs; a rebuild is required after changing it.
+
+Checks: `npm run typecheck -w mobile`, `npm run lint -w mobile`, `npm test -w mobile` (pure
+chart/heatmap logic under `mobile/src/lib`), and `npm run export:smoke -w mobile`, which bundles
+both platforms with Metro without a device — CI runs it on one cell. React Native version: pinned
+to Expo SDK 57's (`react-native@0.86.3`, also as a root `overrides` entry so a transitive
+dependency cannot hoist a second copy); React itself is shared with the web workspace (19.2.8), a
+patch ahead of the SDK's 19.2.3, which `npx expo install --check` will point out and which is
+harmless.
 
 ## How the numbers are defined
 
@@ -177,7 +221,7 @@ exactly that and the schedule is repinned to the current Node.
 ## Development
 
 ```bash
-npm ci                                   # workspaces: shared, cli, web
+npm ci                                   # workspaces: shared, cli, web, mobile
 npm run typecheck && npm run lint && npm test
 cd web && npx convex dev                 # creates/links the dev deployment, writes web/.env.local
 npx convex env set CLERK_FRONTEND_API_URL https://<slug>.clerk.accounts.dev
@@ -229,6 +273,9 @@ build packs the collector into `/cli/codex-kaboo-cli.tgz` and sets `LATEST_CLI_V
 Convex deployment so the CLI can hint about upgrades. The Convex production deployment needs
 `CLERK_FRONTEND_API_URL` and a one-time `npx convex run prices:seed --prod`.
 
+The `quotaSnapshots` table (quota history) is filled by ordinary syncs and pruned to 90 days by a
+daily Convex cron (`web/convex/crons.ts`); it needs no seeding.
+
 **Required, every deploy — on both deployments, not just prod:** also run
 `npx convex run rollups:rebuildAll` against dev and `npx convex run rollups:rebuildAll --prod`
 against production. It recomputes every stored daily rollup under the current
@@ -251,7 +298,9 @@ sentence under "Install the collector" above accordingly.
 
 ## Layout
 
-- `shared/` — sync payload schema (zod), day math and metric helpers used by the CLI, backend and UI.
+- `shared/` — sync payload schema (zod), day math, number formatting, range presets and metric
+  definitions used by the CLI, backend, web and mobile.
 - `cli/` — the collector (`codex-kaboo`), bundled into one file by tsup.
 - `web/` — Next.js dashboard; `web/convex/` — Convex schema, HTTP sync endpoint and queries.
+- `mobile/` — Expo (React Native) app for iOS and Android against the same backend.
 - `docs/superpowers/specs/` — the design spec; `docs/superpowers/plans/` — implementation plans.

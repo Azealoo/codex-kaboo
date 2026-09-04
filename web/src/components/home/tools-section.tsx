@@ -9,6 +9,7 @@ import { QuerySection } from "@/components/primitives/query-section";
 import { StatCard } from "@/components/primitives/stat-card";
 import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { toolSegments } from "@/lib/breakdowns";
+import { csvFilename } from "@/lib/csv";
 import { formatInt, formatPercent } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
 
@@ -22,6 +23,7 @@ export function ToolsSection({ range, userId }: { range: ResolvedRange; userId?:
       key: "count",
       header: "Calls",
       align: "right",
+      csv: (r) => r.count,
       bar: (r) => r.count,
       render: (r) => formatInt(r.count),
     },
@@ -42,7 +44,7 @@ export function ToolsSection({ range, userId }: { range: ResolvedRange; userId?:
         ) : (
           <>
             <StackedShareBar segments={segments} format={formatInt} showLegend={false} />
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               {segments.map((s) => (
                 <StatCard
                   key={s.key}
@@ -55,7 +57,12 @@ export function ToolsSection({ range, userId }: { range: ResolvedRange; userId?:
               ))}
             </div>
             {b.byMcpTool.length > 0 ? (
-              <DataTable columns={mcpColumns} rows={b.byMcpTool} rowKey={(r) => r.key} />
+              <DataTable
+                columns={mcpColumns}
+                rows={b.byMcpTool}
+                rowKey={(r) => r.key}
+                exportFilename={csvFilename("mcp-tools", range)}
+              />
             ) : null}
           </>
         );

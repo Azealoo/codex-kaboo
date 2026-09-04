@@ -15,6 +15,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 vi.mock("./current-user", () => ({ useCurrentUserId: () => "u1" as Id<"users"> }));
 vi.mock("./range-picker", () => ({ RangePicker: () => <div data-testid="range-picker" /> }));
 vi.mock("./user-menu", () => ({ UserMenu: () => <div data-testid="user-menu" /> }));
+vi.mock("./theme-toggle", () => ({ ThemeToggle: () => <div data-testid="theme-toggle" /> }));
 
 import { TopNav } from "./top-nav";
 

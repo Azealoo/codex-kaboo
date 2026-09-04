@@ -17,3 +17,9 @@ cli/test/fixtures/**/*.tmp
 .codegraph/
 .cursor/
 .claude/worktrees/
+# Expo (mobile/)
+mobile/.expo/
+mobile/.expo-export/
+mobile/ios/
+mobile/android/
+mobile/expo-env.d.ts

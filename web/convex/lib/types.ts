@@ -1,39 +1,14 @@
 // web/convex/lib/types.ts
 import type { Id } from "../_generated/dataModel";
-import type { Tokens, ToolCounts } from "../../../shared/src/sync";
+import type { KeyCount, Tokens, ToolCounts } from "../../../shared/src/sync";
 
 export type Metric = { current: number | null; previous: number | null; change: number | null };
 export type Range = { from: string; to: string };
 
-export type MetricKey =
-  | "totalTokens"
-  | "inputTokens"
-  | "cachedInputTokens"
-  | "outputTokens"
-  | "reasoningTokens"
-  | "subagentTokens"
-  | "subagentSessions"
-  | "costUsd"
-  | "linesAdded"
-  | "linesRemoved"
-  | "filesChanged"
-  | "sessions"
-  | "turns"
-  | "responses"
-  | "messages"
-  | "userMessages"
-  | "agentMessages"
-  | "cacheHitRate"
-  | "tokensPerTurn"
-  | "tokensPerLine"
-  | "avgSessionActiveMs"
-  | "activeRate"
-  | "activeMs"
-  | "wallMs"
-  | "ttftAvgMs"
-  | "ttftP50Ms"
-  | "compactions"
-  | "activeDays";
+// The key union is owned by `shared/src/metric-defs.ts` (with the labels the UIs render) so that
+// `stats.summary`, the web dashboard and the mobile app can never disagree about the set.
+export type { MetricKey } from "../../../shared/src/metric-defs";
+import type { MetricKey } from "../../../shared/src/metric-defs";
 
 export type CostByKind = { input: number; cached: number; output: number; reasoning: number };
 
@@ -173,32 +148,62 @@ export type QuotaResult = null | {
 
 export type BoundsResult = { firstDay: string | null; lastDay: string | null };
 
+export type QuotaHistoryPoint = {
+  /** When the reading was true: `min(observedAt, receivedAt)` — see `freshness` in stats.ts. */
+  t: number;
+  usedPercent: number;
+  resetsAt: number | null;
+  machineId: string;
+  label: string;
+};
+export type QuotaHistoryResult = {
+  /** Ascending by `t`, every machine's readings interleaved. */
+  points: QuotaHistoryPoint[];
+  /** The window actually served, `[sinceMs, …)`, after clamping to the server's maximum. */
+  sinceMs: number;
+  truncated: boolean;
+};
+
 export type SessionRow = {
   _id: Id<"sessions">;
   sessionId: string;
+  threadId: string;
+  parentThreadId: string | null;
   userId: Id<"users">;
   userName: string;
   machineId: string;
   machineLabel: string;
   startedAt: number;
   endedAt: number;
+  wallMs: number;
   day: string;
+  timezone: string | null;
   project: string;
   gitBranch: string | null;
+  originator: string;
+  cliVersion: string | null;
   model: string;
   effort: string | null;
   source: string;
   isSubagent: boolean;
   turns: number;
+  completedTurns: number;
   userMessages: number;
   agentMessages: number;
+  reasoningItems: number;
+  responses: number;
   tokens: Tokens;
   cacheHitRate: number | null;
   costUsd: number | null; // priced with the session's `model`; null when unpriced
   activeMs: number;
+  ttftAvgMs: number | null; // mean time to first token over the session's turns
   linesAdded: number;
   linesRemoved: number;
+  filesChanged: number;
+  compactions: number;
   toolCounts: ToolCounts;
+  mcpTools: KeyCount[]; // key = "server/tool"
+  skills: KeyCount[];
   inProgress: boolean;
 };
 

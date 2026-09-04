@@ -433,14 +433,25 @@ export const finishSync = internalMutation({
         rateLimit !== undefined &&
         (machine.lastRateLimit === undefined || now >= machine.lastRateLimit.receivedAt)
       ) {
-        patch.lastRateLimit = {
+        const stored = {
           ...rateLimit,
           // Clamped rather than rejected: the quota reading is incidental to a sync and must never
           // fail one. Unclamped, a bogus 4000 would be echoed straight to the dashboard gauge.
           usedPercent: Math.min(100, Math.max(0, rateLimit.usedPercent)),
           receivedAt: now,
         };
+        patch.lastRateLimit = stored;
         rateLimitStored = true;
+        // History: one row per distinct reading. The CLI resends the newest snapshot it knows on
+        // every sync, so a reading this machine already stored (same `observedAt`) is not a new
+        // data point — appending it would draw a flat line of duplicates.
+        const seen = await ctx.db
+          .query("quotaSnapshots")
+          .withIndex("by_machine_observedAt", (q) =>
+            q.eq("machineId", machineId).eq("observedAt", rateLimit.observedAt),
+          )
+          .first();
+        if (seen === null) await ctx.db.insert("quotaSnapshots", { machineId, userId, ...stored });
       }
       await ctx.db.patch(machine._id, patch);
     }

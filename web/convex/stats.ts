@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { OTHER_KEY, ROLLUP_VERSION } from "../../shared/src/constants";
+import { METRIC_KEYS } from "../../shared/src/metric-defs";
 import { bucketStart, daysBetween, eachBucket, weekdayOf } from "../../shared/src/days";
 import {
   addTokens,
@@ -14,7 +15,11 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { mergeRollups, type Aggregate } from "./lib/aggregate";
 import { authedQuery } from "./lib/auth";
-import { MAX_ROLLUP_DOCS_PER_QUERY } from "./lib/constants";
+import {
+  MAX_ROLLUP_DOCS_PER_QUERY,
+  QUOTA_HISTORY_MAX_MS,
+  QUOTA_HISTORY_MAX_ROWS,
+} from "./lib/constants";
 import { loadPriceMap, priceTokens, sumCost } from "./lib/cost";
 import { assertRange, resolvePeriods } from "./lib/days";
 import type {
@@ -27,6 +32,7 @@ import type {
   Metric,
   MetricKey,
   ModelRow,
+  QuotaHistoryResult,
   QuotaResult,
   Range,
   SummaryResult,
@@ -36,36 +42,8 @@ import type {
 } from "./lib/types";
 import { displayName } from "./users";
 
-export const METRIC_KEYS: MetricKey[] = [
-  "totalTokens",
-  "inputTokens",
-  "cachedInputTokens",
-  "outputTokens",
-  "reasoningTokens",
-  "subagentTokens",
-  "subagentSessions",
-  "costUsd",
-  "linesAdded",
-  "linesRemoved",
-  "filesChanged",
-  "sessions",
-  "turns",
-  "responses",
-  "messages",
-  "userMessages",
-  "agentMessages",
-  "cacheHitRate",
-  "tokensPerTurn",
-  "tokensPerLine",
-  "avgSessionActiveMs",
-  "activeRate",
-  "activeMs",
-  "wallMs",
-  "ttftAvgMs",
-  "ttftP50Ms",
-  "compactions",
-  "activeDays",
-];
+// Re-exported so existing callers keep their import site; the list itself is owned by shared.
+export { METRIC_KEYS };
 
 // ---------- shared helpers (also used by Tasks 14–15) ----------
 
@@ -599,6 +577,51 @@ export const quota = authedQuery({
       machine: { machineId: best.machineId, label: best.label },
       user: await userRef(ctx, best.userId),
     };
+  },
+});
+
+/**
+ * The shared quota over time: every machine's readings since `sinceMs` (server receive time),
+ * oldest first. The client passes `sinceMs` rounded to the hour so the subscription stays stable;
+ * the window is clamped to `QUOTA_HISTORY_MAX_MS` and the read to `QUOTA_HISTORY_MAX_ROWS`, so a
+ * long-lived deployment cannot make this query scan its whole history.
+ */
+export const quotaHistory = authedQuery({
+  args: { sinceMs: v.number(), untilMs: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<QuotaHistoryResult> => {
+    const until = args.untilMs;
+    const floor = until === undefined ? -Infinity : until - QUOTA_HISTORY_MAX_MS;
+    const sinceMs = Math.max(args.sinceMs, floor);
+    const rows = await ctx.db
+      .query("quotaSnapshots")
+      .withIndex("by_receivedAt", (q) =>
+        until === undefined
+          ? q.gte("receivedAt", sinceMs)
+          : q.gte("receivedAt", sinceMs).lte("receivedAt", until),
+      )
+      .order("desc")
+      .take(QUOTA_HISTORY_MAX_ROWS + 1);
+    const truncated = rows.length > QUOTA_HISTORY_MAX_ROWS;
+    const kept = truncated ? rows.slice(0, QUOTA_HISTORY_MAX_ROWS) : rows;
+    const labels = new Map<string, string>();
+    for (const row of kept) {
+      if (labels.has(row.machineId)) continue;
+      const machine = await ctx.db
+        .query("machines")
+        .withIndex("by_machineId", (q) => q.eq("machineId", row.machineId))
+        .unique();
+      labels.set(row.machineId, machine?.label ?? row.machineId);
+    }
+    const points = kept
+      .map((row) => ({
+        t: freshness(row),
+        usedPercent: row.usedPercent,
+        resetsAt: row.resetsAt ?? null,
+        machineId: row.machineId,
+        label: labels.get(row.machineId) ?? row.machineId,
+      }))
+      .sort((a, b) => a.t - b.t || cmpKey(a.machineId, b.machineId));
+    return { points, sinceMs, truncated };
   },
 });
 

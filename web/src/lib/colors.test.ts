@@ -76,7 +76,8 @@ describe("status helpers", () => {
     expect(quotaColor(85)).toBe("#d03b3b");
   });
   it("maps heat levels to the ramp", () => {
-    expect(heatColor(0)).toBe("#eceff3");
-    expect(heatColor(4)).toBe("#0d532b");
+    // CSS variables, not literal hex: the ramp has a dark-theme definition in globals.css.
+    expect(heatColor(0)).toBe("var(--heat-0)");
+    expect(heatColor(4)).toBe("var(--heat-4)");
   });
 });

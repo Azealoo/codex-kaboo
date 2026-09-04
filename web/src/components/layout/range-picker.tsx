@@ -6,6 +6,7 @@ import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useIsDesktop } from "@/hooks/use-media-query";
 import { useRange } from "@/hooks/use-range";
 import { localDay } from "@/hooks/use-today";
 import { formatDay } from "@/lib/format";
@@ -21,6 +22,7 @@ export function RangePicker() {
   const { params, resolved, today, setPreset, setCustom } = useRange();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<DateRange | undefined>(undefined);
+  const desktop = useIsDesktop();
   const custom = isCustom(params);
   const label = resolved?.label ?? (custom ? "Custom range" : presetLabel(params.range));
   const todayDate = today ? dayToDate(today) : undefined;
@@ -57,9 +59,13 @@ export function RangePicker() {
           <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden="true" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-auto p-0">
-        <div className="flex">
-          <ul role="listbox" aria-label="Presets" className="w-44 border-r border-border p-1">
+      <PopoverContent align="end" className="w-auto max-w-[calc(100vw-1rem)] p-0">
+        <div className="flex flex-col sm:flex-row">
+          <ul
+            role="listbox"
+            aria-label="Presets"
+            className="grid grid-cols-2 gap-0.5 border-b border-border p-1 sm:block sm:w-44 sm:border-r sm:border-b-0"
+          >
             {PRESETS.map((preset) => {
               const selected = !custom && params.range === preset;
               return (
@@ -87,7 +93,8 @@ export function RangePicker() {
             </p>
             <Calendar
               mode="range"
-              numberOfMonths={2}
+              // Two months only where they fit; a phone gets one and swipes/pages instead.
+              numberOfMonths={desktop ? 2 : 1}
               selected={draft}
               onSelect={setDraft}
               defaultMonth={todayDate}

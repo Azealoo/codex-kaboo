@@ -87,3 +87,26 @@ describe("DataTable keyboard accessibility", () => {
     expect(row).not.toHaveAttribute("tabindex");
   });
 });
+
+describe("tableToCsv", () => {
+  it("prefers csv accessors, falls back to primitive renders, and drops markup-only columns", async () => {
+    const { tableToCsv } = await import("./data-table");
+    const cols: Column<Row>[] = [
+      { key: "name", header: "Name", render: (r) => <b>{r.name}</b> },
+      { key: "id", header: "Id", render: (r) => r.id },
+      {
+        key: "tokens",
+        header: "Tokens",
+        render: (r) => `${r.tokens / 1000}K`,
+        csv: (r) => r.tokens,
+      },
+    ];
+    expect(tableToCsv(cols, rows)).toEqual({
+      headers: ["Id", "Tokens"],
+      rows: [
+        ["a", 1000],
+        ["b", 10],
+      ],
+    });
+  });
+});

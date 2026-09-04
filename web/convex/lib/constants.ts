@@ -26,6 +26,14 @@ export const REBUILD_PAGE_SIZE = 20;
  */
 export const MAX_ROLLUP_DOCS_PER_QUERY = 20_000;
 
+/** How long `quotaSnapshots` rows are kept before the daily prune removes them. */
+export const QUOTA_SNAPSHOT_RETENTION_MS = 90 * 86_400_000;
+/** Rows deleted per `quota:pruneSnapshots` run; it reschedules itself while more remain. */
+export const QUOTA_PRUNE_PAGE_SIZE = 500;
+/** The widest history window `stats.quotaHistory` serves, and the most rows it reads. */
+export const QUOTA_HISTORY_MAX_MS = 30 * 86_400_000;
+export const QUOTA_HISTORY_MAX_ROWS = 5_000;
+
 /** Advertised in every sync response so the CLI can re-chunk (contracts §7). */
 export const LIMITS: SyncLimits = {
   maxBodyBytes: MAX_BODY_BYTES,

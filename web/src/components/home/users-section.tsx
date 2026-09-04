@@ -19,6 +19,7 @@ import { useUserColors } from "@/hooks/use-entity-colors";
 import { useRangeHref } from "@/hooks/use-range";
 import { useStableQuery } from "@/hooks/use-stable-query";
 import { colorFor } from "@/lib/colors";
+import { csvFilename } from "@/lib/csv";
 import { formatDeltaPercent } from "@/lib/format";
 import {
   LEADER_METRICS,
@@ -99,6 +100,7 @@ export function UsersSection({ range }: { range: ResolvedRange }) {
     {
       key: "user",
       header: "User",
+      csv: (r) => r.name,
       render: (r) => (
         <Link href={href(`/users/${r.userId}`)} className="hover:underline">
           <AvatarName name={r.name} imageUrl={r.imageUrl} color={colorFor(colors, r.userId)} />
@@ -109,6 +111,7 @@ export function UsersSection({ range }: { range: ResolvedRange }) {
       key: "metric",
       header: LEADER_METRICS.find((m) => m.value === metric)!.label,
       align: "right",
+      csv: (r) => leaderValue(r, metric),
       bar: (r) => leaderValue(r, metric) ?? 0,
       render: (r) => (
         <span className="inline-flex items-center gap-1.5">
@@ -125,18 +128,23 @@ export function UsersSection({ range }: { range: ResolvedRange }) {
       key: "cache",
       header: "Cache hit",
       align: "right",
+      hideBelow: "md",
+      csv: (r) => r.cacheHitRate,
       render: (r) => formatMetricValue("percent", r.cacheHitRate),
     },
     {
       key: "active",
       header: "Active",
       align: "right",
+      hideBelow: "md",
+      csv: (r) => r.activeMs / 3_600_000,
       render: (r) => formatMetricValue("hours", r.activeMs),
     },
     {
       key: "delta",
       header: "vs previous",
       align: "right",
+      csv: (r) => (metric === "tokens" ? r.change : null),
       render: (r) =>
         metric === "tokens" ? <DeltaPill change={r.change} goodDirection="up" /> : null,
     },
@@ -163,6 +171,7 @@ export function UsersSection({ range }: { range: ResolvedRange }) {
             rowKey={(r) => r.userId}
             scale={scale}
             barColor={(r) => colorFor(colors, r.userId)}
+            exportFilename={csvFilename("users", range)}
           />
         </>
       )}

@@ -341,6 +341,56 @@ describe("finishSync", () => {
     expect(r3).toEqual({ rateLimitStored: false, tokenTouched: true });
     const token = await t.run(async (ctx) => ctx.db.get(tokenId));
     expect(token?.lastUsedAt).toBe(T0 + 70_000);
+
+    // History: both distinct readings were appended, tagged with the server receive time.
+    const history = await t.run(async (ctx) =>
+      ctx.db.query("quotaSnapshots").withIndex("by_receivedAt").order("asc").collect(),
+    );
+    expect(history.map((h) => [h.observedAt, h.usedPercent, h.receivedAt])).toEqual([
+      [snapshot.observedAt, 12.5, T0 + 5],
+      [older.observedAt, 99, T0 + 10],
+    ]);
+    expect(history[0]).toMatchObject({ machineId: "machine-1", userId });
+  });
+
+  it("appends one history row per distinct reading, not per sync", async () => {
+    const t = setup();
+    const { userId, tokenId } = await userWithToken(t, "alice");
+    await t.mutation(internal.ingest.upsertMachine, {
+      userId,
+      machine: makeMachine(),
+      cliVersion: "0.1.0",
+      now: T0,
+    });
+    const reading = { observedAt: T0 - 1000, usedPercent: 20, windowMinutes: 10080 };
+    // The CLI resends the newest snapshot it knows on every 15-minute sync.
+    for (const offset of [1, 2, 3]) {
+      await t.mutation(internal.ingest.finishSync, {
+        userId,
+        machineId: "machine-1",
+        tokenId,
+        rateLimit: reading,
+        now: T0 + offset * 900_000,
+      });
+    }
+    // A genuinely new observation lands as a new row, and a clamped one is stored clamped.
+    await t.mutation(internal.ingest.finishSync, {
+      userId,
+      machineId: "machine-1",
+      tokenId,
+      rateLimit: { observedAt: T0 + 3_500_000, usedPercent: 140, windowMinutes: 10080 },
+      now: T0 + 3_600_000,
+    });
+    const history = await t.run(async (ctx) =>
+      ctx.db.query("quotaSnapshots").withIndex("by_receivedAt").order("asc").collect(),
+    );
+    expect(history.map((h) => [h.observedAt, h.usedPercent])).toEqual([
+      [T0 - 1000, 20],
+      [T0 + 3_500_000, 100],
+    ]);
+    // The machine's latest still reflects the most recent sync, as before.
+    const machine = await t.run(async (ctx) => ctx.db.query("machines").first());
+    expect(machine?.lastRateLimit?.receivedAt).toBe(T0 + 3_600_000);
   });
 });
 

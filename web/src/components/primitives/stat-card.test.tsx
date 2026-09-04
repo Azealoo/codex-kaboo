@@ -63,7 +63,8 @@ describe("DeltaPill", () => {
     const pill = screen.getByLabelText("+20.0% vs previous period");
     expect(pill).toHaveAttribute("data-tone", "up");
     expect(pill).not.toHaveAttribute("data-good");
-    expect(pill).toHaveClass("bg-[#f3f4f6]", "text-[#4b5563]");
+    // Theme tokens, not literal hex: the flat pill has a dark-mode definition in globals.css.
+    expect(pill).toHaveClass("bg-delta-flat-bg", "text-delta-flat-fg");
   });
 });
 

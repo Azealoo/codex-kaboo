@@ -13,10 +13,17 @@ export function modelTableColumns(
       key: "tokens",
       header: "Tokens",
       align: "right",
+      csv: (r) => r.tokens,
       bar: (r) => r.tokens,
       render: (r) => formatCompact(r.tokens),
     },
-    { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },
+    {
+      key: "share",
+      header: "Share",
+      align: "right",
+      csv: (r) => r.share,
+      render: (r) => formatPercent(r.share),
+    },
   ];
   if (options.responses) {
     columns.push({
@@ -31,12 +38,14 @@ export function modelTableColumns(
       key: "cache",
       header: "Cache hit",
       align: "right",
+      csv: (r) => r.cacheHitRate,
       render: (r) => formatPercent(r.cacheHitRate),
     },
     {
       key: "cost",
       header: "Est. cost",
       align: "right",
+      csv: (r) => r.costUsd,
       render: (r) =>
         r.costUsd === null ? (
           <Badge variant="outline" className="rounded-full text-[10px]">
@@ -52,6 +61,7 @@ export function modelTableColumns(
       key: "rate",
       header: "$ / M tokens",
       align: "right",
+      csv: (r) => r.usdPerMTok,
       render: (r) => (r.usdPerMTok === null ? EM_DASH : formatUsd(r.usdPerMTok)),
     });
   }

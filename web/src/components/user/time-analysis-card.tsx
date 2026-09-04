@@ -27,7 +27,7 @@ export function TimeAnalysisCard({ range, userId }: { range: ResolvedRange; user
         <Skeleton className="h-48" />
       ) : (
         <>
-          <dl className="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
             {timeAnalysisRows(summary, breakdowns.byHour, heatmap).map((row) => (
               <div key={row.label} className="rounded-lg border border-border p-3">
                 <dt className="flex items-center gap-1 text-xs text-muted-foreground">
