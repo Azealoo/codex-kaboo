@@ -788,6 +788,59 @@ describe("stats.quota", () => {
   });
 });
 
+describe("stats.quotaHistory", () => {
+  it("returns readings since the given time, oldest first, labelled by machine", async () => {
+    const t = setup();
+    const alice = await registerUser(t, "alice");
+    const bob = await registerUser(t, "bob");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("machines", {
+        machineId: "machine-1",
+        userId: alice,
+        label: "brisk-otter",
+        platform: "darwin",
+        cliVersion: "0.1.0",
+        firstSeenAt: 1,
+        lastSyncAt: 1,
+      });
+      const rows = [
+        { machineId: "machine-1", userId: alice, observedAt: 1_000, receivedAt: 1_100, used: 5 },
+        { machineId: "machine-2", userId: bob, observedAt: 2_000, receivedAt: 2_100, used: 15 },
+        // Fast clock: observed "later" than received. `t` clamps to the server receive time.
+        { machineId: "machine-1", userId: alice, observedAt: 9_000, receivedAt: 3_100, used: 30 },
+        { machineId: "machine-1", userId: alice, observedAt: 500, receivedAt: 600, used: 1 },
+      ];
+      for (const r of rows) {
+        await ctx.db.insert("quotaSnapshots", {
+          machineId: r.machineId,
+          userId: r.userId,
+          observedAt: r.observedAt,
+          receivedAt: r.receivedAt,
+          usedPercent: r.used,
+          windowMinutes: 10080,
+        });
+      }
+    });
+    const result = await withUser(t, "alice").query(api.stats.quotaHistory, { sinceMs: 1_000 });
+    expect(result.truncated).toBe(false);
+    expect(result.sinceMs).toBe(1_000);
+    expect(result.points).toEqual([
+      { t: 1_000, usedPercent: 5, resetsAt: null, machineId: "machine-1", label: "brisk-otter" },
+      { t: 2_000, usedPercent: 15, resetsAt: null, machineId: "machine-2", label: "machine-2" },
+      { t: 3_100, usedPercent: 30, resetsAt: null, machineId: "machine-1", label: "brisk-otter" },
+    ]);
+    // `untilMs` bounds the window from above too, and the window never exceeds the server cap.
+    const bounded = await withUser(t, "alice").query(api.stats.quotaHistory, {
+      sinceMs: 0,
+      untilMs: 2_500,
+    });
+    expect(bounded.points.map((p) => p.usedPercent)).toEqual([1, 5, 15]);
+    await expect(t.query(api.stats.quotaHistory, { sinceMs: 0 })).rejects.toMatchObject({
+      data: { code: "unauthenticated" },
+    });
+  });
+});
+
 describe("stats.bounds", () => {
   it("returns the first and last rollup day for the team or one user", async () => {
     const t = setup();

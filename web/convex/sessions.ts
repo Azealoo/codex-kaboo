@@ -1,6 +1,6 @@
 import { paginationOptsValidator, type PaginationResult } from "convex/server";
 import { v } from "convex/values";
-import { ratio } from "../../shared/src/metrics";
+import { ratio, ttftMean } from "../../shared/src/metrics";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authedQuery } from "./lib/auth";
@@ -47,29 +47,43 @@ export async function toSessionRow(
   return {
     _id: doc._id,
     sessionId: doc.sessionId,
+    threadId: doc.threadId,
+    parentThreadId: doc.parentThreadId ?? null,
     userId: doc.userId,
     userName: await userName(ctx, caches, doc.userId),
     machineId: doc.machineId,
     machineLabel: await machineLabel(ctx, caches, doc.machineId),
     startedAt: doc.startedAt,
     endedAt: doc.endedAt,
+    wallMs: doc.wallMs,
     day: doc.day,
+    timezone: doc.timezone ?? null,
     project: doc.project,
     gitBranch: doc.gitBranch ?? null,
+    originator: doc.originator,
+    cliVersion: doc.cliVersion ?? null,
     model: doc.model,
     effort: doc.effort ?? null,
     source: doc.source,
     isSubagent: doc.isSubagent,
     turns: doc.turns,
+    completedTurns: doc.completedTurns,
     userMessages: doc.userMessages,
     agentMessages: doc.agentMessages,
+    reasoningItems: doc.reasoningItems,
+    responses: doc.responses,
     tokens: doc.tokens,
     cacheHitRate: ratio(doc.tokens.cachedInput, doc.tokens.input),
     costUsd: priceTokens(doc.model, doc.tokens, caches.prices)?.total ?? null,
     activeMs: doc.activeMs,
+    ttftAvgMs: ttftMean(doc.ttft),
     linesAdded: doc.linesAdded,
     linesRemoved: doc.linesRemoved,
+    filesChanged: doc.filesChanged,
+    compactions: doc.compactions,
     toolCounts: doc.toolCounts,
+    mcpTools: doc.mcpTools,
+    skills: doc.skills,
     inProgress: doc.inProgress,
   };
 }

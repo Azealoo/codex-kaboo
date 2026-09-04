@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/primitives/empty-state";
 import { SectionCard } from "@/components/primitives/section-card";
 import { SegmentedControl } from "@/components/primitives/segmented-control";
 import type { ChartRow, Stacked } from "@/lib/chart-data";
+import { csvFilename } from "@/lib/csv";
 import { ChartLegend } from "./chart-legend";
 
 const MODES = [
@@ -51,9 +52,16 @@ export function ChartCard({
       key: s.key,
       header: s.label,
       align: "right",
+      csv: (r) => Number(r[s.key] ?? 0),
       render: (r) => format(Number(r[s.key] ?? 0)),
     })),
-    { key: "total", header: "Total", align: "right", render: (r) => format(rowTotal(r, keys)) },
+    {
+      key: "total",
+      header: "Total",
+      align: "right",
+      csv: (r) => rowTotal(r, keys),
+      render: (r) => format(rowTotal(r, keys)),
+    },
   ];
   return (
     <SectionCard
@@ -81,7 +89,12 @@ export function ChartCard({
           <ChartLegend series={stacked.series} shape={legendShape} />
         </>
       ) : (
-        <DataTable columns={columns} rows={stacked.rows} rowKey={(r) => r.x} />
+        <DataTable
+          columns={columns}
+          rows={stacked.rows}
+          rowKey={(r) => r.x}
+          exportFilename={csvFilename(title)}
+        />
       )}
       {footer}
     </SectionCard>

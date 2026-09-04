@@ -77,6 +77,10 @@ export function quotaColor(usedPercent: number): string {
   return STATUS_COLORS.critical;
 }
 
+/**
+ * Heatmap cells read the ramp through CSS variables (`--heat-0` … `--heat-4` in globals.css) so the
+ * same cell is legible in both themes; `HEAT_RAMP` above stays as the documented light values.
+ */
 export function heatColor(level: 0 | 1 | 2 | 3 | 4): string {
-  return HEAT_RAMP[level];
+  return `var(--heat-${level})`;
 }

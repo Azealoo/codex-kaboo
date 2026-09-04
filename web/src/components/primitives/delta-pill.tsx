@@ -28,7 +28,7 @@ export function DeltaPill({
         good === true && "bg-delta-up-bg text-delta-up-fg",
         good === false && "bg-delta-down-bg text-delta-down-fg",
         // Neutral metrics (goodDirection "neutral") and flat changes: gray, arrow unchanged.
-        good === null && "bg-[#f3f4f6] text-[#4b5563]",
+        good === null && "bg-delta-flat-bg text-delta-flat-fg",
       )}
     >
       <Icon className="size-3" aria-hidden="true" />

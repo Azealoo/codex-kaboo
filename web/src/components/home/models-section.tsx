@@ -12,6 +12,7 @@ import { useBreakdowns } from "@/hooks/use-breakdowns";
 import { useModelColors } from "@/hooks/use-entity-colors";
 import { modelSegments, modelTableRows, sourceSegments } from "@/lib/breakdowns";
 import { colorFor } from "@/lib/colors";
+import { csvFilename } from "@/lib/csv";
 import { formatCompact, formatInt, formatNullable, formatPercent } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
 import { modelTableColumns } from "./model-columns";
@@ -77,10 +78,16 @@ export function ModelsSection({ range, userId }: { range: ResolvedRange; userId?
                 rows={modelTableRows(b.byModel)}
                 rowKey={(r) => r.model}
                 barColor={(r) => colorFor(colors, r.model)}
+                exportFilename={csvFilename("models", range)}
               />
             </>
           ) : (
-            <DataTable columns={effortColumns} rows={b.byEffort} rowKey={(r) => r.key} />
+            <DataTable
+              columns={effortColumns}
+              rows={b.byEffort}
+              rowKey={(r) => r.key}
+              exportFilename={csvFilename("efforts", range)}
+            />
           )}
           {b.bySource.length > 0 ? (
             <div className="flex flex-col gap-1.5">

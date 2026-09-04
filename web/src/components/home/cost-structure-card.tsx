@@ -17,7 +17,7 @@ export function CostStructureCard({
   unpricedModels?: string[];
 }) {
   return (
-    <Card className="gap-3 rounded-lg border-border p-4 shadow-none md:col-span-2 xl:col-span-1">
+    <Card className="col-span-2 gap-3 rounded-lg border-border p-4 shadow-none xl:col-span-1">
       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <span>Cost structure</span>
         <InfoTooltip text="Estimated cost split into uncached input, cached input, output and reasoning tokens at API list prices. Reasoning is billed as output." />

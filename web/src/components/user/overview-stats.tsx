@@ -11,7 +11,7 @@ import type { ResolvedRange } from "@/lib/range";
 import { cn } from "@/lib/utils";
 import { RankCard } from "./rank-card";
 
-const GRID = "grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7";
+const GRID = "grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7";
 
 export function OverviewStats({ range, userId }: { range: ResolvedRange; userId: Id<"users"> }) {
   const { data: summary, isStale } = useStableQuery(api.stats.summary, {

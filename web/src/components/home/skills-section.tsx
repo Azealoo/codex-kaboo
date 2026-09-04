@@ -6,6 +6,7 @@ import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { QuerySection } from "@/components/primitives/query-section";
 import { useBreakdowns } from "@/hooks/use-breakdowns";
+import { csvFilename } from "@/lib/csv";
 import { formatInt } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
 
@@ -19,10 +20,17 @@ export function SkillsSection({ range, userId }: { range: ResolvedRange; userId?
       key: "count",
       header: "Invocations",
       align: "right",
+      csv: (r) => r.count,
       bar: (r) => r.count,
       render: (r) => formatInt(r.count),
     },
-    { key: "sessions", header: "Sessions", align: "right", render: (r) => formatInt(r.sessions) },
+    {
+      key: "sessions",
+      header: "Sessions",
+      align: "right",
+      csv: (r) => r.sessions,
+      render: (r) => formatInt(r.sessions),
+    },
   ];
   return (
     <QuerySection
@@ -35,7 +43,12 @@ export function SkillsSection({ range, userId }: { range: ResolvedRange; userId?
         b.bySkill.length === 0 ? (
           <EmptyState title="No skill use in this range" />
         ) : (
-          <DataTable columns={columns} rows={b.bySkill} rowKey={(r) => r.key} />
+          <DataTable
+            columns={columns}
+            rows={b.bySkill}
+            rowKey={(r) => r.key}
+            exportFilename={csvFilename("skills", range)}
+          />
         )
       }
     </QuerySection>

@@ -34,7 +34,7 @@ export function StatCard({
   const rendered =
     typeof value === "number" || value === null ? formatMetricValue(kind, value) : value;
   return (
-    <Card className={cn("gap-1 rounded-lg border-border p-4 shadow-none", className)}>
+    <Card className={cn("gap-1 rounded-lg border-border p-3 shadow-none sm:p-4", className)}>
       {/*
         `flex-wrap` + `min-w-0` keep the badge inside the card. Badge is `shrink-0` and
         `whitespace-nowrap` by design, so in a narrow column (the user page renders these
@@ -52,7 +52,12 @@ export function StatCard({
         ) : null}
       </div>
       <div className="flex items-end justify-between gap-2">
-        <span className={cn("font-semibold leading-none", size === "md" ? "text-2xl" : "text-lg")}>
+        <span
+          className={cn(
+            "font-semibold leading-none tabular",
+            size === "md" ? "text-xl sm:text-2xl" : "text-lg",
+          )}
+        >
           {rendered}
         </span>
         <DeltaPill change={change} goodDirection={goodDirection} />

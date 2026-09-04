@@ -6,6 +6,7 @@ import { useRangeHref } from "@/hooks/use-range";
 import { cn } from "@/lib/utils";
 import { useCurrentUserId } from "./current-user";
 import { RangePicker } from "./range-picker";
+import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
 export function TopNav() {
@@ -19,12 +20,12 @@ export function TopNav() {
   ];
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-card">
-      <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-4 px-4 md:px-6">
+      <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-3 px-3 sm:px-4 md:gap-4 md:px-6">
         <Link href={href("/")} className="flex items-center gap-2 text-sm font-semibold">
           <span className="inline-block size-2.5 rounded-full bg-primary" aria-hidden="true" />
           codex-kaboo
         </Link>
-        <nav aria-label="Primary" className="flex items-center gap-1">
+        <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
           {links.map((l) => (
             <Link
               key={l.label}
@@ -41,8 +42,9 @@ export function TopNav() {
             </Link>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2">
           <RangePicker />
+          <ThemeToggle />
           <UserMenu />
         </div>
       </div>

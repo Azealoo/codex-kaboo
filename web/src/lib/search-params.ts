@@ -1,7 +1,7 @@
 import { createSerializer, parseAsString, parseAsStringLiteral } from "nuqs/server";
 import { DEFAULT_PRESET, PRESETS, isCustom, type Preset, type RangeParams } from "./range";
 
-export const SECTIONS = ["users", "models", "tools", "projects", "skills"] as const;
+export const SECTIONS = ["users", "models", "tools", "projects", "skills", "sessions"] as const;
 export type Section = (typeof SECTIONS)[number];
 export const VIEWS = ["volume", "efficiency"] as const;
 export type View = (typeof VIEWS)[number];

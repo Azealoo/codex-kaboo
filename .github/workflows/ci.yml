@@ -44,6 +44,14 @@ jobs:
         run: npm test
       - run: npm run build -w cli
       - run: node cli/dist/codex-kaboo.js --version
+      # The mobile app's typecheck, lint and unit tests already ran above through the workspace
+      # scripts. This is the only thing that proves the React Native bundle actually resolves and
+      # compiles (imports across `shared/` and `web/convex/`, Metro's package-exports handling for
+      # the shared workspace); one cell is enough, and it needs no simulator or SDK.
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: npm run export:smoke -w mobile
+        env:
+          CI: 1
       # Only one cell of the matrix: this doesn't need to run 9 times, and next build is slow.
       # This is the only thing that exercises pack-cli.mjs and `next build` at all — neither ran in
       # CI before, so a Vercel deploy could go green while either was broken.

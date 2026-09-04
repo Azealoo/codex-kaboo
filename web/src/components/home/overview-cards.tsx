@@ -20,8 +20,8 @@ export function OverviewCards({ range, view }: { range: ResolvedRange; view: Vie
   });
   const grid =
     view === "volume"
-      ? "grid gap-4 md:grid-cols-2 xl:grid-cols-5"
-      : "grid gap-4 md:grid-cols-2 xl:grid-cols-3";
+      ? "grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5"
+      : "grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3";
   if (!summary) return <CardsSkeleton count={view === "volume" ? 5 : 6} className={grid} />;
   const keys = view === "volume" ? VOLUME_CARD_KEYS : EFFICIENCY_CARD_KEYS;
   return (

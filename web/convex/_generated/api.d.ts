@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as ingest from "../ingest.js";
 import type * as lib_aggregate from "../lib/aggregate.js";
@@ -20,6 +21,7 @@ import type * as lib_types from "../lib/types.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as machines from "../machines.js";
 import type * as prices from "../prices.js";
+import type * as quota from "../quota.js";
 import type * as rollups from "../rollups.js";
 import type * as sessions from "../sessions.js";
 import type * as stats from "../stats.js";
@@ -33,6 +35,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  crons: typeof crons;
   http: typeof http;
   ingest: typeof ingest;
   "lib/aggregate": typeof lib_aggregate;
@@ -45,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   "lib/validators": typeof lib_validators;
   machines: typeof machines;
   prices: typeof prices;
+  quota: typeof quota;
   rollups: typeof rollups;
   sessions: typeof sessions;
   stats: typeof stats;

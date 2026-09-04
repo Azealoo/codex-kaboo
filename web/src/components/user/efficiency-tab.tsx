@@ -49,7 +49,7 @@ function EfficiencyStats({ range, userId }: { range: ResolvedRange; userId: Id<"
     previous: range.previous,
   });
   if (!summary)
-    return <CardsSkeleton count={9} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" />;
+    return <CardsSkeleton count={9} className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3" />;
   // costUsd and linesAdded are sums (never null in practice); Metric.current is typed
   // `number | null` for every key, so widen back to `number` here rather than at the rate sites.
   const cost = summary.metrics.costUsd.current ?? 0;
@@ -57,7 +57,7 @@ function EfficiencyStats({ range, userId }: { range: ResolvedRange; userId: Id<"
   return (
     <div
       className={cn(
-        "grid gap-4 md:grid-cols-2 xl:grid-cols-3",
+        "grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3",
         isStale && "opacity-60 transition-opacity",
       )}
     >

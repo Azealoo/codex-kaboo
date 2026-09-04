@@ -14,7 +14,7 @@ describe("ActivityHeatmap", () => {
     const cells = screen.getAllByRole("gridcell");
     expect(cells).toHaveLength(14);
     const cell = screen.getByLabelText("Aug 4, 2026: 25M tokens, 2 sessions, $1.50");
-    expect(cell).toHaveStyle({ backgroundColor: "#2f9f55" });
+    expect(cell).toHaveStyle({ backgroundColor: "var(--heat-2)" });
     expect(screen.getByText("Aug")).toBeInTheDocument();
   });
 
@@ -48,11 +48,12 @@ describe("DayHourHeatmap", () => {
     grid[4]![9] = 250_000;
     render(<DayHourHeatmap grid={grid} format={formatCompact} />);
     expect(screen.getAllByRole("gridcell")).toHaveLength(168);
+    // The ramp is read through CSS variables so both themes get a legible cell.
     expect(screen.getByLabelText("Mon 14:00: 1M tokens")).toHaveStyle({
-      backgroundColor: "#0d532b",
+      backgroundColor: "var(--heat-4)",
     });
     expect(screen.getByLabelText("Fri 09:00: 250K tokens")).toHaveStyle({
-      backgroundColor: "#6cc482",
+      backgroundColor: "var(--heat-1)",
     });
   });
 

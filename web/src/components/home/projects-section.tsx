@@ -6,6 +6,7 @@ import { DataTable, type Column } from "@/components/primitives/data-table";
 import { EmptyState } from "@/components/primitives/empty-state";
 import { QuerySection } from "@/components/primitives/query-section";
 import { useBreakdowns } from "@/hooks/use-breakdowns";
+import { csvFilename } from "@/lib/csv";
 import { formatCompact, formatInt, formatPercent } from "@/lib/format";
 import type { ResolvedRange } from "@/lib/range";
 
@@ -19,21 +20,38 @@ export function ProjectsSection({ range, userId }: { range: ResolvedRange; userI
       key: "tokens",
       header: "Tokens",
       align: "right",
+      csv: (r) => r.tokens,
       bar: (r) => r.tokens,
       render: (r) => formatCompact(r.tokens),
     },
-    { key: "share", header: "Share", align: "right", render: (r) => formatPercent(r.share) },
-    { key: "sessions", header: "Sessions", align: "right", render: (r) => formatInt(r.sessions) },
+    {
+      key: "share",
+      header: "Share",
+      align: "right",
+      csv: (r) => r.share,
+      render: (r) => formatPercent(r.share),
+    },
+    {
+      key: "sessions",
+      header: "Sessions",
+      align: "right",
+      csv: (r) => r.sessions,
+      render: (r) => formatInt(r.sessions),
+    },
     {
       key: "messages",
       header: "User messages",
       align: "right",
+      hideBelow: "md",
+      csv: (r) => r.userMessages,
       render: (r) => formatInt(r.userMessages),
     },
     {
       key: "lines",
       header: "Lines +/−",
       align: "right",
+      hideBelow: "sm",
+      csv: (r) => `+${r.linesAdded} / -${r.linesRemoved}`,
       render: (r) => `+${formatInt(r.linesAdded)} / −${formatInt(r.linesRemoved)}`,
     },
   ];
@@ -48,7 +66,12 @@ export function ProjectsSection({ range, userId }: { range: ResolvedRange; userI
         b.byProject.length === 0 ? (
           <EmptyState title="No projects in this range" />
         ) : (
-          <DataTable columns={columns} rows={b.byProject} rowKey={(r) => r.key} />
+          <DataTable
+            columns={columns}
+            rows={b.byProject}
+            rowKey={(r) => r.key}
+            exportFilename={csvFilename("projects", range)}
+          />
         )
       }
     </QuerySection>

@@ -68,6 +68,20 @@ export default defineSchema({
     .index("by_session_seq", ["sessionId", "seq"])
     .index("by_user_day", ["userId", "day"]),
 
+  /**
+   * One row per distinct rate-limit reading a machine reported, so the shared quota can be drawn
+   * over time rather than only as its latest value. `finishSync` appends when a sync carries a
+   * reading whose `observedAt` this machine has not stored yet; `quota:pruneSnapshots` (daily
+   * cron) drops rows past the retention window.
+   */
+  quotaSnapshots: defineTable({
+    machineId: v.string(),
+    userId: v.id("users"),
+    ...rateLimitValidator.fields,
+  })
+    .index("by_receivedAt", ["receivedAt"])
+    .index("by_machine_observedAt", ["machineId", "observedAt"]),
+
   dailyRollups: defineTable(dailyRollupFields)
     .index("by_user_day", ["userId", "day"])
     .index("by_day", ["day"]),

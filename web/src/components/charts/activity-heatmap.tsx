@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { heatColor } from "@/lib/colors";
 import { formatCompact } from "@/lib/format";
 import {
@@ -16,8 +17,14 @@ import { CellTooltip, useCellTooltip } from "./cell-tooltip";
 export function ActivityHeatmap({ grid, unpriced }: { grid: ActivityGrid; unpriced: boolean }) {
   const { tip, show, hide } = useCellTooltip();
   const columns = grid.weeks.length;
+  const scroller = useRef<HTMLDivElement>(null);
+  // 53 weeks × 11 px does not fit a phone; the recent weeks are the ones worth seeing first.
+  useEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [columns]);
   return (
-    <div className="relative overflow-x-auto" data-heatmap>
+    <div ref={scroller} className="relative overflow-x-auto" data-heatmap>
       <CellTooltip tip={tip} />
       <div
         role="grid"

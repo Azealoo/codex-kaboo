@@ -20,15 +20,16 @@ The dashboard itself talks to Convex through the generated `api` object with a C
 
 ## Data model (`schema.ts`)
 
-| Table          | Holds                                                                                                           |
-| -------------- | --------------------------------------------------------------------------------------------------------------- |
-| `users`        | One row per Clerk identity (`clerkId`, name/email/image, `createdAt`, `lastSeenAt`)                             |
-| `syncTokens`   | Sync tokens by their sha256 hash (the raw token is never stored) — `prefix` and `name` are what the UI shows    |
-| `machines`     | One row per machine that has ever synced: label, platform/arch/versions, opt-in hostname, last known rate limit |
-| `sessions`     | One row per Codex session/thread, denormalised from `SessionSummary`                                            |
-| `tokenEvents`  | One row per model response (token counts, day/hour, source/origin tags)                                         |
-| `dailyRollups` | Precomputed per-(user, day) aggregates the dashboard actually queries, versioned by `ROLLUP_VERSION`            |
-| `modelPrices`  | Editable USD-per-million-token price table used to turn token counts into cost                                  |
+| Table            | Holds                                                                                                                                                                                                    |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`          | One row per Clerk identity (`clerkId`, name/email/image, `createdAt`, `lastSeenAt`)                                                                                                                      |
+| `syncTokens`     | Sync tokens by their sha256 hash (the raw token is never stored) — `prefix` and `name` are what the UI shows                                                                                             |
+| `machines`       | One row per machine that has ever synced: label, platform/arch/versions, opt-in hostname, last known rate limit                                                                                          |
+| `sessions`       | One row per Codex session/thread, denormalised from `SessionSummary`                                                                                                                                     |
+| `tokenEvents`    | One row per model response (token counts, day/hour, source/origin tags)                                                                                                                                  |
+| `dailyRollups`   | Precomputed per-(user, day) aggregates the dashboard actually queries, versioned by `ROLLUP_VERSION`                                                                                                     |
+| `quotaSnapshots` | One row per distinct rate-limit reading a machine reported (appended by `finishSync`), read by `stats.quotaHistory`; `quota:pruneSnapshots` runs daily from `crons.ts` and drops rows older than 90 days |
+| `modelPrices`    | Editable USD-per-million-token price table used to turn token counts into cost                                                                                                                           |
 
 `dailyRollups` is the read path for almost everything the dashboard renders — `sessions` and
 `tokenEvents` are the source of truth it's built from, not what queries hit directly.

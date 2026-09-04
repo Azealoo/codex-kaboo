@@ -88,7 +88,23 @@ describe("sessions.listRecent", () => {
       linesRemoved: 2,
       inProgress: false,
       day: "2026-08-31",
+      // Detail-view fields: everything the session dialog shows rides on the same row, so the
+      // list needs no second query per click.
+      threadId: "s1",
+      parentThreadId: null,
+      wallMs: 3_600_000,
+      timezone: "UTC",
+      originator: "codex-tui",
+      cliVersion: "0.150.1",
+      completedTurns: 2,
+      reasoningItems: 1,
+      responses: 2,
+      filesChanged: 1,
+      compactions: 0,
+      mcpTools: [],
+      skills: [],
     });
+    expect(s1.ttftAvgMs).toBe(750);
     expect(s1.costUsd).toBeCloseTo(0.00328, 8);
     expect(s1.toolCounts.commandRead).toBe(3);
   });

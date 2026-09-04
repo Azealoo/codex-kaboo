@@ -8,6 +8,7 @@ import { OnboardingCard } from "@/components/home/onboarding-card";
 import { OverviewCards } from "@/components/home/overview-cards";
 import { ProjectsSection } from "@/components/home/projects-section";
 import { SkillsSection } from "@/components/home/skills-section";
+import { TeamSessionsSection } from "@/components/home/team-sessions-section";
 import { ToolsSection } from "@/components/home/tools-section";
 import { TrendSection } from "@/components/home/trend-section";
 import { UsersSection } from "@/components/home/users-section";
@@ -40,6 +41,8 @@ function SectionBody({
       return <ProjectsSection range={range} />;
     case "skills":
       return <SkillsSection range={range} />;
+    case "sessions":
+      return <TeamSessionsSection />;
   }
 }
 
